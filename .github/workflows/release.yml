@@ -2,7 +2,7 @@ name: Release
 on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
-  # Builds the source archive of the PR head, so a build change that needs .git fails before merging.
+  # Builds the source archive of the PR head when this workflow or the source-revision handling changes.
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -29,6 +29,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Decide the release
         shell: pwsh
         env:
@@ -126,6 +128,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Decide again: someone may have drafted this version while the archives were building.
       - name: Check the release again
         id: decide
@@ -141,12 +145,12 @@ jobs:
           TAG: ${{ steps.decide.outputs.tag }}
           TITLE: ${{ steps.decide.outputs.title }}
         run: |
-          $request = Join-Path $env:RUNNER_TEMP 'release-request.json'
-          @{
-            tag_name = $env:TAG; target_commitish = $env:GITHUB_SHA; name = $env:TITLE
-            body = Get-Content -Raw -LiteralPath (Join-Path $env:RUNNER_TEMP 'release-notes.md')
-            draft = $true; prerelease = $false; generate_release_notes = $true
-          } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $request
-          $url = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases" --input $request --jq '.html_url'
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          # -f sends text as is; -F reads @file as text and turns true/false into booleans.
+          $fields = @(
+            '-f', "tag_name=$env:TAG", '-f', "target_commitish=$env:GITHUB_SHA", '-f', "name=$env:TITLE", '-F', "body=@$notes",
+            '-F', 'draft=true', '-F', 'prerelease=false', '-F', 'generate_release_notes=true'
+          )
+          $url = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases" --jq '.html_url' @fields
           if ($LASTEXITCODE -ne 0) { throw 'Creating the draft release failed' }
           "Draft release for ${env:TITLE}: $url" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
