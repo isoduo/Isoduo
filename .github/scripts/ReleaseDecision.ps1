@@ -18,14 +18,14 @@ function Get-IsoduoReleaseDecision {
         return Refuse "project(Isoduo VERSION ...) in CMakeLists.txt must be three numbers such as 0.4.0; found '$version'."
     }
     $tag = "v$version"
-    $named = @($Releases | Where-Object { $_.TagName -ceq $tag })
-    if (@($named | Where-Object { -not $_.Draft }).Count) {
+    $releasesForTag = @($Releases | Where-Object { $_.TagName -ceq $tag })
+    if (@($releasesForTag | Where-Object { -not $_.Draft }).Count) {
         return Refuse "Release $tag is already published; bump project(Isoduo VERSION ...) in CMakeLists.txt first."
     }
     if ($Tags -ccontains $tag) {
         return Refuse "The tag $tag already exists; bump project(Isoduo VERSION ...) in CMakeLists.txt first."
     }
-    if ($named.Count) {
+    if ($releasesForTag.Count) {
         return Refuse "A draft release for $tag already exists; delete it on the Releases page and run the workflow again."
     }
     # UIA trial is still on trial and does not gate releases. A re-run reuses its run; separate runs are compared by age.

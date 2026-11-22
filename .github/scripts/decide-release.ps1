@@ -13,9 +13,10 @@ function Get-GitHubLines([string]$Path, [string]$Filter) {
 }
 $tags = Get-GitHubLines "repos/$repository/tags?per_page=100" '.[].name'
 # GitHub lists draft releases only to tokens that can write contents.
-$releases = Get-GitHubLines "repos/$repository/releases?per_page=100" '.[] | {tagName: .tag_name, draft: .draft}' |
+$releases = Get-GitHubLines "repos/$repository/releases?per_page=100" '.[] | {TagName: .tag_name, Draft: .draft}' |
     ForEach-Object { $_ | ConvertFrom-Json }
-$runs = Get-GitHubLines "repos/$repository/actions/runs?head_sha=$commit&event=push&branch=main&per_page=100" '.workflow_runs[] | {name, status, conclusion, createdAt: .created_at}' |
+$runs = Get-GitHubLines "repos/$repository/actions/runs?head_sha=$commit&event=push&branch=main&per_page=100" `
+    '.workflow_runs[] | {Name: .name, Status: .status, Conclusion: .conclusion, CreatedAt: .created_at}' |
     ForEach-Object { $_ | ConvertFrom-Json }
 
 $decision = Get-IsoduoReleaseDecision -Ref $env:GITHUB_REF -Commit $commit -Repository $repository `
