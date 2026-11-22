@@ -23,7 +23,7 @@ diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 
 ## Linux core build and tests
 
-With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout:
+With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout or an unpacked source archive:
 
 ```sh
 sh tools/test-linux-core.sh
@@ -513,7 +513,8 @@ material with temporary settings. Each case writes a result to
 - **RI04** Open the note color dropdown at a 660 px window width and confirm that the modal blocks a page thumb drag. The modal's 20 DIP margin prevents the dropdown from covering the page scrollbar in this demo. The CTest `pointer_routing` case `anOpenDialogBlocksThePageScrollbarUnderItsComponents` exercises the overlap.
 
 `build.ps1` records the built commit and working-tree dirty flag in
-`build/<Configuration>/source-revision.txt`. The real-input and presentation
+`build/<Configuration>/source-revision.txt`; in a source archive without `.git`
+it builds without this file. The real-input and presentation
 runs copy the Release file into their evidence directories and warn when the
 recorded commit differs from current HEAD.
 
@@ -550,6 +551,24 @@ recorded commit differs from current HEAD.
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
+
+## Releasing
+
+A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `v` followed by
+`project(Isoduo VERSION ...)` in `CMakeLists.txt`, the same version `find_package(Isoduo X.Y)` checks.
+
+1. Open a PR that bumps `project(Isoduo VERSION ...)`. The first release, 0.4.0, needs no bump.
+2. After the PR merges, wait until `Core` and `Render` pass on the new `main` commit.
+3. On the Actions page, open **Release** and press **Run workflow** on `main`. The workflow refuses with a reason
+   if the version is not three numbers, its tag or release already exists, or `Core` or `Render` has not passed.
+   Otherwise it builds GitHub's source archive of the commit, which has no `.git`: on Windows, the Release core with
+   its tests and then the full build; on Ubuntu, `tools/test-linux-core.sh`. When both pass, it creates a draft
+   release, which only people with write access can see.
+4. On the author machine, check out the full SHA at the top of the draft and run the real-platform checks this
+   release needs: the table above per change, or `verify-v1-final.ps1` for the full pass. The author decides
+   which; the workflow does not check them. If one fails, delete the draft; nothing was published.
+5. Write a summary at the top of the draft, above the merged PRs GitHub listed, and press **Publish release**. GitHub
+   creates the tag on that commit at this moment.
 
 ## Using Isoduo from another CMake project
 
