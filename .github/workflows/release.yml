@@ -2,12 +2,15 @@ name: Release
 on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
-  # Builds the source archive of the PR head when this workflow or the source-revision handling changes.
+  # Runs archive builds when this workflow, build.ps1, the source-revision script, the Linux core script or
+  # .gitattributes changes. git archive applies .gitattributes for line endings and export-ignore.
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - .gitattributes
       - build.ps1
       - cmake/SourceRevision.ps1
+      - tools/test-linux-core.sh
 
 permissions:
   contents: read
@@ -136,7 +139,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./.github/scripts/decide-release.ps1 -NotesPath "$env:RUNNER_TEMP/release-notes.md"
+        run: |
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          "RELEASE_NOTES=$notesPath" >> $env:GITHUB_ENV
+          ./.github/scripts/decide-release.ps1 -NotesPath $notesPath
       # The tag does not exist yet: GitHub creates it on the full SHA when the author publishes the draft.
       - name: Create the draft release
         shell: pwsh
@@ -145,10 +151,10 @@ jobs:
           TAG: ${{ steps.decide.outputs.tag }}
           TITLE: ${{ steps.decide.outputs.title }}
         run: |
-          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           # -f sends text as is; -F reads @file as text and turns true/false into booleans.
           $fields = @(
-            '-f', "tag_name=$env:TAG", '-f', "target_commitish=$env:GITHUB_SHA", '-f', "name=$env:TITLE", '-F', "body=@$notes",
+            '-f', "tag_name=$env:TAG", '-f', "target_commitish=$env:GITHUB_SHA", '-f', "name=$env:TITLE",
+            '-F', "body=@$env:RELEASE_NOTES",
             '-F', 'draft=true', '-F', 'prerelease=false', '-F', 'generate_release_notes=true'
           )
           $url = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases" --jq '.html_url' @fields

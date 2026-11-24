@@ -40,7 +40,7 @@ function Get-IsoduoReleaseDecision {
     $notes = @(
         "Commit: ``$Commit``",
         '',
-        "Before publishing, check out this commit on the author machine and run the real-platform checks this release needs. The [Real-platform runs per change]($readme) table lists the idle-desktop runs each change requires, and ``verify-v1-final.ps1`` runs the full real-platform acceptance pass. Which runs to do is the author's call; this workflow does not check them."
+        "Before publishing, check out this commit on the author machine and do the real-platform runs this release needs. The [Real-platform runs per change]($readme) table lists the idle-desktop runs each change requires, and ``verify-v1-final.ps1`` runs the full real-platform acceptance pass. Which runs to do is the author's call; this workflow does not check them. Replace this paragraph with the release summary, including which real-platform runs you did or that CTest was enough."
     ) -join "`n"
     [pscustomobject]@{ Tag = $tag; Title = "Isoduo $version"; Notes = $notes; Failure = $null }
 }
