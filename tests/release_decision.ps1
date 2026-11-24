@@ -22,7 +22,9 @@ if ($release.Title -cne 'Isoduo 0.4.0') { throw "Wrong title: $($release.Title)"
 foreach ($expected in @(
     $commit,
     "https://github.com/isoduo/Isoduo/blob/$commit/README.md#real-platform-runs-per-change",
-    'verify-v1-final.ps1'
+    'verify-v1-final.ps1',
+    'Replace this paragraph with the release summary',
+    'or that CTest was enough'
 )) {
     if (-not $release.Notes.Contains($expected)) { throw "Notes lack '$expected':`n$($release.Notes)" }
 }

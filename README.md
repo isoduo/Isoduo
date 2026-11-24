@@ -499,7 +499,8 @@ test checks the same rich-text wire round trip without Windows.
 
 Production changes to layout or to the desktop host need runs that only a real, idle desktop can give (real clipboard,
 input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
-lists, per change, which idle-desktop runs the author still has to do before a release. Commands are
+lists, per change, which idle-desktop runs the author still has to do before the next release; the rows are removed
+after each release (see "Releasing"). Commands are
 `./verify-idle.ps1 -Only <name>` unless the row says otherwise; `isoduo_host_verify` is `build/Release/isoduo_host_verify.exe`.
 
 Run `./verify-idle.ps1 -Only real-input` on an idle Windows desktop after a
@@ -557,18 +558,23 @@ author has run them.
 A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `v` followed by
 `project(Isoduo VERSION ...)` in `CMakeLists.txt`, the same version `find_package(Isoduo X.Y)` checks.
 
-1. Open a PR that bumps `project(Isoduo VERSION ...)`. The first release, 0.4.0, needs no bump.
-2. After the PR merges, wait until `Core` and `Render` pass on the new `main` commit.
-3. On the Actions page, open **Release** and press **Run workflow** on `main`. The workflow refuses with a reason
+1. Wait until `Core` and `Render` pass on the `main` commit to release. No version bump is needed first: step 5
+   bumps the patch after each release, and a PR that breaks source compatibility bumps the minor version itself
+   (`CODING_STANDARDS.md`). The first release is 0.4.0.
+2. On the Actions page, open **Release** and press **Run workflow** on `main`. The workflow refuses with a reason
    if the version is not three numbers, its tag or release already exists, or `Core` or `Render` has not passed.
    Otherwise it builds GitHub's source archive of the commit, which has no `.git`: on Windows, the Release core with
    its tests and then the full build; on Ubuntu, `tools/test-linux-core.sh`. When both pass, it creates a draft
    release, which only people with write access can see.
-4. On the author machine, check out the full SHA at the top of the draft and run the real-platform checks this
+3. On the author machine, check out the full SHA at the top of the draft and do the real-platform runs this
    release needs: the table above per change, or `verify-v1-final.ps1` for the full pass. The author decides
    which; the workflow does not check them. If one fails, delete the draft; nothing was published.
-5. Write a summary at the top of the draft, above the merged PRs GitHub listed, and press **Publish release**. GitHub
-   creates the tag on that commit at this moment.
+4. Replace the reminder paragraph at the top of the draft with a summary: what changed, and which real-platform runs
+   you did, or that CTest was enough. Keep the `Commit:` line and the merged PRs GitHub listed below it. Press
+   **Publish release**; GitHub creates the tag on that commit at this moment.
+5. Open a PR that removes the rows of the table above that existed at the release commit and bumps the patch of
+   `project(Isoduo VERSION ...)`, for example 0.4.0 to 0.4.1, so that the framework version on `main` no longer matches
+   a published release.
 
 ## Using Isoduo from another CMake project
 
