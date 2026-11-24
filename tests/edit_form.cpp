@@ -119,7 +119,7 @@ void semanticFormOperations() {
           form.volumeApplied() == 65, "semantic F01 results");
     check(bool(tree.perform({ids.name}, Verb::setValue, std::u16string(u"  "))) &&
           tree.perform({ids.apply}, Verb::invoke).status == Status::invalidValue &&
-          tree.get({ids.name})->error == u"請填寫顯示名稱" && tree.get({ids.name})->focused && form.applies() == 1,
+          tree.get({ids.name})->error == u"Enter a display name" && tree.get({ids.name})->focused && form.applies() == 1,
           "semantic apply rejects blank draft and focuses the error");
 }
 
@@ -130,7 +130,7 @@ void semanticModalOperations() {
     check(bool(tree.perform({prefix + "tabs", OptionValue{"v03"}}, Verb::select)), "semantic switch page");
     check(bool(tree.perform({prefix + "v03.open"}, Verb::invoke)), "semantic open dialog");
     auto dialog = tree.get({prefix + "dialog"});
-    check(dialog && dialog->name == u"重設示範進度" &&
+    check(dialog && dialog->name == u"Reset Demo Progress" &&
           std::find(dialog->verbs.begin(), dialog->verbs.end(), Verb::cancel) != dialog->verbs.end(), "open dialog exposes its name and cancel action");
     auto half = tree.get({prefix + "v03.half"});
     check(half && half->blockedByModal && half->enabled, "modal background readable");
@@ -155,7 +155,7 @@ void semanticListOperations() {
     check(bool(tree.perform({prefix + "v02.twenty"}, Verb::invoke)), "load list sample");
     auto first = tree.get({prefix + "v02.list", OptionValue{"T005"}});
     auto second = tree.get({prefix + "v02.list", OptionValue{"T006"}});
-    check(first && second && first->name == second->name && first->name == u"共用範本", "duplicate names retain distinct identities");
+    check(first && second && first->name == second->name && first->name == u"Shared Template", "duplicate names retain distinct identities");
     check(bool(tree.perform({prefix + "v02.list", OptionValue{"T006"}}, Verb::select)), "select duplicate-name item");
     std::string reveal;
     detail::access(form.ui).onReveal([&](const std::string& id) { reveal = id; });
@@ -283,7 +283,7 @@ void semanticNotifications() {
               return e.kind == SemanticEventKind::focusChanged && e.ref.id == prefix + "v02.list" && e.ref.item == OptionValue{"T005"};
           }), "focus event names only the focused list item");
     events.clear();
-    check(bool(tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"共用範本"))), "filter list");
+    check(bool(tree.perform({prefix + "v02.search"}, Verb::setValue, std::u16string(u"Shared Template"))), "filter list");
     tree.dispatchEvents();
     check(std::any_of(events.begin(), events.end(), [&](const auto& e) {
         return e.kind == SemanticEventKind::structureChanged && e.ref.id == prefix + "v02.list";
@@ -561,7 +561,7 @@ void semanticShowcaseStatesAndIdentity() {
     form.handles.tabs.activate({"v02"}); draw();
     if (ids.name == editForm::defaultIds().name) writeSemanticTsv(form, "v02");
     auto a = tree.get({listId, OptionValue{"T005"}}); auto b = tree.get({listId, OptionValue{"T006"}});
-    check(a && b && a->name == u"\u5171\u7528\u7bc4\u672c" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
+    check(a && b && a->name == u"Shared Template" && b->name == a->name, "SEM03 duplicate names retain distinct identities");
     form.list->handles.list.select({"T006"}); form.list->handles.sort.invoke(); form.list->handles.sort.invoke();
     check(tree.get({listId, OptionValue{"T006"}})->selected && tree.get({listId, OptionValue{"T999"}}).status == Status::notFound,
           "SEM03 selected identity survives sorting and unknown item is absent");
@@ -755,7 +755,7 @@ void v04FontChoiceAppliesAndReportsFallback() {
     check(bool(h.font.select({"missing"})), "Select missing test font");
     check(form.ui.presentation().fontFamily == u"Missing test font", "Requested font remains stored");
     check(h.fontStatus.describe()->value.find(u"Segoe UI") != std::u16string::npos &&
-          h.fontStatus.describe()->value.find(u"\u9810\u8a2d") != std::u16string::npos, "Fallback is visible");
+          h.fontStatus.describe()->value.find(u"(using default)") != std::u16string::npos, "Fallback is visible");
     check(bool(h.font.select({"mingliu"})), "Select MingLiU");
     check(form.ui.presentation().fontFamily == u"MingLiU" && h.fontStatus.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
     check(bool(h.textSize.setValue(28)) && bool(h.dark.toggle()) && bool(h.resetV04.invoke()), "Reset presentation");
@@ -1050,14 +1050,14 @@ void resetsReproduceCasesAndPreserveOtherPages() {
     test::FakeMeasure measure;
     auto frame = [&] { return arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, detail::access(form.ui).focused()); };
     h.tabs.activate({"v02"}); auto& list = form.list->handles;
-    list.search.setValue(u"共用範本"); list.list.select({"T006"});
+    list.search.setValue(u"Shared Template"); list.list.select({"T006"});
     h.tabs.activate({"v03"}); h.progressFull.invoke();
     h.tabs.activate({"v01"}); h.name.setValue(u"draft"); h.reset.invoke();
     check(frame().find(h.name) && *h.name.draft() == u"測試使用者" && form.applies() == 0, "V01 reset restores initial form");
     h.name.setValue(u"工作站 A"); h.apply.invoke();
     check(form.applies() == 1 && form.applied() == u"工作站 A", "Representative V01 apply works again after reset");
     h.tabs.activate({"v02"});
-    check(*list.search.draft() == u"共用範本" && form.list->selection() == OptionValue{"T006"}, "V01 reset retained V02 state");
+    check(*list.search.draft() == u"Shared Template" && form.list->selection() == OptionValue{"T006"}, "V01 reset retained V02 state");
     list.reset.invoke();
     check(frame().find(list.list) && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->items.size() == 20, "V02 reset restores initial list");
     list.list.select({"T003"}); list.erase.invoke();
@@ -1120,7 +1120,7 @@ void allFiveFieldsApplyOnce() {
 
 void volumeIsAConfirmedFormField() {
     editForm::Form form(ids);
-    check(*form.handles.volume.draft() == 40 && form.volumeApplied() == 40 && form.handles.volume.describe()->name == u"\u97f3\u91cf", "Volume starts at 40 with its accessible name");
+    check(*form.handles.volume.draft() == 40 && form.volumeApplied() == 40 && form.handles.volume.describe()->name == u"Volume", "Volume starts at 40 with its accessible name");
     form.handles.volume.setValue(75);
     check(*form.handles.volume.draft() == 75 && form.volumeApplied() == 40 &&
           form.handles.draft.describe()->value.find(u"75") != std::u16string::npos, "Volume is shown as an unapplied draft");
@@ -1224,7 +1224,7 @@ void blankNameErrorFollowsBlurAndApply() {
     form.handles.name.paste(u"　 ");
     detail::access(ui).keyDown(key(Key::tab));
     auto name = form.handles.name.describe();
-    check(name->invalid && name->error == u"請填寫顯示名稱" && form.handles.nameError.describe()->value == name->error, "Blur on a blank name shows its error");
+    check(name->invalid && name->error == u"Enter a display name" && form.handles.nameError.describe()->value == name->error, "Blur on a blank name shows its error");
     check(form.handles.nameError.describe()->target == ids.name, "The error is associated with the name field");
     auto result = form.handles.apply.invoke();
     check(result.status == Status::invalidValue && form.handles.name.describe()->focused, "Invalid apply is rejected and focuses the name");
@@ -1276,13 +1276,13 @@ void readOnlyAndDisabledFixturesRestrictAndRecover() {
     form.handles.name.focus();
     form.handles.name.paste(u"!");
     form.handles.readOnly.invoke();
-    check(form.handles.name.describe()->readOnly && form.handles.state.describe()->value.find(u"唯讀") != std::u16string::npos,
+    check(form.handles.name.describe()->readOnly && form.handles.state.describe()->value.find(u"Read-Only") != std::u16string::npos,
           "Read-only state has readable text, not just color");
     form.handles.name.focus();
     check(form.handles.name.paste(u"x").status == Status::readOnly && form.handles.name.undo().status == Status::readOnly,
           "Read-only name refuses input and undo");
     form.handles.disabled.invoke();
-    check(form.handles.state.describe()->value.find(u"停用") != std::u16string::npos, "Disabled state has readable text");
+    check(form.handles.state.describe()->value.find(u"Data area disabled") != std::u16string::npos, "Disabled state has readable text");
     std::vector<Status> refused{form.handles.name.focus().status, detail::access(ui).pointerDown(ids.apply).status,
                                 form.handles.name.setValue( u"x").status, form.handles.apply.invoke().status};
     check(refused == std::vector<Status>(4, Status::disabled) && form.applies() == 0, "Pointer, keyboard and semantic retries are refused");
@@ -1304,10 +1304,10 @@ void keyboardReachesEveryEntryAndSemanticsAnswer() {
     detail::access(ui).keyDown(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
     auto name = form.handles.name.describe();
-    check(name->kind == ComponentKind::textField && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
+    check(name->kind == ComponentKind::textField && name->name == u"Display Name" && name->value == u"測試使用者" && !name->focused,
           "Name field answers identity, type, name and value");
     auto apply = form.handles.apply.describe();
-    check(apply->kind == ComponentKind::button && apply->name == u"套用" && apply->focused, "Apply answers its name and focus");
+    check(apply->kind == ComponentKind::button && apply->name == u"Apply" && apply->focused, "Apply answers its name and focus");
     check(!form.handles.title.describe()->focusable && !form.handles.result.describe()->focusable, "Display text stays out of the Tab order");
     form.handles.error.invoke();
     check(form.handles.name.describe()->invalid && form.handles.name.describe()->focused, "Error fixture shows the name error and focuses it");
@@ -1318,7 +1318,7 @@ void sourceUpdatesOfferTheLatestValue() {
     editForm::Form form(ids);
     form.handles.name.setValue( u"my draft");
     form.updateSource(u"remote value");
-    check(form.handles.name.describe()->value == u"my draft" && form.handles.state.describe()->value.find(u"\u4f86\u6e90\u5df2\u66f4\u65b0") != std::u16string::npos,
+    check(form.handles.name.describe()->value == u"my draft" && form.handles.state.describe()->value.find(u"Source updated") != std::u16string::npos,
           "An external change retains the draft and displays a conflict");
     check(bool(form.handles.latest.invoke()) && form.handles.name.describe()->value == u"remote value",
           "The user can discard the draft in favor of the latest source value");
@@ -1326,8 +1326,8 @@ void sourceUpdatesOfferTheLatestValue() {
 
 void checkboxAndRadioAreAppliedTogether() {
     editForm::Form form(ids);
-    check(form.handles.notices.describe()->name == u"\u555f\u7528\u63d0\u793a" &&
-          form.handles.mode.describe()->items[0].label == u"\u4e00\u822c", "New controls retain their Traditional Chinese labels");
+    check(form.handles.notices.describe()->name == u"Enable Notices" &&
+          form.handles.mode.describe()->items[0].label == u"Normal", "New components expose their English labels");
     check(*form.handles.notices.draft() && *form.handles.mode.draft() == OptionValue{"normal"},
           "Notices and normal mode are initially selected");
     form.handles.notices.focus();
@@ -1396,7 +1396,7 @@ void v02IdentityFilterAndDelete() {
           "Reverse sorting retains the selected duplicate identity in the detail");
     h.sort.invoke();
     check(page.selection() == OptionValue{"T006"}, "Restoring sort preserves T006");
-    h.list.select({"T003"}); h.search.setValue(u"範本 20");
+    h.list.select({"T003"}); h.search.setValue(u"Template 20");
     check(!page.selection() && h.list.describe()->items.size() == 1 && h.list.describe()->items[0].value == OptionValue{"T020"},
           "Filtering T003 out clears selection and leaves T020");
     h.search.setValue(u"");
@@ -1433,7 +1433,7 @@ void v02DisabledAndFilteredNeighbors() {
     check(frame.find(h.list) && !page.selection() && h.list.describe()->candidate == OptionValue{"T009"} &&
           h.list.select({"T008"}).status == Status::disabled && identities,
           "Disabling selected T008 clears it, moves to T009 and keeps every identity");
-    h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.setValue(u"範本 1");
+    h.reset.invoke(); h.hundred.invoke(); h.list.focus(); h.list.select({"T009"}); h.search.setValue(u"Template 1");
     check(!page.selection() && h.list.describe()->candidate == OptionValue{"T010"}, "Filtering recovers the next surviving identity T010");
 }
 
@@ -1455,7 +1455,7 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
     check(bool(h.tabs.activate({"v02"})), "Open V02");
     check(h.name.setValue(u"blocked").status == Status::hidden, "Hidden V01 cannot be edited");
     auto& list = form.list->handles;
-    list.search.setValue(u"\u5171\u7528\u7bc4\u672c"); list.list.select({"T006"});
+    list.search.setValue(u"Shared Template"); list.list.select({"T006"});
     check(bool(h.tabs.activate({"v01"})), "Return to V01");
     check(*h.name.draft() == u"a very long draft that needs horizontal scrolling in a narrow field", "V01 draft survives switch");
     check(form.applied() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V01 applied value survives switch");
@@ -1463,7 +1463,7 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
     frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll);
     check(frame.find(h.name)->offset == offset, "V01 horizontal offset survives switch");
     h.tabs.activate({"v02"});
-    check(*list.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
+    check(*list.search.draft() == u"Shared Template" && form.list->selection() == OptionValue{"T006"}, "V02 search and T006 survive a switch");
     list.reset.invoke();
     check(list.reset.describe()->focused && list.search.draft()->empty() && !form.list->selection() && list.list.describe()->items.size() == 20, "V02 reset restores the real list and keeps focus");
     list.hundred.invoke(); list.list.focus(); list.list.select({"T100"});
@@ -1858,15 +1858,15 @@ void paintedStatesAgreeWithSemantics() {
     h.mode.select({"focus"}); form.updateModeSource({"offline"});
     h.region.select({"central"}); form.updateRegionSource({"south"});
     h.volume.setValue(55); form.updateVolumeSource(70);
-    check(h.name.describe()->sourceConflict && contains(observe(h.state), u"來源已更新") &&
-          h.latest.describe()->enabled && contains(observe(h.latest), u"改用最新值"),
+    check(h.name.describe()->sourceConflict && contains(observe(h.state), u"Source updated") &&
+          h.latest.describe()->enabled && contains(observe(h.latest), u"Use Latest"),
           "X04 field conflict notice and use-latest action are drawn");
     check(h.mode.describe()->sourceConflict && contains(observe(h.mode), wording.conflictSuffix) &&
-          h.modeLatest.describe()->enabled && contains(observe(h.modeLatest), u"改用最新值") &&
+          h.modeLatest.describe()->enabled && contains(observe(h.modeLatest), u"Use Latest") &&
           h.region.describe()->sourceConflict && contains(observe(h.region), wording.conflictSuffix) &&
-          h.regionLatest.describe()->enabled && contains(observe(h.regionLatest), u"改用最新值") &&
+          h.regionLatest.describe()->enabled && contains(observe(h.regionLatest), u"Use Latest") &&
           h.volume.describe()->sourceConflict && contains(observe(h.volume), wording.conflictSuffix) &&
-          h.volumeLatest.describe()->enabled && contains(observe(h.volumeLatest), u"改用最新值"),
+          h.volumeLatest.describe()->enabled && contains(observe(h.volumeLatest), u"Use Latest"),
           "X04 option and slider conflicts expose their notices and actions");
 
     check(h.notices.describe()->checked == true && hasColor(observe(h.notices), palette.accent),
@@ -2775,10 +2775,10 @@ void dialogCancelPreservesProgress() {
     editForm::Form form(ids, true);
     auto& h = form.handles;
     h.tabs.activate({"v03"});
-    check(h.progressHalf.describe()->description == u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002", "V03 tooltip uses the specified text");
+    check(h.progressHalf.describe()->description == u"Adjusts demo progress without starting any background work.", "V03 tooltip uses the specified text");
     check(bool(h.dialogOpen.invoke()), "Open dialog");
-    check(h.dialogTitle.describe()->value == u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6" && h.dialogBody.describe()->value == u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002" &&
-          h.dialogCancel.describe()->name == u"\u53d6\u6d88" && h.dialogConfirm.describe()->name == u"\u91cd\u8a2d\u9032\u5ea6",
+    check(h.dialogTitle.describe()->value == u"Reset Demo Progress" && h.dialogBody.describe()->value == u"Reset the demo progress to 0%?" &&
+          h.dialogCancel.describe()->name == u"Cancel" && h.dialogConfirm.describe()->name == u"Reset Progress",
           "Dialog uses the specified title and button text");
     check(h.dialogCancel.describe()->focused, "Dialog starts on cancel");
     check(bool(h.dialogCancel.invoke()), "Cancel dialog");
@@ -2863,14 +2863,14 @@ void progressDisplaysClampedValuesWithoutChangingTheModel() {
               "Rendered text and filled track agree");
     }
     h.tabs.activate({"v02"});
-    form.list->handles.search.setValue(u"\u5171\u7528\u7bc4\u672c");
+    form.list->handles.search.setValue(u"Shared Template");
     form.list->handles.list.select({"T006"});
     h.tabs.activate({"v03"});
     check(form.progress() == 110 && h.progress.describe()->value == u"100%", "Progress survives page switches");
     check(bool(h.resetV03.invoke()) && form.progress() == 50 && h.progress.describe()->value == u"50%",
           "Reset restores V03 progress to 50%");
     h.tabs.activate({"v02"});
-    check(*form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && form.list->selection() == OptionValue{"T006"},
+    check(*form.list->handles.search.draft() == u"Shared Template" && form.list->selection() == OptionValue{"T006"},
           "Resetting V03 preserves V02 search and selection");
     h.tabs.activate({"v01"});
     check(*h.name.draft() == u"kept draft", "Resetting V03 preserves the V01 draft");
@@ -2957,7 +2957,7 @@ void bothAppearancesGiveSameResults() {
         step(form.handles.apply.invoke());
         auto frame = arrange(form.page(), ui, *each, measure, 960, 720, 1.f, form.scroll);
         auto field = frame.find(form.handles.name);
-        check(field && !field->errorLines.empty() && field->labelLines.front().text == u"顯示名稱",
+        check(field && !field->errorLines.empty() && field->labelLines.front().text == u"Display Name",
               "Each appearance carries the name label and error with the field");
         std::vector<ComponentSnapshot> snapshot;
         const auto& h = form.handles;

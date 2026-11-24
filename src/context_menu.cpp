@@ -67,14 +67,14 @@ Result detail::UiState::validateMenuItems(const std::vector<MenuItem>& items) co
     for (const auto& item : items) {
         if (item.separator) continue;
         if (item.id.empty() || reservedId(item.id) || !ids.insert(item.id).second)
-            return {Status::invalidValue, u"選單項目識別碼必須唯一、不能為空，也不能以 isoduo. 開頭"};
+            return {Status::invalidValue, u"Use unique, nonempty menu item IDs without the isoduo. prefix"};
     }
     return {};
 }
 Query<ContextMenuHandle> detail::UiState::attachMenu(const Id& target, std::vector<MenuItem> items, MenuMode mode) {
     OperationScope operation(this);
     if (auto r = configurationAccess(target); !r) return {r.status, r.message, std::nullopt};
-    if (menuAttachments_.contains(target)) return {Status::invalidValue, u"元件已經有一份選單", std::nullopt};
+    if (menuAttachments_.contains(target)) return {Status::invalidValue, u"Component already has a context menu", std::nullopt};
     if (auto r = validateMenuItems(items); !r) return {r.status, r.message, std::nullopt};
     menuAttachments_.emplace(target, MenuAttachment{mode, std::move(items)});
     return {Status::ok, {}, ContextMenuHandle(this, lifetime_, target)};
@@ -97,9 +97,9 @@ Result detail::UiState::openMenu(std::string_view id, std::optional<MenuPosition
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
     const auto* control = find(id);
-    if (!hasMenu(*control)) return {Status::notSupported, u"元件沒有右鍵選單"};
-    if (dispatching_) return {Status::busy, u"操作尚未結束"};
-    if (!composing_.empty()) return {Status::busy, u"組字中，請先完成或取消組字"};
+    if (!hasMenu(*control)) return {Status::notSupported, u"Component has no context menu"};
+    if (dispatching_) return {Status::busy, u"An operation is already in progress"};
+    if (!composing_.empty()) return {Status::busy, u"Finish or cancel text composition first"};
     // Opened from the keyboard, a list hands the application its current row without selecting it.
     const auto& type = componentType(control->kind);
     bool selectRow = item.has_value();
@@ -137,7 +137,7 @@ Result detail::UiState::openMenu(std::string_view id, std::optional<MenuPosition
 Result detail::UiState::menuPointerOpen(std::string_view id, std::optional<std::size_t> option, std::optional<unsigned> textOffset, MenuPosition at) {
     OperationScope operation(this);
     if (auto r = available(id); !r) return r;
-    if (!hasMenu(*find(id))) return {Status::notSupported, u"元件沒有右鍵選單"};
+    if (!hasMenu(*find(id))) return {Status::notSupported, u"Component has no context menu"};
     std::optional<OptionValue> item;
     if (option)
         if (auto row = componentType(find(id)->kind).menuRow(*this, *find(id), *option)) {
@@ -157,17 +157,17 @@ Result detail::UiState::closeMenu() {
 }
 Result detail::UiState::menuHighlight(std::string_view itemId) {
     OperationScope operation(this);
-    if (!menu_) return {Status::hidden, u"選單沒有開啟"};
+    if (!menu_) return {Status::hidden, u"Context menu is closed"};
     auto entries = menuEntries(menu_->target);
     auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& e) { return e.id == itemId; });
-    if (entry == entries.end()) return {Status::notFound, u"沒有這個選單項目"};
-    if (entry->separator) return {Status::invalidValue, u"分隔線不能取得焦點"};
+    if (entry == entries.end()) return {Status::notFound, u"Menu item not found"};
+    if (entry->separator) return {Status::invalidValue, u"Separators cannot receive focus"};
     if (menu_->highlighted != itemId) { menu_->highlighted = std::string(itemId); if (invalidate_) invalidate_(); }
     return {};
 }
 Result detail::UiState::menuPointerDown(std::string_view itemId) {
     OperationScope operation(this);
-    if (!menu_) return {Status::hidden, u"選單沒有開啟"};
+    if (!menu_) return {Status::hidden, u"Context menu is closed"};
     menu_->pressed.clear();
     auto highlighted = menuHighlight(itemId);
     if (highlighted && menu_) menu_->pressed = std::string(itemId);
@@ -175,29 +175,29 @@ Result detail::UiState::menuPointerDown(std::string_view itemId) {
 }
 Result detail::UiState::menuPointerUp(std::string_view itemId) {
     OperationScope operation(this);
-    if (!menu_) return {Status::hidden, u"選單沒有開啟"};
+    if (!menu_) return {Status::hidden, u"Context menu is closed"};
     auto pressed = std::exchange(menu_->pressed, {});
     if (pressed != itemId) return {};
     return menuExecute(itemId);
 }
 Result detail::UiState::menuExecute(std::string_view itemId) {
     OperationScope operation(this);
-    if (!menu_) return {Status::hidden, u"選單沒有開啟"};
+    if (!menu_) return {Status::hidden, u"Context menu is closed"};
     const Id target = menu_->target;
     if (auto r = available(target); !r) return r;
     auto entries = menuEntries(target);
     auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& e) { return e.id == itemId; });
-    if (entry == entries.end()) return {Status::notFound, u"沒有這個選單項目"};
-    if (entry->separator) return {Status::invalidValue, u"分隔線不能執行"};
-    if (!entry->enabled) return {Status::disabled, u"此項目目前無法使用"};
-    if (dispatching_) return {Status::busy, u"操作尚未結束"};
+    if (entry == entries.end()) return {Status::notFound, u"Menu item not found"};
+    if (entry->separator) return {Status::invalidValue, u"Separators cannot be invoked"};
+    if (!entry->enabled) return {Status::disabled, u"Menu item is disabled"};
+    if (dispatching_) return {Status::busy, u"An operation is already in progress"};
     const bool builtin = reservedId(itemId);
     std::function<Result(const MenuContext&)> action;
     if (!builtin) {
         auto attachment = menuAttachments_.find(target);
-        if (attachment == menuAttachments_.end()) return {Status::notFound, u"沒有這個選單項目"};
+        if (attachment == menuAttachments_.end()) return {Status::notFound, u"Menu item not found"};
         auto it = std::find_if(attachment->second.items.begin(), attachment->second.items.end(), [&](const auto& i) { return i.id == itemId; });
-        if (it == attachment->second.items.end()) return {Status::notFound, u"沒有這個選單項目"};
+        if (it == attachment->second.items.end()) return {Status::notFound, u"Menu item not found"};
         action = it->action;
     }
     auto item = menu_->item;
@@ -205,11 +205,11 @@ Result detail::UiState::menuExecute(std::string_view itemId) {
     if (builtin) return menuRunBuiltin(target, itemId);
     if (!action) return {};
     try { return action(MenuContext{layoutHandle(target), std::move(item)}); }
-    catch (...) { stopped_ = true; return {Status::failed, u"選單項目執行失敗，介面已停止"}; }
+    catch (...) { stopped_ = true; return {Status::failed, u"Menu item invocation failed and the UI stopped"}; }
 }
 Result detail::UiState::menuRunBuiltin(const Id& target, std::string_view command) {
     const auto* control = find(target);
-    if (!control) return {Status::notFound, u"沒有這個選單項目"};
+    if (!control) return {Status::notFound, u"Menu item not found"};
     return componentType(control->kind).runBuiltinMenu(*this, target, command);
 }
 Result detail::UiState::menuKeyDown(KeyPress key) {
@@ -282,7 +282,7 @@ Result detail::UiState::deleteSelection(std::string_view id) {
     return replaceSelection(id, *field, u"");
 }
 Query<MenuSnapshot> detail::UiState::menuInfo() const {
-    if (!menu_) return {Status::hidden, u"選單沒有開啟", std::nullopt};
+    if (!menu_) return {Status::hidden, u"Context menu is closed", std::nullopt};
     if (auto r = configurationAccess(menu_->target, true); !r) return {r.status, r.message, std::nullopt};
     MenuSnapshot info;
     info.target = const_cast<UiState*>(this)->layoutHandle(menu_->target);
@@ -313,7 +313,7 @@ std::optional<Query<NodeSnapshot>> detail::UiState::menuNode(const NodeRef& ref)
     if (inserted) instance->second = ++nextSemanticInstance_;
     node.instance = instance->second;
     if (!ref.item) {
-        node.role = Role::menu; node.name = u"右鍵選單";
+        node.role = Role::menu; node.name = u"Context menu";
         if (auto bounds = semanticBounds_.find(menuId); bounds != semanticBounds_.end()) node.bounds = bounds->second;
         node.visible = node.bounds.has_value();
         if (!rendererFailed_) node.verbs.push_back(Verb::cancel);
@@ -379,7 +379,7 @@ Result ContextMenuHandle::addItem(MenuItem item, std::string before) const {
         auto position = items.end();
         if (!before.empty()) {
             position = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == before; });
-            if (position == items.end()) return {Status::notFound, u"沒有這個選單項目"};
+            if (position == items.end()) return {Status::notFound, u"Menu item not found"};
         }
         items.insert(position, std::move(item));
         if (auto r = ui_->validateMenuItems(items); !r) return r;
@@ -394,7 +394,7 @@ Result ContextMenuHandle::removeItem(std::string id) const {
         if (auto r = ui_->menuAttachment(id_, menu); !r) return r;
         auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
-        if (found == items.end()) return {Status::notFound, u"沒有這個選單項目"};
+        if (found == items.end()) return {Status::notFound, u"Menu item not found"};
         items.erase(found);
         ui_->menuItemsChanged(id_);
         return {};
@@ -404,10 +404,10 @@ Result ContextMenuHandle::updateItem(MenuItem item) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         detail::UiState::MenuAttachment* menu;
         if (auto r = ui_->menuAttachment(id_, menu); !r) return r;
-        if (item.separator) return {Status::invalidValue, u"分隔線沒有識別碼，不能更新"};
+        if (item.separator) return {Status::invalidValue, u"Separators have no ID and cannot be updated"};
         auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == item.id; });
-        if (found == items.end()) return {Status::notFound, u"沒有這個選單項目"};
+        if (found == items.end()) return {Status::notFound, u"Menu item not found"};
         *found = std::move(item);
         ui_->menuItemsChanged(id_);
         return {};
@@ -419,7 +419,7 @@ Result ContextMenuHandle::enableItem(std::string id, bool enabled) const {
         if (auto r = ui_->menuAttachment(id_, menu); !r) return r;
         auto& items = menu->items;
         auto found = std::find_if(items.begin(), items.end(), [&](const auto& i) { return !i.separator && i.id == id; });
-        if (found == items.end()) return {Status::notFound, u"沒有這個選單項目"};
+        if (found == items.end()) return {Status::notFound, u"Menu item not found"};
         found->enabled = enabled;
         ui_->menuItemsChanged(id_);
         return {};

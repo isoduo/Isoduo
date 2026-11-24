@@ -67,13 +67,13 @@ struct TextFieldLayout {
 };
 // Appearance-owned wording and DIP dimensions used by common component presentations.
 struct ComponentPresentation {
-    std::u16string readOnlySuffix = u"\uff08\u552f\u8b80\uff09";
-    std::u16string disabledSuffix = u"\uff08\u505c\u7528\uff09";
-    std::u16string executingSuffix = u"\uff08\u57f7\u884c\u4e2d\uff09";
-    std::u16string conflictSuffix = u"\uff08\u4f86\u6e90\u5df2\u66f4\u65b0\uff09";
-    std::u16string noSelection = u"\u672a\u9078\u53d6";
-    std::u16string noItems = u"\u6c92\u6709\u9805\u76ee";
-    std::u16string noOptions = u"\u6c92\u6709\u53ef\u7528\u9078\u9805";
+    std::u16string readOnlySuffix = u" (read-only)";
+    std::u16string disabledSuffix = u" (disabled)";
+    std::u16string executingSuffix = u" (running)";
+    std::u16string conflictSuffix = u" (source updated)";
+    std::u16string noSelection = u"No selection";
+    std::u16string noItems = u"No items";
+    std::u16string noOptions = u"No options available";
     std::u16string selectedMarker = u"\u2713 ", unselectedMarker = u"  ";
     std::u16string invalidTabMarker = u"! ", disabledTabMarker = u"[-] ", dropdownMarker = u"\u25be";
     int thin = 1, inset = 2, focus = 3, gapSmall = 4, gap = 8, sliderPad = 10;

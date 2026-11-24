@@ -73,14 +73,14 @@ void textFieldMenuHasTheWindowsEditItems() {
           std::get<TextFieldHandle>(ui.contextMenu()->target) == field.handle, "the menu is open for the field");
     auto menu = ui.contextMenu();
     check(idsOf(*menu) == builtinLayout, "built-in items: undo, redo, line, cut, copy, paste, delete, line, select all");
-    check(findItem(*menu, "isoduo.undo")->label == u"復原(U)" && findItem(*menu, "isoduo.redo")->label == u"重做(R)" &&
-          findItem(*menu, "isoduo.cut")->label == u"剪下(T)" && findItem(*menu, "isoduo.copy")->label == u"複製(C)" &&
-          findItem(*menu, "isoduo.paste")->label == u"貼上(P)" && findItem(*menu, "isoduo.delete")->label == u"刪除(D)" &&
-          findItem(*menu, "isoduo.select_all")->label == u"全選(A)", "labels follow the Windows edit menu");
+    check(findItem(*menu, "isoduo.undo")->label == u"Undo" && findItem(*menu, "isoduo.redo")->label == u"Redo" &&
+          findItem(*menu, "isoduo.cut")->label == u"Cut" && findItem(*menu, "isoduo.copy")->label == u"Copy" &&
+          findItem(*menu, "isoduo.paste")->label == u"Paste" && findItem(*menu, "isoduo.delete")->label == u"Delete" &&
+          findItem(*menu, "isoduo.select_all")->label == u"Select All", "labels follow the Windows edit menu");
     check(findItem(*menu, "isoduo.undo")->accessKey == u'U' && findItem(*menu, "isoduo.redo")->accessKey == u'R' &&
           findItem(*menu, "isoduo.cut")->accessKey == u'T' && findItem(*menu, "isoduo.copy")->accessKey == u'C' &&
           findItem(*menu, "isoduo.paste")->accessKey == u'P' && findItem(*menu, "isoduo.delete")->accessKey == u'D' &&
-          findItem(*menu, "isoduo.select_all")->accessKey == u'A', "quick keys match the letters in the labels");
+          findItem(*menu, "isoduo.select_all")->accessKey == u'A', "items expose their access keys separately from their labels");
     check(findItem(*menu, "isoduo.cut")->shortcutHint == u"Ctrl+X" && findItem(*menu, "isoduo.paste")->shortcutHint == u"Ctrl+V" &&
           findItem(*menu, "isoduo.delete")->shortcutHint == u"Del", "shortcut hints are shown");
 }
@@ -173,10 +173,10 @@ void richFieldMenuAddsBoldItalicUnderline() {
     check(bool(ui.openContextMenu(field.handle)), "a rich field opens its built-in menu");
     auto menu = ui.contextMenu();
     check(idsOf(*menu) == richLayout, "the built-in items, a line, then bold, italic and underline");
-    check(findItem(*menu, "isoduo.bold")->label == u"粗體(B)" && findItem(*menu, "isoduo.italic")->label == u"斜體(I)" &&
-          findItem(*menu, "isoduo.underline")->label == u"底線(U)", "labels follow the Windows rich-edit menu");
+    check(findItem(*menu, "isoduo.bold")->label == u"Bold" && findItem(*menu, "isoduo.italic")->label == u"Italic" &&
+          findItem(*menu, "isoduo.underline")->label == u"Underline", "labels follow the Windows rich-edit menu");
     check(findItem(*menu, "isoduo.bold")->accessKey == u'B' && findItem(*menu, "isoduo.italic")->accessKey == u'I' &&
-          findItem(*menu, "isoduo.underline")->accessKey == u'U', "quick keys match the letters in the labels");
+          findItem(*menu, "isoduo.underline")->accessKey == u'U', "items expose their access keys separately from their labels");
     check(findItem(*menu, "isoduo.bold")->shortcutHint == u"Ctrl+B" && findItem(*menu, "isoduo.italic")->shortcutHint == u"Ctrl+I" &&
           findItem(*menu, "isoduo.underline")->shortcutHint == u"Ctrl+U", "shortcut hints are shown");
     check(enabled(ui, "isoduo.bold") && enabled(ui, "isoduo.italic") && enabled(ui, "isoduo.underline"), "on in an editable rich field, with or without a selection");
@@ -232,7 +232,7 @@ void styleItemsMatchTheirShortcuts() {
     }
 }
 
-// U is both 復原(U) and 底線(U): the quick key cycles between them without running either, and Enter runs the highlighted one.
+// Undo and Underline share U: the quick key cycles between them without running either, and Enter runs the highlighted one.
 void underlineSharesItsQuickKeyWithUndo() {
     Ui ui; auto field = addRichField(ui, "note", u"hello world");
     field.handle.select(0, 5); field.handle.focus();
@@ -241,22 +241,22 @@ void underlineSharesItsQuickKeyWithUndo() {
     press(ui, Key::menu);
     check(enabled(ui, "isoduo.undo") && enabled(ui, "isoduo.underline"), "both items that share U are on");
     type(ui, u'U');
-    check(*ui.contextMenuOpen() && highlighted(ui) == "isoduo.undo", "U jumps to the first match, 復原(U), without running it");
+    check(*ui.contextMenuOpen() && highlighted(ui) == "isoduo.undo", "U jumps to Undo without running it");
     check(field.handle.richValue().value.value().spans.empty(), "nothing was run by the quick key");
     type(ui, u'u');
-    check(highlighted(ui) == "isoduo.underline" && *ui.contextMenuOpen(), "pressed again it goes to 底線(U), still without running");
+    check(highlighted(ui) == "isoduo.underline" && *ui.contextMenuOpen(), "U again highlights Underline without running it");
     type(ui, u'U');
     check(highlighted(ui) == "isoduo.undo", "and wraps around");
     type(ui, u'u');
-    check(bool(press(ui, Key::enter)) && !*ui.contextMenuOpen(), "Enter runs the highlighted 底線(U)");
+    check(bool(press(ui, Key::enter)) && !*ui.contextMenuOpen(), "Enter runs the highlighted Underline");
     const auto spans = field.handle.richValue().value.value().spans;
     check(spans.size() == 1 && spans[0].start == 0 && spans[0].length == 1 && spans[0].underline, "the selected character is underlined");
     // B and I are unique letters: they run at once.
     press(ui, Key::menu);
-    check(bool(type(ui, u'b')) && !*ui.contextMenuOpen(), "B runs 粗體(B) at once");
+    check(bool(type(ui, u'b')) && !*ui.contextMenuOpen(), "B runs Bold at once");
     check(field.handle.richValue().value.value().spans.size() == 1 && field.handle.richValue().value.value().spans[0].bold, "the character is now bold too");
     press(ui, Key::menu);
-    check(bool(type(ui, u'I')) && !*ui.contextMenuOpen() && field.handle.richValue().value.value().spans[0].italic, "I runs 斜體(I) at once");
+    check(bool(type(ui, u'I')) && !*ui.contextMenuOpen() && field.handle.richValue().value.value().spans[0].italic, "I runs Italic at once");
 }
 
 void keyboardMovesSkipsLinesAndWraps() {
@@ -698,14 +698,14 @@ void semanticTreeShowsMenuAndItemsWhileOpen() {
     check(hasVerb(ui, "note", Verb::contextMenu), "a text field offers the context_menu verb");
     check(bool(tree.perform({"note"}, Verb::contextMenu)) && *ui.contextMenuOpen(), "perform(context_menu) opens the menu");
     auto menu = tree.get({menuId});
-    check(menu && menu->role == Role::menu && !menu->hidden && menu->enabled, "a menu node appears");
+    check(menu && menu->role == Role::menu && menu->name == u"Context menu" && !menu->hidden && menu->enabled, "a menu node appears");
     auto children = tree.children({"note"});
     check(std::find(children->begin(), children->end(), NodeRef{menuId}) != children->end(), "as a child of the component");
     auto items = tree.children({menuId});
     check(items && items->size() == 9 && items->front() == NodeRef{menuId, OptionValue{"isoduo.undo"}}, "with one child per item");
     auto copy = tree.get({menuId, OptionValue{"isoduo.copy"}});
-    check(copy && copy->role == Role::menuItem && copy->name == u"複製(C)" && copy->accessKey == u"C" && copy->acceleratorKey == u"Ctrl+C" && !copy->enabled,
-          "a disabled item: role, name with its letter, AccessKey, accelerator hint, not enabled");
+    check(copy && copy->role == Role::menuItem && copy->name == u"Copy" && copy->accessKey == u"C" && copy->acceleratorKey == u"Ctrl+C" && !copy->enabled,
+          "a disabled item: role, name, AccessKey, accelerator hint, not enabled");
     check(std::find(copy->verbs.begin(), copy->verbs.end(), Verb::invoke) == copy->verbs.end() && tree.perform(copy->ref, Verb::invoke).status == Status::disabled,
           "it offers no invoke and refuses one");
     auto line = tree.get({menuId, OptionValue{"separator:2"}});

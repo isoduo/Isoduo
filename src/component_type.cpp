@@ -447,20 +447,20 @@ public:
         auto add = [&](const char* id, std::u16string label, char16_t key, std::u16string hint, bool enabled) {
             raw.push_back({id, std::move(label), std::move(hint), enabled, false, key});
         };
-        add(menuUndo, u"復原(U)", u'U', u"Ctrl+Z", editable && !field.past.empty());
-        add(menuRedo, u"重做(R)", u'R', u"Ctrl+Y", editable && !field.future.empty());
+        add(menuUndo, u"Undo", u'U', u"Ctrl+Z", editable && !field.past.empty());
+        add(menuRedo, u"Redo", u'R', u"Ctrl+Y", editable && !field.future.empty());
         separator();
-        add(menuCut, u"剪下(T)", u'T', u"Ctrl+X", editable && selected);
-        add(menuCopy, u"複製(C)", u'C', u"Ctrl+C", selected);
-        add(menuPaste, u"貼上(P)", u'P', u"Ctrl+V", editable && clipboardText);
-        add(menuDelete, u"刪除(D)", u'D', u"Del", editable && selected);
+        add(menuCut, u"Cut", u'T', u"Ctrl+X", editable && selected);
+        add(menuCopy, u"Copy", u'C', u"Ctrl+C", selected);
+        add(menuPaste, u"Paste", u'P', u"Ctrl+V", editable && clipboardText);
+        add(menuDelete, u"Delete", u'D', u"Del", editable && selected);
         separator();
-        add(menuSelectAll, u"全選(A)", u'A', u"Ctrl+A", true);
-        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with 復原(U).
+        add(menuSelectAll, u"Select All", u'A', u"Ctrl+A", true);
+        if (field.rich) {  // Windows rich-edit style: the character styles follow the editing items. U is shared with Undo.
             separator();
-            add(menuBold, u"粗體(B)", u'B', u"Ctrl+B", editable);
-            add(menuItalic, u"斜體(I)", u'I', u"Ctrl+I", editable);
-            add(menuUnderline, u"底線(U)", u'U', u"Ctrl+U", editable);
+            add(menuBold, u"Bold", u'B', u"Ctrl+B", editable);
+            add(menuItalic, u"Italic", u'I', u"Ctrl+I", editable);
+            add(menuUnderline, u"Underline", u'U', u"Ctrl+U", editable);
         }
     }
     Result runBuiltinMenu(UiState& ui, const std::string& target, std::string_view command) const override {
@@ -476,10 +476,10 @@ public:
         if (command == menuSelectAll) {
             auto& edits = UiState::Internals::edits(ui);
             auto it = edits.find(target);
-            if (it == edits.end()) return {Status::invalidValue, u"元件不是文字欄位"};
+            if (it == edits.end()) return {Status::invalidValue, u"Component is not a text field"};
             return ui.select(target, 0, static_cast<unsigned>(it->second.session.text.size()));
         }
-        return {Status::notFound, u"沒有這個選單項目"};
+        return {Status::notFound, u"Menu item not found"};
     }
     std::optional<std::u16string> displayText(const UiState& ui, const Component& c) const override {
         auto& edits = UiState::Internals::edits(ui);
@@ -1109,8 +1109,8 @@ public:
     Result checkMenuItem(const UiState& ui, const Component& c, const OptionValue& item) const override {
         const auto& items = UiState::Internals::lists(ui).at(c.id).items;
         auto row = std::find_if(items.begin(), items.end(), [&](const auto& r) { return r.value == item; });
-        if (row == items.end()) return {Status::notFound, u"沒有這個項目"};
-        if (!row->enabled) return {Status::disabled, u"項目已停用"};
+        if (row == items.end()) return {Status::notFound, u"Item not found"};
+        if (!row->enabled) return {Status::disabled, u"Item is disabled"};
         return {};
     }
     void menuRowChosen(UiState& ui, const std::string& id, const OptionValue& item) const override {
@@ -1121,7 +1121,7 @@ public:
     std::optional<Query<OptionValue>> menuRow(const UiState& ui, const Component& c, std::size_t option) const override {
         const auto& items = UiState::Internals::lists(ui).at(c.id).items;
         if (option >= items.size()) return std::nullopt;
-        if (!items[option].enabled) return Query<OptionValue>{Status::disabled, u"項目已停用", std::nullopt};
+        if (!items[option].enabled) return Query<OptionValue>{Status::disabled, u"Item is disabled", std::nullopt};
         return Query<OptionValue>{Status::ok, {}, items[option].value};
     }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
@@ -1652,7 +1652,7 @@ public:
             int y = static_cast<int>(i) * height;
             c.placement.options.push_back({0, y, c.width, height});
             auto label = semantic.items[i].label;
-            if (!semantic.items[i].enabled) label += u"\uff08\u505c\u7528\uff09";
+            if (!semantic.items[i].enabled) label += u" (disabled)";
             c.placement.lines.push_back({{scaled(c.scale, 16), y + (height-line)/2, c.width-scaled(c.scale, 32), line}, std::move(label)});
         }
         c.placement.bounds = {0, 0, c.width, height * static_cast<int>(semantic.items.size())};

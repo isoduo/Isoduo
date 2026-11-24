@@ -33,22 +33,22 @@ Result ImmediateSearchConnection::reset() {
 Page::Page(Ui* sharedUi, ScrollState* sharedScroll, std::string prefix)
     : ownedUi_(sharedUi ? nullptr : std::make_unique<Ui>()),
       ui(sharedUi ? *sharedUi : *ownedUi_), scroll(sharedScroll ? *sharedScroll : ownedScroll_) {
-    handles.title = ui.addLabel({.id = prefix + "title", .value = u"範本清單"}).value.value();
+    handles.title = ui.addLabel({.id = prefix + "title", .value = u"Template List"}).value.value();
     auto titleId = handles.title.describe()->id;
     auto titleText = handles.title.describe()->value;
     handles.title.connectSource([this, titleId, titleText] {
         return clipPaddingId_ == titleId ? clipPaddingText_ : titleText;
     });
-    handles.zero = ui.addButton({.id = prefix + "zero", .label = u"0 筆"}).value.value();
-    handles.one = ui.addButton({.id = prefix + "one", .label = u"1 筆"}).value.value();
-    handles.twenty = ui.addButton({.id = prefix + "twenty", .label = u"20 筆"}).value.value();
-    handles.hundred = ui.addButton({.id = prefix + "hundred", .label = u"100 筆"}).value.value();
-    handles.sort = ui.addButton({.id = prefix + "sort", .label = u"反轉排序"}).value.value();
-    handles.disableEight = ui.addButton({.id = prefix + "disable", .label = u"停用／啟用 T008"}).value.value();
-    handles.reset = ui.addButton({.id = prefix + "reset", .label = u"重設"}).value.value();
-    handles.search = ui.addTextField({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
-    handles.list = ui.addList({.id = prefix + "list", .label = u"範本"}, {}).value.value();
-    handles.erase = ui.addButton({.id = prefix + "erase", .label = u"刪除選中項", .enabled = false}).value.value();
+    handles.zero = ui.addButton({.id = prefix + "zero", .label = u"0 items"}).value.value();
+    handles.one = ui.addButton({.id = prefix + "one", .label = u"1 item"}).value.value();
+    handles.twenty = ui.addButton({.id = prefix + "twenty", .label = u"20 items"}).value.value();
+    handles.hundred = ui.addButton({.id = prefix + "hundred", .label = u"100 items"}).value.value();
+    handles.sort = ui.addButton({.id = prefix + "sort", .label = u"Reverse Sort"}).value.value();
+    handles.disableEight = ui.addButton({.id = prefix + "disable", .label = u"Toggle T008"}).value.value();
+    handles.reset = ui.addButton({.id = prefix + "reset", .label = u"Reset"}).value.value();
+    handles.search = ui.addTextField({.id = prefix + "search", .label = u"Search by Name"}).value.value();
+    handles.list = ui.addList({.id = prefix + "list", .label = u"Templates"}, {}).value.value();
+    handles.erase = ui.addButton({.id = prefix + "erase", .label = u"Delete Selected", .enabled = false}).value.value();
     handles.detail = ui.addLabel({.id = prefix + "detail"}).value.value();
     search_.connect(handles.search, [this] { return refresh(); });
     handles.list.connectSource({[this] { return selection_; }, [this](auto changed) {
@@ -61,9 +61,9 @@ Page::Page(Ui* sharedUi, ScrollState* sharedScroll, std::string prefix)
     auto detailId = handles.detail.describe()->id;
     handles.detail.connectSource([this, detailId] {
         if (clipPaddingId_ == detailId) return clipPaddingText_;
-        if (!selection_) return std::u16string(u"尚未選取範本");
+        if (!selection_) return std::u16string(u"No template selected");
         auto it = std::find_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == *selection_; });
-        return u"選取：" + std::u16string(selection_->id.begin(), selection_->id.end()) + u"  " + (it == items_.end() ? std::u16string{} : it->label);
+        return u"Selected: " + std::u16string(selection_->id.begin(), selection_->id.end()) + u"  " + (it == items_.end() ? std::u16string{} : it->label);
     });
     bindAction(handles.zero, [this] { return sample(0); }); bindAction(handles.one, [this] { return sample(1); });
     bindAction(handles.twenty, [this] { return sample(20); }); bindAction(handles.hundred, [this] { return sample(100); });
@@ -71,7 +71,7 @@ Page::Page(Ui* sharedUi, ScrollState* sharedScroll, std::string prefix)
     bindAction(handles.sort, [this] { descending_ = !descending_; return refresh(); });
     bindAction(handles.disableEight, [this] { disabledEight_ = !disabledEight_; return refresh(); });
     bindAction(handles.erase, [this] {
-        if (!selection_) return Result{Status::invalidValue, u"沒有選取項目"};
+        if (!selection_) return Result{Status::invalidValue, u"No item selected"};
         auto selected = *selection_;
         items_.erase(std::remove_if(items_.begin(), items_.end(), [&](const auto& item) { return item.value == selected; }), items_.end());
         return refresh();
@@ -114,7 +114,7 @@ Result Page::sample(int count) {
     items_.clear();
     for (int n = 1; n <= count; ++n) {
         char id[8], number[8]; std::snprintf(id, sizeof(id), "T%03d", n); std::snprintf(number, sizeof(number), "%02d", n);
-        auto label = n == 5 || n == 6 ? std::u16string(u"共用範本") : u"範本 " + std::u16string(number, number + std::char_traits<char>::length(number));
+        auto label = n == 5 || n == 6 ? std::u16string(u"Shared Template") : u"Template " + std::u16string(number, number + std::char_traits<char>::length(number));
         items_.push_back({{id}, std::move(label)});
     }
     descending_ = disabledEight_ = false; selection_.reset(); scroll.offset = 0; listScroll.offset = 0;

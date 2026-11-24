@@ -234,7 +234,7 @@ private:
     }
 
     void askRetry() {
-        launch({Step::retry, "畫面無法繪製", "畫面無法繪製（" + reason_ + "）。要重建畫面或結束程式？"});
+        launch({Step::retry, "Rendering Failed", "Rendering failed (" + reason_ + "). Retry rendering or quit?"});
     }
 
     void respond(Step step, Choice choice) {
@@ -246,8 +246,8 @@ private:
         }
         case Choice::quit:
             if (!demo_.isDirty()) desktop_->close();
-            else launch({Step::save, "要儲存修改嗎？", demo_.blankNameDraft()
-                ? "顯示名稱空白，將保留已確認的名稱。要儲存其他修改嗎？" : "要儲存修改嗎？"});
+            else launch({Step::save, "Save changes?", demo_.blankNameDraft()
+                ? "The display name is blank. Save the other changes and keep the last confirmed name?" : "Save changes?"});
             break;
         case Choice::discard:
             desktop_->close();
@@ -255,7 +255,7 @@ private:
         case Choice::save: {
             auto error = demo_.saveFailedRenderer();
             if (error.empty()) desktop_->close();
-            else launch({Step::saveError, "無法儲存", promptUtf8(error)});
+            else launch({Step::saveError, "Cannot Save", promptUtf8(error)});
             break;
         }
         case Choice::cancel:
