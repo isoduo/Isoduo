@@ -193,7 +193,7 @@ bool WindowsClipboard::writeRich(std::u16string_view text, std::string_view payl
     return ok;
 }
 Query<std::string> WindowsClipboard::readRich() {
-    if (!openClipboard(window_)) return {Status::failed, u"無法開啟剪貼簿", std::nullopt};
+    if (!openClipboard(window_)) return {Status::failed, u"Cannot open the clipboard", std::nullopt};
     Query<std::string> result{Status::notSupported, u"No rich text", std::nullopt};
     const UINT format = IsClipboardFormatAvailable(richFormat()) ? richFormat() : legacyRichFormat();
     if (IsClipboardFormatAvailable(format)) {
@@ -212,10 +212,10 @@ Query<std::string> WindowsClipboard::readRich() {
     return result;
 }
 Query<std::u16string> WindowsClipboard::read() {
-    if (!openClipboard(window_)) return {Status::failed, u"\u7121\u6cd5\u958b\u555f\u526a\u8cbc\u7c3f", std::nullopt};
-    Query<std::u16string> result{Status::notSupported, u"\u526a\u8cbc\u7c3f\u6c92\u6709\u6587\u5b57", std::nullopt};
+    if (!openClipboard(window_)) return {Status::failed, u"Cannot open the clipboard", std::nullopt};
+    Query<std::u16string> result{Status::notSupported, u"Clipboard has no text", std::nullopt};
     if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-        result = {Status::failed, u"\u7121\u6cd5\u8b80\u53d6\u526a\u8cbc\u7c3f\u6587\u5b57", std::nullopt};
+        result = {Status::failed, u"Cannot read text from the clipboard", std::nullopt};
         if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
             if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {
                 auto units = GlobalSize(memory) / sizeof(char16_t);

@@ -13,9 +13,9 @@ struct Button {
 
 inline constexpr char helperName[] = "isoduo_settings_recovery_dialog";
 inline constexpr std::string_view dismissedToken = "dismissed";
-inline constexpr Button retryButtons[] = {{Choice::quit, "結束"}, {Choice::retry, "重試"}};
-inline constexpr Button saveButtons[] = {{Choice::cancel, "取消"}, {Choice::discard, "捨棄"}, {Choice::save, "儲存"}};
-inline constexpr Button errorButtons[] = {{Choice::acknowledge, "確定"}};
+inline constexpr Button retryButtons[] = {{Choice::quit, "Quit"}, {Choice::retry, "Retry"}};
+inline constexpr Button saveButtons[] = {{Choice::cancel, "Cancel"}, {Choice::discard, "Discard"}, {Choice::save, "Save"}};
+inline constexpr Button errorButtons[] = {{Choice::acknowledge, "OK"}};
 
 inline std::span<const Button> buttons(Step step) {
     switch (step) {

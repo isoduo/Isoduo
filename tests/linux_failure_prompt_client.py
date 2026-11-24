@@ -88,7 +88,7 @@ def check_helper_attachment(case, backend, xid):
         else:
             assert len(arguments) == 4, (case, arguments)
     if backend == "x11":
-        assert until(lambda: transient_parent("畫面無法繪製")) == xid, case
+        assert until(lambda: transient_parent("Rendering Failed")) == xid, case
     print("ATTACHED helper", case, backend, xid if backend == "x11" else "unparented", flush=True)
 
 
@@ -99,24 +99,24 @@ def exercise(executable, case):
             return f"""
                 if test -e asked; then {command}; fi
                 /usr/bin/touch asked
-                printf '%s\\n' {shlex.quote("結束")}
+                printf '%s\\n' {shlex.quote("Quit")}
                 exit "${{ZENITY_ESC:-1}}"
             """
         script = {
             "missing": None,
             "system-zenity": None,
             "gtk-startup": quit_then("exit 1"),
-            "exit": "echo '捨棄'; exit 2",
+            "exit": "echo 'Discard'; exit 2",
             "signalled": "kill -TERM $$",
             "startup-one": "exit 1",
             "empty-success": quit_then("exit 0"),
-            "invalid-discard": quit_then("echo '捨棄'; exit 2"),
+            "invalid-discard": quit_then("echo 'Discard'; exit 2"),
             "cancel": f"""
                 if test -e cancelled; then exit 2; fi
                 case "$*" in
-                    *--extra-button={shlex.quote("取消")}*)
-                        /usr/bin/touch cancelled; printf '%s\\n' {shlex.quote("取消")};;
-                    *) printf '%s\\n' {shlex.quote("結束")};;
+                    *--extra-button={shlex.quote("Cancel")}*)
+                        /usr/bin/touch cancelled; printf '%s\\n' {shlex.quote("Cancel")};;
+                    *) printf '%s\\n' {shlex.quote("Quit")};;
                 esac
                 exit "$ZENITY_ESC"
             """,
@@ -146,19 +146,19 @@ def exercise(executable, case):
                 if case == "exit":
                     check_helper_attachment(case, backend, xid)
                 if case == "system-zenity" and backend == "x11":
-                    assert until(lambda: transient_parent("畫面無法繪製")) == xid, case
+                    assert until(lambda: transient_parent("Rendering Failed")) == xid, case
                     print("ATTACHED system zenity", xid, flush=True)
                 if case in ("exit", "signalled", "system-zenity"):
-                    select("畫面無法繪製", "結束")
-                    select("要儲存修改嗎？", "捨棄" if case == "signalled" else "儲存")
+                    select("Rendering Failed", "Quit")
+                    select("Save changes?", "Discard" if case == "signalled" else "Save")
                 if case == "exit":
-                    select("無法儲存", "確定")
+                    select("Cannot Save", "OK")
                 if case in ("empty-success", "invalid-discard"):
-                    select("要儲存修改嗎？", "取消")
+                    select("Save changes?", "Cancel")
                 if case in ("signalled", "system-zenity"):
                     expected = f"Closed frozen with {int(case == 'system-zenity')} saves"
                 else:
-                    select("畫面無法繪製", "重試")
+                    select("Rendering Failed", "Retry")
                     expected = f"Rebuilt with {int(case == 'exit')} saves"
                 assert host.wait(timeout=8) == 0
                 assert expected in report(), report()

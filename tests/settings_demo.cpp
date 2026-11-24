@@ -179,13 +179,13 @@ void semanticItemsAndDialogs() {
                 contains("items.delete_dialog", "items.delete_dialog.confirm") && !contains("items.delete_dialog", "items.dialog.name"),
                 "semantic dialogs contain only their own members");
     test::check(bool(demo.nav.select({"items"})) && bool(demo.itemsAdd.invoke()), "open Items editor");
-    test::check(tree.get({"items.dialog"})->name == u"新增項目", "add dialog uses its title as the accessible name");
+    test::check(tree.get({"items.dialog"})->name == u"Add Item", "add dialog uses its title as the accessible name");
     test::check(!tree.get({"items.dialog"})->hidden && !tree.get({"items.dialog.name"})->hidden &&
                 tree.get({"items.delete_dialog"})->hidden && tree.get({"items.delete_dialog.confirm"})->hidden &&
                 tree.get({"items.list"})->blockedByModal, "editor semantics expose modal and hidden peer dialog");
     test::check(bool(demo.itemDialog.settle(false)) && bool(demo.itemsList.select({"T001"})) && bool(demo.itemsDelete.invoke()),
                 "open Items delete confirmation");
-    test::check(tree.get({"items.delete_dialog"})->name == u"刪除項目", "delete dialog uses its title as the accessible name");
+    test::check(tree.get({"items.delete_dialog"})->name == u"Delete Item", "delete dialog uses its title as the accessible name");
     test::check(tree.get({"items.dialog"})->hidden && tree.get({"items.dialog.name"})->hidden &&
                 !tree.get({"items.delete_dialog"})->hidden && !tree.get({"items.delete_dialog.confirm"})->hidden,
                 "semantic visibility follows the active Items dialog");
@@ -268,14 +268,14 @@ void focusRingControlsAreOnTheAppearancePageWithTheirDefaults() {
     settingsDemo::Demo demo; demo.nav.select({"appearance"});
     auto& tree = demo.ui.semantics();
     auto mode = tree.get({"appearance.focus_mode"}); auto modes = tree.children({"appearance.focus_mode"});
-    test::check(mode && mode->role == Role::dropdown && mode->name == u"焦點標示" && modes && modes->size() == 3, "the mode dropdown offers automatic, always and never");
+    test::check(mode && mode->role == Role::dropdown && mode->name == u"Focus Indicator" && modes && modes->size() == 3, "the mode dropdown offers automatic, always and never");
     test::check(tree.get({"appearance.focus_mode", OptionValue{"automatic"}})->selected, "automatic is selected by default");
     auto width = tree.get({"appearance.focus_width"});
-    test::check(width && width->role == Role::slider && width->name == u"焦點外框粗細" && width->numericValue == 3 && width->range && width->range->minimum == 2 && width->range->maximum == 6, "the thickness slider is 2-6 and shows the appearance's 3 DIP");
+    test::check(width && width->role == Role::slider && width->name == u"Focus Ring Width" && width->numericValue == 3 && width->range && width->range->minimum == 2 && width->range->maximum == 6, "the thickness slider is 2-6 and shows the appearance's 3 DIP");
     auto same = tree.get({"appearance.focus_radius_same"});
     test::check(same && same->role == Role::checkbox && same->checked == std::optional<bool>(true), "the radius is 'same as the component' by default");
     auto color = tree.get({"appearance.focus_color"});
-    test::check(color && color->name == u"焦點外框顏色" && tree.children({"appearance.focus_color"})->size() == 3 && tree.get({"appearance.focus_color", OptionValue{"default"}})->selected, "the color dropdown offers default, green and orange");
+    test::check(color && color->name == u"Focus Ring Color" && tree.children({"appearance.focus_color"})->size() == 3 && tree.get({"appearance.focus_color", OptionValue{"default"}})->selected, "the color dropdown offers default, green and orange");
     const auto& presentation = demo.ui.presentation();
     test::check(presentation.focusIndicator == FocusIndicatorMode::automatic && !presentation.focusRingWidth && !presentation.focusRingRadius && demo.focusColorId() == "default", "nothing is set by default: the settings are empty");
     auto order = detail::access(demo.ui).focusOrder();
@@ -437,7 +437,7 @@ void theJustifyLeftCheckboxSwitchesThePresentationSetting() {
     settingsDemo::Demo demo; demo.nav.select({"appearance"});
     auto& tree = demo.ui.semantics();
     auto box = tree.get({"appearance.justify_left"});
-    test::check(box && box->role == Role::checkbox && box->name == u"左右對齊文字改為靠左" && box->checked == std::optional<bool>(false), "the checkbox is there and off");
+    test::check(box && box->role == Role::checkbox && box->name == u"Align Justified Text to the Left" && box->checked == std::optional<bool>(false), "the checkbox is there and off");
     auto order = detail::access(demo.ui).focusOrder();
     auto at = [&](const char* id) { return std::find(order.begin(), order.end(), std::string(id)) - order.begin(); };
     test::check(at("appearance.compact") < at("appearance.justify_left") && at("appearance.justify_left") < at("appearance.accent"), "it follows the compact checkbox in tab order");
@@ -555,11 +555,11 @@ void exercise() {
     demo.nav.select({"about"});
     demo.nav.select({"items"});
     test::check(demo.itemsList.describe()->items.size() == 20, "items page starts with twenty entries");
-    demo.itemsSearch.setValue(u"\u7bc4\u672c 0");
+    demo.itemsSearch.setValue(u"Template 0");
     test::check(demo.itemsList.describe()->items.size()==7, "search matches seven numbered templates");
     demo.itemsSearch.setValue(u"XYZ");
     test::check(demo.itemsList.describe()->items.empty(), "unmatched search is empty");
-    demo.itemsSearch.setValue(u"\u5171\u7528");
+    demo.itemsSearch.setValue(u"Shared");
     test::check(demo.itemsList.describe()->items.size() == 2, "search filters duplicate names");
     demo.itemsSearch.setValue(u"");
     test::check(bool(demo.itemsAdd.invoke()), "open add item");
@@ -577,7 +577,7 @@ void exercise() {
     test::check(bool(demo.itemsList.select({"T006"})), "select item for edit");
     demo.itemsList.focus();
     test::check(bool(detail::access(demo.ui).keyDown({.key=Key::enter})) && *demo.itemDialog.isOpen(), "Enter opens edit");
-    test::check(demo.itemName.draft().value.value()==u"\u5171\u7528\u7bc4\u672c", "edit loads selected name");
+    test::check(demo.itemName.draft().value.value()==u"Shared Template", "edit loads selected name");
     demo.itemName.setValue(u"Changed");
     test::check(bool(demo.itemOk.invoke()), "edit item");
     demo.itemsList.focus();
@@ -590,7 +590,7 @@ void exercise() {
     detail::access(demo.ui).keyUp(Key::space);
     test::check(!*demo.deleteDialog.isOpen() && demo.itemsList.describe()->items.size()==20, "keyboard confirms deletion");
     test::check(!demo.itemsEdit.describe()->enabled && !demo.itemsDelete.describe()->enabled, "actions disabled with no selection");
-    demo.itemsSearch.setValue(u"\u5171\u7528");
+    demo.itemsSearch.setValue(u"Shared");
     test::check(bool(demo.itemsAdd.invoke()), "add from filtered list");
     demo.itemName.setValue(u"Outside filter");
     test::check(bool(demo.itemOk.invoke()), "filtered add succeeds");
@@ -602,10 +602,10 @@ void exercise() {
 void itemSearchCountAndEmptyState() {
     struct SearchCase { std::u16string query, count; std::vector<std::string> ids; };
     const std::vector<SearchCase> cases = {
-        {u"\u5171\u7528", u"\u5171 20 \u7b46\uff0c\u986f\u793a 2 \u7b46", {"T005", "T006"}},
-        {u"\u7bc4\u672c 0", u"\u5171 20 \u7b46\uff0c\u986f\u793a 7 \u7b46", {"T001", "T002", "T003", "T004", "T007", "T008", "T009"}},
-        {u"XYZ", u"\u5171 20 \u7b46\uff0c\u986f\u793a 0 \u7b46", {}},
-        {u"", u"\u5171 20 \u7b46\uff0c\u986f\u793a 20 \u7b46", {}}
+        {u"Shared", u"Showing 2 of 20", {"T005", "T006"}},
+        {u"Template 0", u"Showing 7 of 20", {"T001", "T002", "T003", "T004", "T007", "T008", "T009"}},
+        {u"XYZ", u"Showing 0 of 20", {}},
+        {u"", u"Showing 20 of 20", {}}
     };
     for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
         settingsDemo::Demo demo;
@@ -630,10 +630,10 @@ void itemSearchCountAndEmptyState() {
             test::check(count != frame.items.end() && renderedCount == c.count, "item count text matches the search result");
             if (c.query == u"XYZ") {
                 auto* empty = frame.find(demo.itemsList);
-                test::check(empty && empty->options.empty() && empty->lines.size() == 1 && empty->lines[0].text == u"\u6c92\u6709\u9805\u76ee", "empty search displays the empty-list message");
+                test::check(empty && empty->options.empty() && empty->lines.size() == 1 && empty->lines[0].text == u"No items", "empty search displays the empty-list message");
                 TextProbe paint(state, *empty, *list, *appearance, 1, false);
                 detail::componentType(ComponentKind::list).paint(paint);
-                test::check(std::find(paint.drawn.begin(), paint.drawn.end(), u"\u6c92\u6709\u9805\u76ee") != paint.drawn.end(), "empty-list message is painted");
+                test::check(std::find(paint.drawn.begin(), paint.drawn.end(), u"No items") != paint.drawn.end(), "empty-list message is painted");
             }
             test::check(state.describe("app.status")->value == status, "search keeps status");
             test::check(!state.describe("app.undo")->enabled, "search does not create history");
@@ -715,11 +715,11 @@ void it03UnchangedEditHasNoHistory() {
     demo.itemName.setValue(u"\u5171\u7528\u7bc4\u672c B");
     test::check(bool(demo.itemOk.invoke()), "rename T006");
     auto items=demo.itemsList.describe()->items;
-    test::check(items[4].label==u"\u5171\u7528\u7bc4\u672c" && items[5].label==u"\u5171\u7528\u7bc4\u672c B", "only T006 changed");
+    test::check(items[4].label==u"Shared Template" && items[5].label==u"\u5171\u7528\u7bc4\u672c B", "only T006 changed");
     test::check(bool(demo.itemsEdit.invoke()) && bool(demo.itemOk.invoke()), "confirm unchanged edit");
     test::check(bool(state.invoke("app.undo")), "undo changed edit");
     items=demo.itemsList.describe()->items;
-    test::check(items[4].label==u"\u5171\u7528\u7bc4\u672c" && items[5].label==u"\u5171\u7528\u7bc4\u672c", "one undo restores T006");
+    test::check(items[4].label==u"Shared Template" && items[5].label==u"Shared Template", "one undo restores T006");
     test::check(!state.describe("app.undo")->enabled, "unchanged edit adds no history step");
 }
 
@@ -737,7 +737,7 @@ void hs03ValueEqualityAndSavedName() {
     test::check(title==u"*Settings Demo", "name change marks title dirty");
     test::check(bool(state.invoke("app.undo")), "undo name after save");
     test::check(title==u"Settings Demo" && !state.describe("app.save")->enabled, "undo to saved value clears title marker");
-    test::check(state.describe("app.status")->value == u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58", "saved status restored");
+    test::check(state.describe("app.status")->value == u"All changes saved", "saved status restored");
 }
 
 void hs02UndoRedoSequence() {
@@ -874,7 +874,7 @@ void historyDraftDirty() {
     auto& state = detail::access(demo.ui);
     demo.name.focus(); demo.name.setValue(u"New name");
     test::check(state.describe("app.save")->enabled, "draft enables save");
-    test::check(state.describe("app.status")->value == u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539", "draft updates status");
+    test::check(state.describe("app.status")->value == u"Unsaved changes", "draft updates status");
 }
 
 void historySaveRevert() {
@@ -911,11 +911,11 @@ void aboutPageContent() {
         auto node = tree.get({id});
         test::check(node && !node->value.empty(), (std::string("About value: ") + id).c_str());
     }
-    test::check(tree.get({"about.renderer"})->value == u"繪製：GL version — renderer", "renderer reports supplied capabilities");
-    test::check(tree.get({"about.diagnostics"})->value == u"診斷：未選用", "diagnostics absent by default");
+    test::check(tree.get({"about.renderer"})->value == u"Renderer: GL version — renderer", "renderer reports supplied capabilities");
+    test::check(tree.get({"about.diagnostics"})->value == u"Diagnostics: Off", "diagnostics absent by default");
     info.diagnostics = true;
     settingsDemo::Demo withDiagnostics(info);
-    test::check(withDiagnostics.ui.semantics().get({"about.diagnostics"})->value == u"診斷：基本診斷（只存記憶體）", "diagnostics present when selected");
+    test::check(withDiagnostics.ui.semantics().get({"about.diagnostics"})->value == u"Diagnostics: Basic (in memory)", "diagnostics present when selected");
     test::check(tree.get({"about.framework"})->value.find(isoduo::frameworkVersion) != std::u16string::npos, "framework version is shown");
 }
 void aboutVerticalLabel() {
@@ -1116,11 +1116,11 @@ void closeDialogFlow() {
     test::check(bool(demo.volume.setValue(65)), "dirty volume");
     test::check(!demo.requestClose(), "dirty close is vetoed");
     test::check(demo.closeDialog.isOpen().value == true, "close dialog opened");
-    test::check(demo.ui.semantics().get({"app.close_dialog"})->name == u"要儲存修改嗎？", "close dialog uses its title as the accessible name");
-    test::check(demo.ui.semantics().get({"app.close_dialog.title"})->value == u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f", "close title text");
-    test::check(demo.ui.semantics().get({"app.close_dialog.save"})->name == u"\u5132\u5b58", "close save label");
-    test::check(demo.ui.semantics().get({"app.close_dialog.discard"})->name == u"\u4e0d\u5132\u5b58", "close discard label");
-    test::check(demo.ui.semantics().get({"app.close_dialog.cancel"})->name == u"\u53d6\u6d88", "close cancel label");
+    test::check(demo.ui.semantics().get({"app.close_dialog"})->name == u"Save changes?", "close dialog uses its title as the accessible name");
+    test::check(demo.ui.semantics().get({"app.close_dialog.title"})->value == u"Save changes?", "close title text");
+    test::check(demo.ui.semantics().get({"app.close_dialog.save"})->name == u"Save", "close save label");
+    test::check(demo.ui.semantics().get({"app.close_dialog.discard"})->name == u"Don't Save", "close discard label");
+    test::check(demo.ui.semantics().get({"app.close_dialog.cancel"})->name == u"Cancel", "close cancel label");
     test::check(bool(demo.closeCancel.invoke()), "cancel close");
     test::check(!demo.closeDialog.isOpen().value.value() && closed == 0, "cancel keeps application open");
     test::check(!demo.requestClose(), "second request vetoed");
@@ -1177,7 +1177,7 @@ void appearanceMissingFont() {
     test::check(bool(demo.setPresentation(settings)), "restore unavailable font");
     demo.nav.select({"appearance"});
     auto node=demo.ui.semantics().get({"appearance.font", OptionValue{"family:NoSuchFont"}});
-    test::check(node && node->selected && node->name == u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "unavailable font remains selected");
+    test::check(node && node->selected && node->name == u"NoSuchFont (not installed)", "unavailable font remains selected");
     auto status=demo.ui.semantics().get({"appearance.font.status"});
     test::check(status && status->value.find(u"NoSuchFont") != std::u16string::npos, "unavailable font is explained");
 }
@@ -1336,7 +1336,7 @@ void sliderThumbFollowsPointerValueSnaps() {
         test::check(bool(state.pointerDown("general.volume")) && bool(state.sliderPointerDown("general.volume", x, track)), "press volume at 47%");
         auto held = paintSlider(demo, *appearance, demo.volume, track);
         test::check(nearPx(held.thumbCenter(), x), "thumb is under the pointer, not on the 45 tick");
-        test::check(held.titled(u"音量: 45"), "title shows the snapped value");
+        test::check(held.titled(u"Volume: 45"), "title shows the snapped value");
         test::check(*demo.volume.draft() == 45 && demo.ui.semantics().get({"general.volume"})->value == u"45", "semantic value is 45 while held");
         test::check(bool(state.sliderPointer("general.volume", x - 40)) && nearPx(paintSlider(demo, *appearance, demo.volume, track).thumbCenter(), x - 40), "thumb keeps following");
         state.sliderPointer("general.volume", x); state.pointerUp("general.volume");
@@ -1424,9 +1424,9 @@ void itemsContextMenuActsOnTheClickedRow() {
                 "the search field has the built-in menu, the list has the demo's, buttons have none");
     test::check(bool(core.menuPointerOpen("items.list", std::nullopt, std::nullopt, {10, 10})), "right button on empty space opens the list menu");
     auto menu = demo.ui.contextMenu();
-    test::check(menu && menu->items.size() == 2 && menu->items[0].id == "items.edit" && menu->items[0].label == u"編輯(E)" && menu->items[0].shortcutHint == u"Enter" &&
-                menu->items[1].id == "items.delete" && menu->items[1].label == u"刪除(D)" && menu->items[1].shortcutHint == u"Del" &&
-                menu->items[0].accessKey == u'E' && menu->items[1].accessKey == u'D', "Edit(E) and Delete(D), with their shortcut hints");
+    test::check(menu && menu->items.size() == 2 && menu->items[0].id == "items.edit" && menu->items[0].label == u"Edit" && menu->items[0].shortcutHint == u"Enter" &&
+                menu->items[1].id == "items.delete" && menu->items[1].label == u"Delete" && menu->items[1].shortcutHint == u"Del" &&
+                menu->items[0].accessKey == u'E' && menu->items[1].accessKey == u'D', "Edit and Delete, with their shortcut hints");
     test::check(!menu->items[0].enabled && !menu->items[1].enabled, "both are off while nothing is selected, like the buttons");
     demo.ui.closeContextMenu();
     // Delete the clicked row, not the previous selection.
@@ -1437,7 +1437,7 @@ void itemsContextMenuActsOnTheClickedRow() {
     test::check(menu->items[0].enabled && menu->items[1].enabled, "Edit and Delete are on");
     test::check(bool(demo.ui.invokeMenuItem("items.delete")) && *demo.deleteDialog.isOpen(), "Delete opens the confirmation");
     const auto byMenu = demo.ui.semantics().get({"items.delete_dialog.message"})->value;
-    test::check(byMenu.find(u"範本 03") != std::u16string::npos, "it names the clicked row");
+    test::check(byMenu.find(u"Template 03") != std::u16string::npos, "it names the clicked row");
     core.keyDown({.key = Key::escape});
     test::check(!*demo.deleteDialog.isOpen() && core.focused() == "items.list", "cancelling returns focus to the list");
     test::check(bool(core.keyDown({.key = Key::del})) && *demo.deleteDialog.isOpen() && demo.ui.semantics().get({"items.delete_dialog.message"})->value == byMenu,
@@ -1448,13 +1448,13 @@ void itemsContextMenuActsOnTheClickedRow() {
     // Edit through the menu with the keyboard: the menu key, then the quick key.
     test::check(bool(core.menuPointerOpen("items.list", rowOf("T005"), std::nullopt, {10, 10})), "right button on row T005");
     core.textInput(u"e");
-    test::check(*demo.itemDialog.isOpen() && demo.itemName.draft().value.value() == u"共用範本", "the quick key E opens Edit on that row");
+    test::check(*demo.itemDialog.isOpen() && demo.itemName.draft().value.value() == u"Shared Template", "the quick key E opens Edit on that row");
     demo.itemDialog.settle(false);
     // The menu key on the focused list hangs the menu from the current row.
     demo.itemsList.focus();
     test::check(bool(core.keyDown({.key = Key::menu})) && *demo.ui.contextMenuOpen(), "the menu key opens the list menu");
     core.keyDown({.key = Key::down}); core.keyDown({.key = Key::down});
-    test::check(bool(core.keyDown({.key = Key::enter})) && *demo.deleteDialog.isOpen(), "Down, Down, Enter runs Delete(D)");
+    test::check(bool(core.keyDown({.key = Key::enter})) && *demo.deleteDialog.isOpen(), "Down, Down, Enter runs Delete");
 }
 
 int main() { const test::Case cases[] = {{"items context menu", itemsContextMenuActsOnTheClickedRow}, {"focus ring controls are on the appearance page with their de", focusRingControlsAreOnTheAppearancePageWithTheirDefaults}, {"the focus ring controls apply to the presentation", theFocusRingControlsApplyToThePresentation}, {"a document that cannot be applied reports it", aDocumentThatCannotBeAppliedReportsTheFailure}, {"unchecking same-as-component starts at the appearance radius", uncheckingSameAsTheComponentStartsFromTheAppearancesOwnRadius}, {"the indicator off disables the other three and keeps their v", theIndicatorOffDisablesTheOtherThreeAndKeepsTheirValues}, {"ring colors pass three to one everywhere and follow the acce", ringColorsPassThreeToOneEverywhereAndFollowTheAccentByDefault}, {"ring colors paint the focus indicator", ringColorsPaintTheFocusIndicator}, {"the focus ring settings are history saved state and reset", theFocusRingSettingsAreHistorySavedStateAndReset}, {"undo while a ring slider has focus starts a new step", undoWhileARingSliderKeepsTheFocusStartsANewHistoryStep}, {"loading a document applies the focus ring settings", loadingADocumentAppliesTheFocusRingSettings}, {"slider undo redo land at once", sliderUndoRedoLandAtOnce}, {"item note multi-line", itemNoteIsAMultilineField}, {"item note rich", itemNoteIsRichWithAStyleBar}, {"note colors readable", noteColorsAreReadableInEveryAppearanceAndTheme}, {"slider thumb follows pointer", sliderThumbFollowsPointerValueSnaps}, {"slider thumb track ends", sliderThumbStopsAtTrackEnds}, {"slider interrupted drag", sliderInterruptedDragReturnsToTick}, {"slider one write and one undo", sliderDragIsOneWritePerValueAndOneUndo}, {"slider drag frozen basis", sliderDragBasisIsFrozenWhenLayoutMoves}, {"failure draft save", failureDraftSave}, {"failure choices", failureChoices}, {"close invalid name", closeInvalidName}, {"failure retry flow", failureRetryFlow}, {"close save and layout", closeSaveAndLayout}, {"close item draft", closeItemDraft}, {"close dialog flow", closeDialogFlow}, {"appearance interleaved history", appearanceInterleavedHistory}, {"appearance missing font", appearanceMissingFont}, {"appearance font", appearanceFontHistory}, {"appearance toggle and reset", appearanceToggleReset}, {"HS08 appearance size", appearanceSizeHistory}, {"HS01 counted steps", hs01StepMatrix}, {"HS01 non-history", hs01NonHistoryMatrix}, {"IT03 no-op edit history", it03UnchangedEditHasNoHistory}, {"HS03 value and saved state", hs03ValueEqualityAndSavedName}, {"HS02 full sequence", hs02UndoRedoSequence}, {"history toggle undo", historyToggleUndo}, {"history save", historySaveRevert}, {"history draft", historyDraftDirty}, {"history slider", historySliderGroup}, {"history title", historyTitleNotification}, {"history invalid", historyInvalidDraft}, {"history invalid save", historyInvalidSave}, {"history save name", historySaveFocusedName}, {"history revert", historyRevertIsUndoable}, {"history items", historyItems}, {"history presentation", historyPresentation}, {"history limit", historyLimitAndBranch}, {"history field", historyFieldShortcuts}, {"history delete", historyDeleteRestore}, {"history repeat", historyKeyRepeat}, {"About keyboard scroll", aboutKeyboardScroll}, {"TD01 failure diagnostic", td01FailureDiagnostic}, {"About licenses", aboutLicenses}, {"demo text flow", demoTextFlow}, {"About page content", aboutPageContent}, {"About vertical label", aboutVerticalLabel}, {"settings demo", exercise}, {"IT01 search count and empty state", itemSearchCountAndEmptyState}, {"semantic navigation pages", semanticNavigationPages}, {"semantic Items dialogs", semanticItemsAndDialogs}, {"accent choices pass contrast", accentChoicesPassContrastEverywhere}, {"accent repaints page", accentChoiceRepaintsThePageInTheChosenColor}, {"accent history and reset", accentIsHistorySavedStateAndReset}, {"accent loaded from document", loadingADocumentAppliesItsAccent}, {"accent tab order", accentFollowsTheExistingAppearanceControlsInTabOrder}, {"justify-left checkbox", theJustifyLeftCheckboxSwitchesThePresentationSetting}, {"dark newer components", darkNewComponentSweep}, {"compact newer components", compactNewComponentLayout}}; return test::run("settings demo", cases); }

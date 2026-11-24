@@ -15,7 +15,7 @@ int main() {
 #else
         const auto& appearance = isoduo::webAppearance();
 #endif
-        isoduo::DesktopConfig options; options.title = u"Isoduo 範本清單";
+        isoduo::DesktopConfig options; options.title = u"Isoduo Template List";
         auto creation = isoduo::Desktop::create(page.ui, appearance, [&] { return page.page(); }, page.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
         return creation.desktop->run().status == isoduo::Status::ok ? 0 : 1;

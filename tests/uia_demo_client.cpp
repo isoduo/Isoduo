@@ -342,7 +342,7 @@ int wmain(int argc, wchar_t** argv) {
             auto openedSubscribed = uia->AddAutomationEventHandler(UIA_MenuOpenedEventId, root, TreeScope_Subtree, nullptr, openedEvent);
             auto closedSubscribed = uia->AddAutomationEventHandler(UIA_MenuClosedEventId, root, TreeScope_Subtree, nullptr, closedEvent);
             auto focusSubscribed = uia->AddFocusChangedEventHandler(nullptr, focusEvent);
-            const std::wstring editName = L"編輯(E)", deleteName = L"刪除(D)";
+            const std::wstring editName = L"Edit", deleteName = L"Delete";
             bool opened = SendMessageW(s.window, uiaDemo::messageContextMenu, 0, 0) == 0 && SUCCEEDED(openedSubscribed) && WaitForSingleObject(openedEvent->received, 3000) == WAIT_OBJECT_0;
             auto menu = findId(uia, root, L"items.list/menu"); CONTROLTYPEID menuType = 0;
             bool isMenu = menu && SUCCEEDED(menu->get_CurrentControlType(&menuType)) && menuType == UIA_MenuControlTypeId;
@@ -376,8 +376,8 @@ int wmain(int argc, wchar_t** argv) {
             bool fieldOpen = fieldStatus == 0 && fieldMenu && secondOpenedEvent;
             auto copyItem = fieldMenu ? findId(uia, fieldMenu, L"isoduo.copy") : nullptr;
             auto selectAllItem = fieldMenu ? findId(uia, fieldMenu, L"isoduo.select_all") : nullptr;
-            bool fieldItems = menuItemIs(copyItem, UIA_MenuItemControlTypeId, L"複製(C)", L"C", L"Ctrl+C", false) &&
-                menuItemIs(selectAllItem, UIA_MenuItemControlTypeId, L"全選(A)", L"A", L"Ctrl+A", true);
+            bool fieldItems = menuItemIs(copyItem, UIA_MenuItemControlTypeId, L"Copy", L"C", L"Ctrl+C", false) &&
+                menuItemIs(selectAllItem, UIA_MenuItemControlTypeId, L"Select All", L"A", L"Ctrl+A", true);
             VARIANT separatorType; VariantInit(&separatorType); separatorType.vt = VT_I4; separatorType.lVal = UIA_SeparatorControlTypeId;
             IUIAutomationCondition* separatorCondition = nullptr; IUIAutomationElementArray* separators = nullptr; int separatorCount = 0;
             bool lines = fieldMenu && SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, separatorType, &separatorCondition)) &&
@@ -411,7 +411,7 @@ int wmain(int argc, wchar_t** argv) {
             ok &= menuPass;
         }
         bool general = select(uia, nav, L"general"); BSTR beforeTitle = nullptr, afterTitle = nullptr;
-        const std::wstring expectedTitle = std::wstring(argv[2]) == L"material" ? L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Material-inspired" : L"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Minimal Web";
+        const std::wstring expectedTitle = std::wstring(argv[2]) == L"material" ? L"Isoduo Settings Demo — Material-inspired" : L"Isoduo Settings Demo — Minimal Web";
         bool title = general && SUCCEEDED(root->get_CurrentName(&beforeTitle)) && beforeTitle && std::wstring(beforeTitle) == expectedTitle;
         auto notices = findId(uia, root, L"general.notices"); IUIAutomationTogglePattern* toggle = nullptr;
         title = title && notices && SUCCEEDED(notices->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle))) && toggle && SUCCEEDED(toggle->Toggle()) && SUCCEEDED(root->get_CurrentName(&afterTitle)) && beforeTitle && afterTitle && std::wstring(afterTitle) == L"*" + std::wstring(beforeTitle);

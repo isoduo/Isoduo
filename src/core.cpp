@@ -1368,7 +1368,7 @@ Result detail::UiState::simulateHover(std::string_view id, const std::optional<O
         if (!semantics) return {Status::notFound, u"Component no longer exists"};
         auto option = std::find_if(semantics->items.begin(), semantics->items.end(), [&](const auto& o) { return o.value == *item; });
         if (option == semantics->items.end()) return {Status::notFound, u"Item no longer exists"};
-        if (!option->enabled) return {Status::disabled, u"目前無法執行"};
+        if (!option->enabled) return {Status::disabled, u"Action is disabled"};
     }
     hoverSimulated_ = true;
     hoverSet(HoverTarget{control->id, item});
@@ -2320,9 +2320,9 @@ Result detail::UiState::available(std::string_view id, bool ignoreRendererFailur
     if (rendererFailed_ && !ignoreRendererFailure) return {Status::rendererFailed, u"Renderer failed"};
     if (auto member = pageMembers_.find(id); member != pageMembers_.end() && tabs_.at(member->second.first).active != member->second.second)
         return {Status::hidden, u"Page is hidden"};
-    if (control->page == "dialog" && (!modal_ || (dialogMember(id) && (activeDialog_.empty() || std::find(dialogs_.at(activeDialog_).members.begin(), dialogs_.at(activeDialog_).members.end(), id) == dialogs_.at(activeDialog_).members.end())))) return {Status::hidden, u"對話框尚未開啟"};
-    if (!control->enabled) return {Status::disabled, u"目前無法執行"};
-    if (modal_ && control->page != "dialog") return {Status::blockedByModal, u"請先關閉對話框"};
+    if (control->page == "dialog" && (!modal_ || (dialogMember(id) && (activeDialog_.empty() || std::find(dialogs_.at(activeDialog_).members.begin(), dialogs_.at(activeDialog_).members.end(), id) == dialogs_.at(activeDialog_).members.end())))) return {Status::hidden, u"Dialog is closed"};
+    if (!control->enabled) return {Status::disabled, u"Action is disabled"};
+    if (modal_ && control->page != "dialog") return {Status::blockedByModal, u"Close the dialog first"};
     return {};
 }
 Result detail::UiState::availableOption(std::string_view id, const OptionValue& value) const {
@@ -2350,11 +2350,11 @@ Result detail::UiState::writable(std::string_view id, Field*& field) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
-    if (find(id)->readOnly) return {Status::readOnly, u"欄位為唯讀"};
+    if (it == edits_.end()) return {Status::invalidValue, u"Component is not a text field"};
+    if (find(id)->readOnly) return {Status::readOnly, u"Field is read-only"};
     if (!it->second.writable())
         return {Status::invalidValue, u"Connect an explicit write timing before editing"};
-    if (it->second.session.composing || dispatching_) return {Status::busy, u"操作尚未結束"};
+    if (it->second.session.composing || dispatching_) return {Status::busy, u"An operation is already in progress"};
     field = &it->second;
     return {};
 }
@@ -2373,7 +2373,7 @@ Result detail::UiState::replaceRange(std::string_view id, Field& field, unsigned
     const auto limit = control.maxLength;
     if (!validValue(control, next)) {
         auto digits = std::to_string(limit);
-        return {Status::invalidValue, std::u16string(control.multiline ? u"請輸入有效文字（最多 " : u"請輸入有效單行文字（最多 ") + std::u16string(digits.begin(), digits.end()) + u" 個 UTF-16 單位）"};
+        return {Status::invalidValue, std::u16string(control.multiline ? u"Enter valid text (up to " : u"Enter valid single-line text (up to ") + std::u16string(digits.begin(), digits.end()) + u" UTF-16 code units)"};
     }
     auto caret = first + static_cast<unsigned>(insertion.size());
     // Typed or plain-pasted text takes the typing style; inserted spans (a rich paste, a rich value) bring their own.
@@ -2534,7 +2534,7 @@ Result detail::UiState::travel(std::string_view id, bool forward) {
     if (auto result = writable(id, field); !result) return result;
     auto& from = forward ? field->future : field->past;
     auto& to = forward ? field->past : field->future;
-    if (from.empty()) return {Status::emptyHistory, forward ? u"沒有可重做的編輯" : u"沒有可復原的編輯"};
+    if (from.empty()) return {Status::emptyHistory, forward ? u"Nothing to redo" : u"Nothing to undo"};
     auto& session = field->session;
     if (field->connected && !field->submitting && sourceMatches(*field)) {
         field->origin = field->sourceValue;
@@ -2583,7 +2583,7 @@ Result detail::UiState::notify() {
     OperationScope operation(this);
     dispatching_ = true;
     try { if (changed_) changed_(); }
-    catch (...) { stopped_ = true; dispatching_ = false; return {Status::failed, u"資料更新失敗，介面已停止"}; }
+    catch (...) { stopped_ = true; dispatching_ = false; return {Status::failed, u"Data update failed and the UI stopped"}; }
     dispatching_ = false;
     return {};
 }
@@ -2623,7 +2623,7 @@ Result detail::UiState::copy(std::string_view id) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
+    if (it == edits_.end()) return {Status::invalidValue, u"Component is not a text field"};
     return writeSelection(id, it->second, ClipboardAction::copy);
 }
 Result detail::UiState::writeSelection(std::string_view id, Field& field, ClipboardAction action) {
@@ -2637,13 +2637,13 @@ Result detail::UiState::writeSelection(std::string_view id, Field& field, Clipbo
     }
     if (!clipboard_ && asyncClipboard_) return beginClipboard(id, field, action, std::move(data));
     const bool written = clipboard_ && (field.rich ? clipboard_->writeRich(data.text, data.rich) : clipboard_->write(data.text));
-    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
+    if (!written) return {Status::failed, u"Cannot write to the clipboard"};
     return action == ClipboardAction::cut ? replaceSelection(id, field, u"") : Result{};
 }
 Result detail::UiState::pasteClipboard(std::string_view id) {
     OperationScope operation(this);
     if (!clipboard_) {
-        if (!asyncClipboard_) return {Status::notSupported, u"剪貼簿不可用"};
+        if (!asyncClipboard_) return {Status::notSupported, u"Clipboard is unavailable"};
         Field* field = nullptr;
         if (auto result = writable(id, field); !result) return result;
         return beginClipboard(id, *field, ClipboardAction::paste);
@@ -2683,14 +2683,14 @@ Result detail::UiState::beginClipboard(std::string_view id, Field& field, Clipbo
 Result detail::UiState::completeClipboard(ClipboardDelivery delivery) {
     OperationScope operation(this);
     if (!pendingClipboard_ || pendingClipboard_->request != delivery.request)
-        return {Status::notFound, u"剪貼簿請求已結束"};
+        return {Status::notFound, u"Clipboard request has already ended"};
     auto pending = *std::exchange(pendingClipboard_, std::nullopt);
     if (!delivery.result || pending.action == ClipboardAction::copy) return delivery.result;
     if (pending.lifetime.expired()) return {Status::notFound, u"Component no longer exists"};
     Field* field = nullptr;
     if (auto result = writable(pending.target, field); !result) return result;
     if (field->session.revision != pending.revision || field->session.selectionChanges != pending.selectionChanges)
-        return {Status::busy, u"文字或選取已變更"};
+        return {Status::busy, u"Text or selection has changed"};
     if (pending.action == ClipboardAction::cut) return replaceSelection(pending.target, *field, u"");
     return applyClipboard(pending.target, delivery.data.text, delivery.data.rich);
 }
@@ -2772,8 +2772,8 @@ Result detail::UiState::select(std::string_view id, unsigned anchor, unsigned ca
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
-    if (it->second.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    if (it == edits_.end()) return {Status::invalidValue, u"Component is not a text field"};
+    if (it->second.session.composing) return {Status::busy, u"Finish or cancel text composition first"};
     const auto& text = it->second.session.text;
     auto boundary = [&](unsigned pos) {
         return pos <= text.size() && !(pos > 0 && pos < text.size() &&
@@ -2845,9 +2845,9 @@ Result detail::UiState::selectUnit(std::string_view id, unsigned offset, Field::
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
+    if (it == edits_.end()) return {Status::invalidValue, u"Component is not a text field"};
     auto& field = it->second;
-    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    if (field.session.composing) return {Status::busy, u"Finish or cancel text composition first"};
     const auto& text = field.session.text;
     if (offset > text.size()) return {Status::invalidValue, u"Offset is past the end of the text"};
     const bool word = unit == Field::UnitDrag::Unit::word;
@@ -2883,14 +2883,14 @@ Result detail::UiState::textPointerDown(std::string_view id, TextHit caret, unsi
 Result detail::UiState::textPointerDrag(std::string_view id, TextHit caret, unsigned cell) {
     OperationScope operation(this);
     auto it = edits_.find(id);
-    if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
+    if (it == edits_.end()) return {Status::invalidValue, u"Component is not a text field"};
     auto& field = it->second;
     auto& drag = field.drag;
     const auto& selection = field.session.selection;
     const bool armed = drag.unit != Field::UnitDrag::Unit::character && drag.last.anchor == selection.anchor && drag.last.caret == selection.caret;
     if (!armed) return selectPointer(id, selection.anchor, caret.offset, caret.upstream);
     if (auto result = available(id); !result) return result;
-    if (field.session.composing) return {Status::busy, u"組字中，請先完成或取消組字"};
+    if (field.session.composing) return {Status::busy, u"Finish or cancel text composition first"};
     const auto& text = field.session.text;
     cell = std::min<unsigned>(cell, static_cast<unsigned>(text.size()));
     const TextSpan span = drag.unit == Field::UnitDrag::Unit::word ? wordSpan(text, wordsOf(field), cell) : paragraphSpan(text, cell);
@@ -2909,15 +2909,15 @@ void detail::UiState::endTextDrag() {
 Result detail::UiState::invoke(std::string_view id) {
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
-    if (dispatching_ || invoking_) return {Status::busy, u"操作尚未結束"};
+    if (dispatching_ || invoking_) return {Status::busy, u"An operation is already in progress"};
     for (const auto& [key, field] : edits_)
-        if (field.session.composing) return {Status::busy, u"請先完成文字組字"};
+        if (field.session.composing) return {Status::busy, u"Finish text composition first"};
     auto it = actions_.find(id);
-    if (it == actions_.end()) return {Status::notSupported, u"元件沒有此動作"};
+    if (it == actions_.end()) return {Status::notSupported, u"Component does not support this action"};
     invoking_ = true;
     executing_ = id;
     try { auto result = it->second(); invoking_ = false; executing_.clear(); return result; }
-    catch (...) { stopped_ = true; invoking_ = false; executing_.clear(); return {Status::failed, u"操作失敗，介面已停止"}; }
+    catch (...) { stopped_ = true; invoking_ = false; executing_.clear(); return {Status::failed, u"Action failed and the UI stopped"}; }
 }
 void detail::UiState::bind(Id id, Action action) {
     OperationScope operation(this);
@@ -2927,7 +2927,7 @@ void detail::UiState::bind(Id id, Action action) {
 Result detail::UiState::focusable(const Component& control) const {
     if (auto result = available(control.id); !result) return result;
     auto scroll = textScrolls_.find(control.id);
-    if (!componentType(control.kind).canFocus() && (scroll == textScrolls_.end() || scroll->second.maximum <= 0)) return {Status::notSupported, u"標籤不能取得焦點"};
+    if (!componentType(control.kind).canFocus() && (scroll == textScrolls_.end() || scroll->second.maximum <= 0)) return {Status::notSupported, u"Label cannot receive focus"};
     return {};
 }
 void detail::UiState::setScrollableText(std::string id, ScrollState& state, int maximum, int lineHeight) {
@@ -2983,7 +2983,7 @@ Result detail::UiState::moveFocus(Id next) {
             }
             if (focusMoved_) focusMoved_(from, to);
         }
-        catch (...) { stopped_ = true; result = {Status::failed, u"焦點通知失敗，介面已停止"}; break; }
+        catch (...) { stopped_ = true; result = {Status::failed, u"Focus notification failed and the UI stopped"}; break; }
     }
     pendingFocus_.clear();
     notifyingFocus_ = false;
@@ -3006,7 +3006,7 @@ Result detail::UiState::compositionCommit(std::u16string_view text, unsigned bef
     auto target = composing_.empty() ? focus_ : composing_;
     if (auto result = available(target); !result) return result;
     compositionCancel();
-    if (!edits_.contains(target)) return {Status::invalidValue, u"沒有接收組字的文字欄位"};
+    if (!edits_.contains(target)) return {Status::invalidValue, u"No text field can receive composition"};
     Field* field = nullptr;
     if (auto result = writable(target, field); !result) return result;
     if (!validSingleLine(text, text.size())) return {Status::invalidValue, u"Invalid input method text"};
@@ -3074,7 +3074,7 @@ Result detail::UiState::keyDown(KeyPress key) {
     }
     if (key.key == Key::tab) {
         auto order = focusOrder();
-        if (order.empty()) return {Status::notFound, u"沒有可聚焦的元件"};
+        if (order.empty()) return {Status::notFound, u"No component can receive focus"};
         auto it = std::find(order.begin(), order.end(), focus_);
         auto n = static_cast<long>(order.size());
         long index = it == order.end() ? (key.shift ? 0 : -1) : static_cast<long>(it - order.begin());
@@ -3139,7 +3139,7 @@ unsigned step(std::u16string_view text, unsigned pos, int direction) {
 Result detail::UiState::editKey(KeyPress key) {
     OperationScope operation(this);
     auto& session = edits_.at(focus_).session;
-    if (session.composing) return {Status::busy, u"組字中，按鍵交由輸入法處理"};
+    if (session.composing) return {Status::busy, u"The input method handles keystrokes during composition"};
     const auto size = static_cast<unsigned>(session.text.size());
     auto move = [&](unsigned pos) { session.select(key.shift ? session.selection.anchor : pos, pos); return Result{}; };
     const bool multi = find(focus_)->multiline;
@@ -3309,7 +3309,7 @@ Result detail::UiState::setError(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
     if (!control) return {Status::notFound, u"Component no longer exists"};
-    if (!componentType(control->kind).acceptsError()) return {Status::notSupported, u"標籤不能帶有錯誤"};
+    if (!componentType(control->kind).acceptsError()) return {Status::notSupported, u"Labels cannot have errors"};
     if (message.empty()) { if (auto it = errors_.find(id); it != errors_.end()) errors_.erase(it); }
     else errors_.insert_or_assign(control->id, std::move(message));
     return {};

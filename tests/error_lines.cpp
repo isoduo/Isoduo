@@ -7,8 +7,8 @@
 //   - isoduo::arrange(layout::column(...), ui, appearance, measure, ...) -> Placement rectangles
 //   - Ui::add_* handles, connectSource (a conflict) and detail::UiState::setError (an error)
 //
-// The expected values are not computed here. They are the rectangles the layout produced before
-// the refactor, recorded by `isoduo_error_lines_tests --dump` into error_lines_expected.hpp.
+// The expected rectangles were first recorded before the refactor, and refreshed for the English wording in #170.
+// To record them, run `isoduo_error_lines_tests --dump` and save the output to error_lines_expected.hpp.
 #include "isoduo/core.hpp"
 #include "isoduo/layout.hpp"
 #include "core_internal.hpp"
@@ -184,14 +184,14 @@ void everyErrorAndConflictLayoutIsUnchanged() {
 }
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--dump") == 0) {
-        std::puts("// Recorded by `isoduo_error_lines_tests --dump` before the refactor of #92; see error_lines.cpp.");
+        std::puts("// Recorded by `isoduo_error_lines_tests --dump` with the English wording from #170; see error_lines.cpp.");
         std::puts("#pragma once");
         std::puts("#include <cstddef>");
         std::puts("namespace {");
         std::puts("struct Recorded { const char* key; const char* layout; };");
         std::map<std::string, std::string> all;
         try { all = record(); } catch (const std::exception& e) { std::fprintf(stderr, "dump failed: %s\n", e.what()); return 1; }
-        std::printf("constexpr std::size_t expected_count = %zu;\n", all.size());
+        std::printf("constexpr std::size_t expectedCount = %zu;\n", all.size());
         std::puts("const Recorded expected[] = {");
         for (const auto& [key, layout] : all) std::printf("    {\"%s\",\n     \"%s\"},\n", key.c_str(), layout.c_str());
         std::puts("};");

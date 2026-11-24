@@ -450,7 +450,7 @@ int wmain(int argc, wchar_t** argv) {
         IUIAutomationElement* label = nullptr;
         auto hidden = findId(automation, root, L"form.title.pages.v03.progress");
         bool field = SUCCEEDED(element->get_CurrentControlType(&type)) && type == UIA_EditControlTypeId &&
-            SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"顯示名稱" &&
+            SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"Display Name" &&
             SUCCEEDED(element->get_CurrentLabeledBy(&label)) && label && SUCCEEDED(label->get_CurrentAutomationId(&labelId)) &&
             labelId && std::wstring(labelId) == L"form.name.label" && SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds));
         IUIAutomationElementArray* descriptions = nullptr;
@@ -489,7 +489,7 @@ int wmain(int argc, wchar_t** argv) {
         bool items = first && second && SUCCEEDED(first->get_CurrentControlType(&firstType)) && SUCCEEDED(second->get_CurrentControlType(&secondType)) &&
             firstType == UIA_ListItemControlTypeId && secondType == UIA_ListItemControlTypeId &&
             SUCCEEDED(first->get_CurrentName(&firstName)) && SUCCEEDED(second->get_CurrentName(&secondName)) && firstName && secondName &&
-            std::wstring(firstName) == L"共用範本" && std::wstring(firstName) == std::wstring(secondName) &&
+            std::wstring(firstName) == L"Shared Template" && std::wstring(firstName) == std::wstring(secondName) &&
             SUCCEEDED(first->get_CurrentAutomationId(&firstId)) && SUCCEEDED(second->get_CurrentAutomationId(&secondId)) && firstId && secondId && std::wstring(firstId) != std::wstring(secondId);
         bool listCase = SUCCEEDED(selectId(automation, root, L"T006")) && SUCCEEDED(invokeId(automation, root, L"form.title.pages.v02.sort"));
         IUIAutomationSelectionItemPattern* listItem = nullptr; BOOL selectedItem = FALSE;
@@ -645,7 +645,7 @@ int wmain(int argc, wchar_t** argv) {
         bool focus = apply && SUCCEEDED(focusSubscribed) && SendMessageW(search.window, WM_APP + 80, 20, 0) == 0 && WaitForSingleObject(focusEvents->applyReceived, 2000) == WAIT_OBJECT_0;
         std::cout << "UIA14 focus event: " << (focus ? "PASS" : "FAIL") << '\n'; pass &= focus;
         auto count = findId(automation, root, L"result.count");
-        auto nameEvents = new PropertyEvents(); nameEvents->expected = UIA_NamePropertyId; nameEvents->stringValue = true; nameEvents->expectedString = L"\u5957\u7528\u6b21\u6578\uff1a1";
+        auto nameEvents = new PropertyEvents(); nameEvents->expected = UIA_NamePropertyId; nameEvents->stringValue = true; nameEvents->expectedString = L"Apply count: 1";
         PROPERTYID nameProperty = UIA_NamePropertyId;
         auto nameSubscribed = count ? automation->AddPropertyChangedEventHandlerNativeArray(count, TreeScope_Element, nullptr, nameEvents, &nameProperty, 1) : E_FAIL;
         IUIAutomationInvokePattern* invoke = nullptr; BSTR before = nullptr; BSTR after = nullptr;
@@ -655,8 +655,8 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT getAfter = count ? count->get_CurrentName(&after) : E_FAIL;
         bool invoked = apply && count && SUCCEEDED(getName) && SUCCEEDED(getInvoke) && invoke &&
             SUCCEEDED(invokeHr) && SUCCEEDED(getAfter) && before && after &&
-            std::wstring(before, SysStringLen(before)) == L"套用次數：0" &&
-            std::wstring(after, SysStringLen(after)) == L"套用次數：1";
+            std::wstring(before, SysStringLen(before)) == L"Apply count: 0" &&
+            std::wstring(after, SysStringLen(after)) == L"Apply count: 1";
         bool nameEvent = SUCCEEDED(nameSubscribed) && WaitForSingleObject(nameEvents->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(nameSubscribed)) automation->RemovePropertyChangedEventHandler(count, nameEvents); nameEvents->Release();
         std::cout << "Name event: " << (nameEvent ? "PASS" : "FAIL") << '\n'; pass &= nameEvent;
@@ -837,7 +837,7 @@ int wmain(int argc, wchar_t** argv) {
         IUIAutomationElement* tip = nullptr;
         for (int attempt = 0; attempt < 30 && !tip; ++attempt) { tip = findId(automation, root, L"form.title.pages.v03.half.tip"); if (!tip) Sleep(100); }
         CONTROLTYPEID tipType = 0; BSTR tipName = nullptr;
-        bool tooltip = tipEvent && tip && SUCCEEDED(tip->get_CurrentControlType(&tipType)) && tipType == UIA_ToolTipControlTypeId && SUCCEEDED(tip->get_CurrentName(&tipName)) && tipName && std::wstring(tipName) == L"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002";
+        bool tooltip = tipEvent && tip && SUCCEEDED(tip->get_CurrentControlType(&tipType)) && tipType == UIA_ToolTipControlTypeId && SUCCEEDED(tip->get_CurrentName(&tipName)) && tipName && std::wstring(tipName) == L"Adjusts demo progress without starting any background work.";
         if (!tooltip) std::cout << "tip setup=" << tipSetup << " event=" << tipEvent << " element=" << bool(tip) << " type=" << tipType << " subscribed=" << std::hex << tipSubscribed << std::dec << '\n';
         tooltip = tooltip && SendMessageW(search.window, WM_APP + 80, 24, 0) == 1;
         SendMessageW(search.window, WM_APP + 80, 23, 0);
