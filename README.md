@@ -9,15 +9,8 @@ Historical numbered issue links retain their original destinations.
 Consumers use `<isoduo/...>`,
 `isoduo::`, `find_package(Isoduo)` and `Isoduo::` CMake targets; build options use
 `ISODUO_*`. Configure a fresh build directory and install into a clean prefix.
-The settings-demo data directory is `%APPDATA%/Isoduo/SettingsDemo`. When upgrading
-from a version that used the legacy data directory, migrate existing settings with
-`powershell -NoProfile -File tools/migrate-settings.ps1` before first launch.
-The script also copies a legacy settings directory containing only backups and
-keeps each backup at its original relative path.
-Close both applications first. The script copies the legacy settings directory only when
-`%APPDATA%/Isoduo/SettingsDemo` does not exist, preserves the old directory as a backup,
-and refuses to merge or overwrite an existing destination. Optional `-AppDataRoot` selects
-a different roaming profile root. Old settings headers, rich clipboard payloads and
+The settings-demo data directory is `%APPDATA%/Isoduo/SettingsDemo`.
+Old settings headers, rich clipboard payloads and
 diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 `Isoduo.RichText.1` and `ISODUODIAG 1 0`. Old menu command IDs have changed to `isoduo.*`.
 
@@ -588,48 +581,6 @@ Repeat with `Debug` in the build directory and build type. Requirements are Wind
 Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `Desktop`, and `Diagnostics`. Each appearance and Desktop automatically imports Core. Desktop includes the Windows host, OpenGL, text, UI Automation, FreeType and HarfBuzz. Diagnostics is available in a full desktop build. Without `COMPONENTS`, only Core is imported. All public headers are installed regardless of the selected component; using a Desktop or Diagnostics API requires linking its corresponding target. Draw lists and the rendering backend are internal.
 
 If you link Desktop, credit FreeType in your product documentation: show `isoduo::thirdPartyNotices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `Isoduo_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
-
-## Windows and WSL worktrees
-
-Windows-created linked worktrees can contain drive-letter Git pointers that WSL
-cannot resolve. `tools/repair-worktree-paths.ps1` preserves the worktree location
-and uses relative pointers through NTFS junctions. Run it from the main checkout,
-with Git operations on the affected worktree idle:
-
-```powershell
-$repair = @{
-    Worktree = 'C:/worktrees/isoduo-task'
-    Bridge = 'C:/worktrees/isoduo-task-bridge'
-    Backup = '<PROJECT_ROOT>/.git/interop-backups/isoduo-task'
-}
-./tools/repair-worktree-paths.ps1 @repair -Mode Plan
-./tools/repair-worktree-paths.ps1 @repair -Mode Apply
-# To restore the original pointer bytes:
-./tools/repair-worktree-paths.ps1 @repair -Mode Restore
-```
-
-Start with a fresh backup path on the first run. The bridge must be on the
-worktree's volume. Apply backs up both pointer files before writing and preserves
-their Hidden attributes. It reuses a junction only when it points to the expected
-directory. Verify discovery and `worktree list` in both environments after applying.
-
-After Restore or an interrupted Apply, rerun Apply with the same inputs and
-complete backup. You can also rerun Restore with those inputs. Both commands
-accept any mix of original and repaired pointers, compare exact bytes, and
-refuse other contents. If Apply stopped while creating the backup and both
-pointers still contain their original bytes, leave the incomplete backup in place
-and use a fresh backup path. If a write was interrupted within one pointer, keep
-the backup and inspect the pointer before resuming. Restore keeps existing
-junctions and backups.
-Keep junctions in place while using repaired pointers; moving or recreating a
-worktree requires rechecking its metadata. This is a per-worktree repair, not a
-hook into tools that create new worktrees. A `prunable` label alone does not mean
-the worktree's files are absent.
-
-`tests/worktree_paths.ps1` exercises cross-volume and same-volume repair, Git
-operations and restoration using two explicitly supplied fresh fixture roots.
-The optional `-WindowsGitExecutable` takes a WSL path to Windows Git for read-only
-compatibility checks. The fixtures are retained for inspection.
 
 ## Updating third-party dependencies
 
