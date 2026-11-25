@@ -8,14 +8,6 @@
 #include <iostream>
 #include "uia_pattern_drivers.hpp"
 #include "text_unit_expectations.hpp"
-static HRESULT setTextValue(IUIAutomationValuePattern* pattern, const wchar_t* text) {
-    BSTR input = SysAllocString(text);
-    if (!input) return E_OUTOFMEMORY;
-    HRESULT result = pattern->SetValue(input);
-    SysFreeString(input);
-    return result;
-}
-
 class EnabledEvent final : public UiaEventHandler<EnabledEvent, IUIAutomationPropertyChangedEventHandler> {
 public:
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override { if (id == UIA_IsEnabledPropertyId && value.vt == VT_BOOL && value.boolVal == VARIANT_TRUE) SetEvent(received); return S_OK; }
