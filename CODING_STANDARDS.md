@@ -6,7 +6,7 @@
 - Each row in README's "Real-platform runs per change" names a runnable command or script case. If the demo cannot reach a scenario, the row states the limit and names the test that covers it.
 - Tests should exercise observable behavior through established public or host seams, with independent expected results.
 - Preserve user data and make platform failures distinguishable from unsupported or absent functionality.
-- Keep evidence, limits and reproducible verification steps clear and current.
+- Document reproducible verification steps and their limits. Keep run results, logs and screenshots out of the repository.
 - While the version is 0.x, a change that breaks source compatibility (application code must change to build again)
   bumps `project(Isoduo VERSION 0.Y.Z)` to `0.(Y+1).0` in the same PR when any `0.Y` version already has a
   published or draft release. `find_package(Isoduo 0.Y)` accepts every `0.Y.z`. A deleted draft does not undo the bump.
