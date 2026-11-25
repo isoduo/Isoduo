@@ -28,7 +28,8 @@ struct DemoProcess {
 void runDemo(IUIAutomation* uia, const wchar_t* executable, const fs::path& directory,
              const std::wstring& expected, bool reopen) {
     std::wstring command = L"\"" + std::wstring(executable) + L"\" --settings-dir \"" + directory.wstring() + L"\"";
-    STARTUPINFOW startup{sizeof(startup)};
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
     PROCESS_INFORMATION info{};
     require(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &info),
             "could not start the demo");
@@ -53,7 +54,12 @@ void runDemo(IUIAutomation* uia, const wchar_t* executable, const fs::path& dire
         SysFreeString(actual);
         require(matches, "reopened name differs from saved name");
     } else {
-        require(SUCCEEDED(field->SetFocus()) && SUCCEEDED(value->SetValue(expected.c_str())), "rename failed");
+        require(SUCCEEDED(field->SetFocus()), "could not focus the name field");
+        BSTR name = SysAllocString(expected.c_str());
+        require(name, "could not allocate the new name");
+        HRESULT renamed = value->SetValue(name);
+        SysFreeString(name);
+        require(SUCCEEDED(renamed), "rename failed");
         ComPtr<IUIAutomationElement> nav;
         nav.Attach(findId(uia, root.Get(), L"app.nav"));
         require(nav && SUCCEEDED(nav->SetFocus()), "could not leave the name field");
