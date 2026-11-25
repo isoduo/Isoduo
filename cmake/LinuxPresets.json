@@ -1,0 +1,161 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "linux",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-clang",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "linux-clang-debug",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "linux-clang-debug-core",
+      "inherits": "linux-clang-debug",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
+    },
+    {
+      "name": "linux-clang-release",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "linux-clang-release-core",
+      "inherits": "linux-clang-release",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-clang-debug",
+      "configurePreset": "linux-clang-debug",
+      "jobs": 4
+    },
+    {
+      "name": "linux-clang-debug-core",
+      "configurePreset": "linux-clang-debug-core",
+      "jobs": 4
+    },
+    {
+      "name": "linux-clang-release",
+      "configurePreset": "linux-clang-release",
+      "jobs": 4
+    },
+    {
+      "name": "linux-clang-release-core",
+      "configurePreset": "linux-clang-release-core",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-clang-debug-core",
+      "configurePreset": "linux-clang-debug-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-clang-release-core",
+      "configurePreset": "linux-clang-release-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "linux-clang-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-clang-debug"
+        },
+        {
+          "type": "build",
+          "name": "linux-clang-debug"
+        }
+      ]
+    },
+    {
+      "name": "linux-clang-debug-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-clang-debug-core"
+        },
+        {
+          "type": "build",
+          "name": "linux-clang-debug-core"
+        },
+        {
+          "type": "test",
+          "name": "linux-clang-debug-core"
+        }
+      ]
+    },
+    {
+      "name": "linux-clang-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-clang-release"
+        },
+        {
+          "type": "build",
+          "name": "linux-clang-release"
+        }
+      ]
+    },
+    {
+      "name": "linux-clang-release-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-clang-release-core"
+        },
+        {
+          "type": "build",
+          "name": "linux-clang-release-core"
+        },
+        {
+          "type": "test",
+          "name": "linux-clang-release-core"
+        }
+      ]
+    }
+  ]
+}
