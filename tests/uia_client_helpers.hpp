@@ -2,6 +2,14 @@
 #include <windows.h>
 #include <UIAutomation.h>
 #include <atomic>
+inline HRESULT setTextValue(IUIAutomationValuePattern* pattern, const wchar_t* text) {
+    BSTR input = SysAllocString(text);
+    if (!input) return E_OUTOFMEMORY;
+    HRESULT result = pattern->SetValue(input);
+    SysFreeString(input);
+    return result;
+}
+
 struct Search { DWORD pid; HWND window = nullptr; };
 inline BOOL CALLBACK findWindow(HWND window, LPARAM data) {
     auto& search = *reinterpret_cast<Search*>(data);

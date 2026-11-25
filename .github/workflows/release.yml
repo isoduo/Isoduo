@@ -3,15 +3,6 @@ on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
   # Exercise the source archive when the build entry points or archive rules change.
-  push:
-    paths:
-      - .github/workflows/release.yml
-      - .gitattributes
-      - CMakePresets.json
-      - cmake/SourceRevision.cmake
-      - cmake/LinuxPresets.json
-      - cmake/ci/*.cmake
-      - tests/release_decision.cmake
   pull_request:
     paths:
       - .github/workflows/release.yml
