@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      VK_DRIVER_FILES: ${{ github.workspace }}/build/Release/lvp_icd.x86_64.json
+      VK_DRIVER_FILES: ${{ github.workspace }}\build\Release\lvp_icd.x86_64.json
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
@@ -47,7 +47,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      VK_DRIVER_FILES: ${{ github.workspace }}/build/Debug/lvp_icd.x86_64.json
+      VK_DRIVER_FILES: ${{ github.workspace }}\build\Debug\lvp_icd.x86_64.json
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
