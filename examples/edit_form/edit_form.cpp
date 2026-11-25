@@ -209,7 +209,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             return u"Result: " + dialogResult_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
         });
         handles.dialogTitle = ui.addLabel({.id = prefix + "dialog.title", .value = u"Reset Demo Progress"}).value.value();
-        handles.dialogBody = ui.addLabel({.id = prefix + "dialog.body", .value = u"Reset the demo progress to 0%?"}).value.value();
+        handles.dialogBody = ui.addLabel({.id = prefix + "dialog.body", .value = u"Reset the demo progress to 0%? Data on other pages is kept."}).value.value();
         handles.dialogCancel = ui.addButton({.id = prefix + "dialog.cancel", .label = u"Cancel"}).value.value();
         handles.dialogConfirm = ui.addButton({.id = prefix + "dialog.confirm", .label = u"Reset Progress"}).value.value();
         handles.dialog = ui.addDialog(prefix + "dialog", {handles.dialogTitle, handles.dialogBody, handles.dialogCancel, handles.dialogConfirm}, handles.dialogCancel, handles.dialogOpen,

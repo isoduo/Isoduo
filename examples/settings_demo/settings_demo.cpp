@@ -433,7 +433,7 @@ Result Demo::presentationChanged() {
     return refreshFocusControls();
 }
 Result Demo::refreshFocusControls() {
-    // The indicator off leaves nothing to style: the three controls are disabled but keep their values for when it comes back.
+    // The indicator off leaves nothing to style: the four styling components are disabled but keep their values for when it comes back.
     const bool styling = ui.presentation().focusIndicator != FocusIndicatorMode::never;
     for (auto result : {focusWidth.enable(styling), focusRadiusSame.enable(styling), focusRadius.enable(styling), focusColor.enable(styling)})
         if (!result) return result;

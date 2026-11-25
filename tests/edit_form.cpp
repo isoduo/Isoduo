@@ -2777,7 +2777,7 @@ void dialogCancelPreservesProgress() {
     h.tabs.activate({"v03"});
     check(h.progressHalf.describe()->description == u"Adjusts demo progress without starting any background work.", "V03 tooltip uses the specified text");
     check(bool(h.dialogOpen.invoke()), "Open dialog");
-    check(h.dialogTitle.describe()->value == u"Reset Demo Progress" && h.dialogBody.describe()->value == u"Reset the demo progress to 0%?" &&
+    check(h.dialogTitle.describe()->value == u"Reset Demo Progress" && h.dialogBody.describe()->value == u"Reset the demo progress to 0%? Data on other pages is kept." &&
           h.dialogCancel.describe()->name == u"Cancel" && h.dialogConfirm.describe()->name == u"Reset Progress",
           "Dialog uses the specified title and button text");
     check(h.dialogCancel.describe()->focused, "Dialog starts on cancel");

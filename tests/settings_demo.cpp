@@ -429,7 +429,7 @@ void loadingADocumentAppliesTheFocusRingSettings() {
     test::check(demo.focusColorId() == "orange" && demo.ui.effectivePalette(webAppearance(), ThemeVariant::light())->focus == focusOrangeLightWeb, "the ring color is applied");
     test::check(tree.get({"appearance.focus_mode", OptionValue{"never"}})->selected && tree.get({"appearance.focus_width"})->numericValue == 4 && tree.get({"appearance.focus_radius"})->numericValue == 9 &&
                 *tree.get({"appearance.focus_radius_same"})->checked == false && tree.get({"appearance.focus_color", OptionValue{"orange"}})->selected, "the controls show them");
-    test::check(!tree.get({"appearance.focus_width"})->enabled, "and the indicator being off disables the three");
+    test::check(!tree.get({"appearance.focus_width"})->enabled, "and the indicator being off disables the ring width slider");
 }
 
 // #84: the appearance page's checkbox is the user's way to turn justified text off (WCAG 1.4.8).
