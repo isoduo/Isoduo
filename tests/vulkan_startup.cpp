@@ -107,6 +107,15 @@ int main(int argc, char** argv) {
             defaultFrame(config);
             return 0;
         }
+        if (argc >= 2 && std::string_view(argv[1]) == "--no-driver") {
+            Ui ui;
+            ScrollState scroll;
+            config.renderBackend = RenderBackendKind::vulkan;
+            auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
+            check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::renderBackendUnavailable,
+                  "VK03 absent driver is unavailable");
+            return 0;
+        }
         return failures(config);
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
