@@ -320,6 +320,19 @@ static void contextLost(const Appearance& appearance) {
 }
 int main(int argc, char** argv) {
     try {
+        if (argc == 3 && std::string_view(argv[1]) == "--render-backend" && std::string_view(argv[2]) == "vulkan") {
+            editForm::Form form;
+            RendererTestHooks hooks;
+            hooks.startupResultOnce = {"vkCreateShaderModule", -3};
+            DesktopConfig config;
+            config.renderBackend = RenderBackendKind::vulkan;
+            auto result = DesktopHost::createForTest(form.ui, webAppearance(), [&]{ return form.page(); }, form.scroll, config, &hooks);
+            if (result.failure && (result.failure->kind == StartupFailureKind::renderBackendUnavailable ||
+                result.failure->kind == StartupFailureKind::contextVersion)) return 77;
+            check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::shader &&
+                !result.failure->message.empty(), "RF01 Vulkan shader module failure");
+            return 0;
+        }
         if (argc == 2 && std::string(argv[1]) == "--ps10") {
             for (auto appearance : {&webAppearance(), &materialAppearance()}) presentationDuringFailure(*appearance);
             std::cout << "PS10 passed for both appearances\n"; return 0;

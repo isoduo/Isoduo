@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
         const auto& appearance = isoduo::webAppearance();
 #endif
         auto name = appearance.name();
+        isoduo::DesktopConfig options;
         std::filesystem::path directory, diagnosticsOut;
 #ifdef _WIN32
         constexpr std::wstring_view settingsFlag = L"--settings-dir", diagnosticsFlag = L"--diagnostics-out";
@@ -83,7 +84,8 @@ int main(int argc, char** argv) {
 #endif
             if (hasValue && flag == settingsFlag && directory.empty()) directory = argv[i + 1];
             else if (hasValue && flag == diagnosticsFlag && diagnosticsOut.empty()) diagnosticsOut = argv[i + 1];
-            else { std::cerr << "Usage: [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
+            else if (hasValue && std::filesystem::path(argv[i]) == "--render-backend") options.renderBackend = parseRenderBackend(argv[i+1]);
+            else { std::cerr << "Usage: [--render-backend opengl|vulkan] [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
         }
 #ifndef ISODUO_DEMO_DIAGNOSTICS
         if (!diagnosticsOut.empty()) { std::cerr << "--diagnostics-out needs a build with Isoduo::Diagnostics\n"; return 1; }
@@ -108,7 +110,6 @@ int main(int argc, char** argv) {
         settingsDemo::Demo demo(std::move(about));
         if (loaded.document) demo.loadDocument(*loaded.document);
         demo.onSave([&store](const auto& document) { return store.save(document); },pathText);
-        isoduo::DesktopConfig options;
 #ifdef ISODUO_DEMO_DIAGNOSTICS
         options.onDiagnostic = [&](const isoduo::RenderDiagnostic& event) { diagnostics.record(event); };
         // Evidence runs (TD01) save the in-memory record; normal runs never write it.

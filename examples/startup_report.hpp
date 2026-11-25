@@ -2,10 +2,19 @@
 #include "isoduo/desktop.hpp"
 #include "../src/utf.hpp"
 #include <iostream>
+#include <filesystem>
+#include <stdexcept>
+
+inline isoduo::RenderBackendKind parseRenderBackend(const std::filesystem::path& value) {
+    if (value == "vulkan") return isoduo::RenderBackendKind::vulkan;
+    if (value == "opengl") return isoduo::RenderBackendKind::openGL;
+    throw std::invalid_argument("--render-backend expects opengl or vulkan");
+}
 inline void reportStartupFailure(const std::optional<isoduo::StartupFailure>& failure) {
     if (!failure) { std::cerr << "Desktop startup failed (no details)\n"; return; }
     const char* kind = "resource";
     switch (failure->kind) {
+    case isoduo::StartupFailureKind::renderBackendUnavailable: kind = "render_backend_unavailable"; break;
     case isoduo::StartupFailureKind::window: kind = "window"; break;
     case isoduo::StartupFailureKind::contextVersion: kind = "context_version"; break;
     case isoduo::StartupFailureKind::contextCreation: kind = "context_creation"; break;

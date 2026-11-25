@@ -140,7 +140,8 @@ struct Fixture {
             throw std::runtime_error("X04 client size mismatch: expected " + std::to_string(expectedWidth) + "x" +
                 std::to_string(expectedHeight) + ", got " + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
     }
-    static DesktopConfig options() { DesktopConfig o; o.title = u"Isoduo host verification"; return o; }
+    static inline RenderBackendKind renderBackend = RenderBackendKind::openGL;
+    static DesktopConfig options() { DesktopConfig o; o.renderBackend=renderBackend; o.title = u"Isoduo host verification"; return o; }
     void settle() { host.pump(); host.paint(); }
     void post(UINT msg, WPARAM w, LPARAM l) { PostMessageW(host.window(), msg, w, l); }
     void key(WPARAM vk, bool repeat = false) { post(WM_KEYDOWN, vk, keyLparam(vk, repeat, false)); host.pump(); }
@@ -178,9 +179,9 @@ void atlasNative(const Appearance& appearance, Report& report) {
     report.check("GA01", f.host.rasterizations()==before, "100 repeated frames reuse rasterized glyphs");
     auto clears=f.host.atlasClears();
     f.host.forceScale(1.5f); f.host.paint();
-    bool forward=f.host.atlasClears()==clears+1 && f.host.compareLegacy(960,720,1.5f);
+    bool forward=f.host.atlasClears()==clears+1 && f.host.compareLegacy(960,720,1.5f) && f.host.compareGpu(960,720,1.5f);
     f.host.forceScale(1.f); f.host.paint();
-    report.check("GA02", forward && f.host.atlasClears()==clears+2 && f.host.compareLegacy(960,720,1.f), "scale changes clear once and retain S1 pixels");
+    report.check("GA02", forward && f.host.atlasClears()==clears+2 && f.host.compareLegacy(960,720,1.f) && f.host.compareGpu(960,720,1.f), "scale changes clear once and retain S1 pixels");
     f.host.configureAtlas(64,1);
     bool same=f.host.compareLegacy(960,720,1.f);
     report.check("GA03-CPU", same && f.host.atlasBatches()>0 && f.host.atlasPeakPages()<=1, "small atlas batches retain S1 pixels within one page");
@@ -189,7 +190,7 @@ void atlasNative(const Appearance& appearance, Report& report) {
     f.form.ui.setPresentation(settings); f.host.paint();
     auto previous=f.host.atlasClears(); settings.textSize=24;
     bool changed=bool(f.form.ui.setPresentation(settings)); f.host.paint();
-    bool invalidated=f.host.atlasClears()==previous+1 && f.host.compareLegacy(960,720,1.f);
+    bool invalidated=f.host.atlasClears()==previous+1 && f.host.compareLegacy(960,720,1.f) && f.host.compareGpu(960,720,1.f);
     detail::Text text;
     auto oldLayout=text.shape(u"Station",18);
     detail::RecordingCanvas oldCanvas(300,80,{0,0,0});
@@ -4607,7 +4608,11 @@ int wmain(int argc, wchar_t** argv) {
         std::wstring perf, perfAppearance=L"web";
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
-            if (arg == L"--demo-perf" && i+1<argc) { demoPerf=true; perf=argv[++i]; }
+            if (arg == L"--render-backend" && i+1<argc) {
+                std::wstring_view value(argv[++i]);
+                if (value == L"vulkan") Fixture::renderBackend=RenderBackendKind::vulkan;
+                else if (value != L"opengl") throw std::runtime_error("Unknown render backend");
+            } else if (arg == L"--demo-perf" && i+1<argc) { demoPerf=true; perf=argv[++i]; }
             else if (arg == L"--perf" && i+1<argc) perf=argv[++i];
             else if (arg == L"--demo-perf-font") demoPerfFont=true;
             else if (arg == L"--perf-appearance" && i+1<argc) perfAppearance=argv[++i];
@@ -4747,10 +4752,14 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
-        if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
+        if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? runIme(evidence) : hoverOnly ? runHover(evidence) : focusOnly ? runFocus(evidence) : dpi ? runDpi(evidence) : clipboardOnly ? runClipboard(evidence, repeat) : x02Only ? runX02(evidence) : x04Only ? runX04(evidence) : x04ClippedOnly ? runX04Clipped(evidence) : x04ExecutingOnly ? runX04Executing(evidence) : x04DisabledOnly ? runX04Disabled(evidence) : x04SelectionOnly ? runX04Selection(evidence) : run(evidence);
+    } catch (const detail::StartupError& e) {
+        if (Fixture::renderBackend==RenderBackendKind::vulkan && (e.failure.kind==StartupFailureKind::renderBackendUnavailable ||
+            e.failure.kind==StartupFailureKind::contextVersion)) return 77;
+        std::cerr << "Renderer startup failed\n"; return 1;
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

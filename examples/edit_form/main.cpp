@@ -6,9 +6,9 @@
 #include <iostream>
 
 #ifdef _WIN32
-int wmain() {
+int wmain(int argc, wchar_t** argv) {
 #else
-int main() {
+int main(int argc, char** argv) {
 #endif
     try {
         auto resolveFont = [](std::u16string_view family) {
@@ -27,6 +27,9 @@ int main() {
 #endif
         auto name = appearance.name();
         isoduo::DesktopConfig options;
+        if (argc == 3 && std::filesystem::path(argv[1]) == "--render-backend")
+            options.renderBackend = parseRenderBackend(argv[2]);
+        else if (argc != 1) throw std::invalid_argument("Usage: [--render-backend opengl|vulkan]");
         options.title = u"Isoduo Edit Form — " + std::u16string(name.begin(), name.end());
         auto creation = isoduo::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
