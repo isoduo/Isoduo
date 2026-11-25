@@ -69,8 +69,14 @@ foreach(config IN LISTS configs)
     "-DEXAMPLE=${SOURCE_DIR}/examples/consumer" "-DEXPECT_DESKTOP=${DESKTOP}"
     "-DEXPECT_MSVC=${CROSS_COMPILER}" "-DEXPECT_TOOLSET=${TOOLSET}" COMMAND_ERROR_IS_FATAL ANY)
   execute_process(COMMAND "${CMAKE_COMMAND}" --build "${binary}" --config "${config}" COMMAND_ERROR_IS_FATAL ANY)
-  execute_process(COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${binary}" -C "${config}"
-    --output-on-failure --no-tests=error COMMAND_ERROR_IS_FATAL ANY)
+  set(required_tests profile_alias)
+  if(DESKTOP)
+    list(APPEND required_tests notices_smoke)
+  endif()
+  foreach(test IN LISTS required_tests)
+    execute_process(COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${binary}" -C "${config}"
+      -R "^${test}$" --output-on-failure --no-tests=error COMMAND_ERROR_IS_FATAL ANY)
+  endforeach()
   file(READ "${binary}/core-${config}.txt" core)
   set(postfix "")
   if(config STREQUAL "Debug")
