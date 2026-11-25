@@ -2,6 +2,8 @@ name: Release
 on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
+  push:
+    branches: [cpp-cmake-only/162-windows-ci-presets]
   # Exercise the source archive when the build entry points or archive rules change.
   pull_request:
     paths:
