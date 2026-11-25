@@ -50,6 +50,45 @@
       "cacheVariables": {
         "ISODUO_BUILD_DESKTOP": "OFF"
       }
+    },
+    {
+      "name": "linux-gcc",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "linux-gcc-debug",
+      "inherits": "linux-gcc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc-debug-core",
+      "inherits": "linux-gcc-debug",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
+    },
+    {
+      "name": "linux-gcc-release",
+      "inherits": "linux-gcc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc-release-core",
+      "inherits": "linux-gcc-release",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -72,6 +111,26 @@
       "name": "linux-clang-release-core",
       "configurePreset": "linux-clang-release-core",
       "jobs": 4
+    },
+    {
+      "name": "linux-gcc-debug",
+      "configurePreset": "linux-gcc-debug",
+      "jobs": 4
+    },
+    {
+      "name": "linux-gcc-debug-core",
+      "configurePreset": "linux-gcc-debug-core",
+      "jobs": 4
+    },
+    {
+      "name": "linux-gcc-release",
+      "configurePreset": "linux-gcc-release",
+      "jobs": 4
+    },
+    {
+      "name": "linux-gcc-release-core",
+      "configurePreset": "linux-gcc-release-core",
+      "jobs": 4
     }
   ],
   "testPresets": [
@@ -88,6 +147,26 @@
     {
       "name": "linux-clang-release-core",
       "configurePreset": "linux-clang-release-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-gcc-debug-core",
+      "configurePreset": "linux-gcc-debug-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "linux-gcc-release-core",
+      "configurePreset": "linux-gcc-release-core",
       "output": {
         "outputOnFailure": true
       },
@@ -154,6 +233,66 @@
         {
           "type": "test",
           "name": "linux-clang-release-core"
+        }
+      ]
+    },
+    {
+      "name": "linux-gcc-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-gcc-debug"
+        },
+        {
+          "type": "build",
+          "name": "linux-gcc-debug"
+        }
+      ]
+    },
+    {
+      "name": "linux-gcc-debug-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-gcc-debug-core"
+        },
+        {
+          "type": "build",
+          "name": "linux-gcc-debug-core"
+        },
+        {
+          "type": "test",
+          "name": "linux-gcc-debug-core"
+        }
+      ]
+    },
+    {
+      "name": "linux-gcc-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-gcc-release"
+        },
+        {
+          "type": "build",
+          "name": "linux-gcc-release"
+        }
+      ]
+    },
+    {
+      "name": "linux-gcc-release-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-gcc-release-core"
+        },
+        {
+          "type": "build",
+          "name": "linux-gcc-release-core"
+        },
+        {
+          "type": "test",
+          "name": "linux-gcc-release-core"
         }
       ]
     }
