@@ -6,8 +6,13 @@ function(unpack name folder expected)
   endif()
   file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/sources")
   if(NOT EXISTS "${CMAKE_BINARY_DIR}/sources/${name}.ready")
-    # Upstream CLAUDE.md is a non-build symlink; Windows tar cannot create it here.
-    execute_process(COMMAND tar -xf "${archive}" -C "${CMAKE_BINARY_DIR}/sources" --exclude "*/CLAUDE.md" COMMAND_ERROR_IS_FATAL ANY)
+    set(patterns)
+    if(name STREQUAL "harfbuzz")
+      # CLAUDE.md is the only top-level CL* entry in this pinned archive.
+      # Skip that symlink so extraction also works on unprivileged Windows.
+      set(patterns PATTERNS "${folder}/[!C]*" "${folder}/C[!L]*")
+    endif()
+    file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${CMAKE_BINARY_DIR}/sources" ${patterns})
     file(WRITE "${CMAKE_BINARY_DIR}/sources/${name}.ready" "${actual}")
   endif()
   set(${name}_SOURCE "${CMAKE_BINARY_DIR}/sources/${folder}" PARENT_SCOPE)
