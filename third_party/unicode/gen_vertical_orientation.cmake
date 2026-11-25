@@ -58,4 +58,6 @@ endforeach()
 if(DEFINED last)
   emit_range()
 endif()
+# file(CONFIGURE) supplies the final newline.
+string(REGEX REPLACE "\n$" "" output "${output}")
 file(CONFIGURE OUTPUT "${TARGET}" CONTENT "@output@" @ONLY NEWLINE_STYLE UNIX)
