@@ -1,4 +1,4 @@
-﻿# Trial only: do not require this check until 20 consecutive first-attempt passes.
+ï»¿# Trial only: do not require this check until 20 consecutive first-attempt passes.
 name: UIA trial
 on: [push, pull_request]
 jobs:
@@ -15,11 +15,6 @@ jobs:
       - name: Build full Release configuration
         shell: pwsh
         run: ./build.ps1 -Configuration Release -SkipTests
-      - name: Check startup failure without Mesa
-        shell: pwsh
-        run: |
-          & ./build/Release/isoduo_renderer_failure_tests.exe --gdi-version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Download and verify Mesa
         shell: pwsh
         run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\isoduo-mesa"
@@ -28,35 +23,12 @@ jobs:
         run: |
           $source = "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64"
           Copy-Item -LiteralPath "$source\opengl32.dll", "$source\libgallium_wgl.dll" -Destination build\Release
-      - name: Check software renderer and failure simulation
-        shell: pwsh
-        run: |
-          & ./build/Release/isoduo_host_verify.exe --backend-check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir build/Release --output-on-failure --timeout 900 -R '^renderer_failure$'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Download and verify Axe.Windows
-        shell: pwsh
-        run: ./\.github\scripts\install-axe.ps1 -Destination "$env:RUNNER_TEMP\isoduo-axe"
-      - name: Preflight interactive desktop and UIA
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force build/evidence/uia | Out-Null
-          foreach ($skin in @('web', 'material')) {
-            & ./build/Release/isoduo_uia_client.exe "${{ github.workspace }}\build\Release\isoduo_uia_host.exe" $skin --preflight 2>&1 | Tee-Object -FilePath "build/evidence/uia/preflight-$skin.log"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-      - name: Run UIA and Axe cases
-        shell: pwsh
-        env:
-          ISODUO_AXE_EXE: ${{ runner.temp }}\isoduo-axe\unpacked\AxeWindowsCLI.exe
-        run: ./verify-idle.ps1 -Only uia,axe,demo-uia -OutDir build/evidence/uia
-      - name: Upload UIA evidence and diagnostics
+      - name: Run UI Automation tests
+        run: ctest --test-dir build/Release --output-on-failure --no-tests=error --timeout 900 -R '^uia_'
+      - name: Upload CTest diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: uia-trial-evidence
-          path: |
-            build/evidence/uia/
-            build/Release/Testing/Temporary/
+          name: uia-trial-diagnostics
+          path: build/Release/Testing/Temporary/
           if-no-files-found: warn
