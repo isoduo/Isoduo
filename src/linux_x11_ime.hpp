@@ -11,6 +11,7 @@ public:
     void update(const std::optional<LinuxImeState>&);
     bool lookup(XKeyEvent&, std::u16string& text);
     void moved();
+    bool open() const { return method_ != nullptr; }
 
 private:
     void destroyContext();
