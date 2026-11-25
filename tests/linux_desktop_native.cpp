@@ -91,6 +91,22 @@ void checkFaults(DesktopConfig config) {
     checkStartup(result);
     reference = result.desktop->nativeWindow();
     check(result.desktop->run().status == Status::ok && recovered == 1, "Run returns after the recovery callback closes");
+    hooks = {};
+    hooks.errorAtFrame = 1;
+    config.onRendererFailed = [](Desktop& host, const RendererFailure&) { host.close(); };
+    result = create(hooks);
+    checkStartup(result);
+    check(result.desktop->run().status == Status::rendererFailed, "Close a failed host");
+    auto button = ui.addButton({.id = "recovered"}).value.value();
+    auto next = Desktop::create(ui, webAppearance(), [&] { return layout::component(button); }, scroll, config);
+    checkStartup(next);
+    check(!next.desktop->rendererFailed() && bool(button.focus()), "Replacement host accepts focus");
+    bool painted = false;
+    LinuxDesktopTest::observeFrames(*next.desktop, [&](const Frame&, const LinuxClientGeometry&) {
+        painted = true;
+        next.desktop->close();
+    });
+    check(next.desktop->run().status == Status::ok && painted, "Replacement host paints a frame");
     std::cout << "PASS startup fixtures, close thread, renderer rebuild\n";
 }
 void lowVersion(DesktopConfig config) {

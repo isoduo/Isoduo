@@ -232,8 +232,12 @@ Query<std::u16string> WindowsClipboard::read() {
 
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                          const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.onDiagnostic,&ui),
+    : DesktopHost(HostClaim(ui), ui, appearance, std::move(page), scroll, options, trace, background, hooks) {}
+DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,
+                         ScrollState& scroll, const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
+    : claim_(std::move(claim)), ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.onDiagnostic,&ui),
       text_(systemFontFile, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
+    if (claim_.status() == Status::busy) throw std::logic_error("Ui already has a host");
     hooks_ = hooks; debugContext_ = options.debugContext;
     text_.setStyledLookup(systemStyledFontFile);
     configureFont(ui.presentation().fontFamily);
@@ -263,22 +267,22 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         inputContext_ = ImmGetContext(window_);
         if (inputContext_) ImmReleaseContext(window_, inputContext_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
-        detail::access(ui_).setClipboard(clipboard_.get());
-        detail::access(ui_).bindAppearance(&appearance_);
-        detail::access(ui_).tooltipClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
-        detail::access(ui_).setSystemKeyboardCues(systemKeyboardCues());
-        detail::access(ui_).animationTime(animationNowMs);
+        claim_.state().setClipboard(clipboard_.get());
+        claim_.state().bindAppearance(&appearance_);
+        claim_.state().tooltipClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        claim_.state().setSystemKeyboardCues(systemKeyboardCues());
+        claim_.state().animationTime(animationNowMs);
         refreshSystemAnimations();
-        detail::access(ui_).setClickClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
+        claim_.state().setClickClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
         refreshVisibility();
-        detail::access(ui_).onInvalidate([this] { if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        claim_.state().onInvalidate([this] { if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
-        detail::access(ui_).onRelayout([this] { relayout(); });
-        detail::access(ui_).onSemanticPending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
-        detail::access(ui_).onReveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        claim_.state().onRelayout([this] { relayout(); });
+        claim_.state().onSemanticPending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
+        claim_.state().onReveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlasTextSize_ = ui_.presentation().textSize;
         atlasFontFamily_ = ui_.presentation().fontFamily;
-        detail::access(ui_).onPresentation([this] {
+        claim_.state().onPresentation([this] {
             const auto& settings = ui_.presentation();
             const auto clears = text_.atlasClears();
             configureFont(settings.fontFamily);
@@ -294,7 +298,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
             reveal_.clear();
             syncIme();
         });
-        detail::access(ui_).beforeFocus([this] { finishComposition(); });
+        claim_.state().beforeFocus([this] { finishComposition(); });
         renderer_ = std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
         capabilities_ = renderer_->capabilities();
         clientSize(options.width, options.height);
@@ -308,6 +312,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
 }
 Result DesktopHost::rebuildRenderer() {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (!window_) return {Status::notFound, u"Desktop window is closed"};
     if (painting_) return {Status::busy, u"Painting in progress"};
     if (!rendererFailure_) return {Status::invalidValue, u"Renderer is not failed"};
     if (hooks_) ++hooks_->rebuildAttempts;
@@ -326,7 +331,7 @@ Result DesktopHost::rebuildRenderer() {
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
       catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,utf16FromUtf8(text)}; }
-    rendererFailure_.reset(); detail::access(ui_).rendererFailed(false);
+    rendererFailure_.reset(); claim_.state().rendererFailed(false);
     scheduleTooltip();
     InvalidateRect(window_,nullptr,FALSE);
     return {};
@@ -335,7 +340,7 @@ void DesktopHost::failRenderer(RendererFailure failure) {
     rendererFailure_=std::move(failure);
     if (window_) { KillTimer(window_, tooltipTimer); KillTimer(window_, animationTimer); }
     detail::access(ui_).finishAnimations();
-    detail::access(ui_).rendererFailed(true);
+    claim_.state().rendererFailed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
         detail::access(ui_).compositionCancel();
@@ -376,6 +381,7 @@ void DesktopHost::runPosted() {
     }
 }
 void DesktopHost::release() {
+    if (claim_.status() != Status::ok) return;
     std::vector<std::function<void()>> discarded;
     {
         std::lock_guard lock(postMutex_);
@@ -392,26 +398,15 @@ void DesktopHost::release() {
             ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
             ImmReleaseContext(window_, imc);
         }
-        detail::access(ui_).compositionCancel();
     }
-    detail::access(ui_).onPresentation({});
-    if (detail::access(ui_).boundAppearance() == &appearance_) detail::access(ui_).bindAppearance(nullptr);
-    detail::access(ui_).onInvalidate({});
-    detail::access(ui_).onRelayout({});
-    detail::access(ui_).onSemanticPending({});
-    detail::access(ui_).onReveal({});
-    detail::access(ui_).tooltipClock({});
-    detail::access(ui_).animationTime({});
-    detail::access(ui_).setClickClock({});
     if (window_) { KillTimer(window_, tooltipTimer); KillTimer(window_, dragScrollTimer); KillTimer(window_, animationTimer); }
-    detail::access(ui_).beforeFocus({});
-    detail::access(ui_).setClipboard(nullptr);
-    if (!window_) return;
+    if (!window_) { claim_.release(); return; }
     ImmAssociateContext(window_, inputContext_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
     renderer_.reset();
     DestroyWindow(window_);
     window_ = nullptr;
+    claim_.release();
 }
 float DesktopHost::scale() const { return forcedScale_ > 0 ? forcedScale_ : GetDpiForWindow(window_) / 96.f; }
 void DesktopHost::clientSize(int widthDip, int heightDip) {
@@ -442,13 +437,13 @@ void DesktopHost::scheduleTooltip() {
     }
 }
 void DesktopHost::refreshSystemAnimations() {
-    detail::access(ui_).setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
+    claim_.state().setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
 }
 void DesktopHost::refreshVisibility() {
     const bool hidden = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || coveredByAnotherWindow(window_);
     if (hidden == hidden_) return;
     hidden_ = hidden;
-    detail::access(ui_).setWindowHidden(hidden);  // hiding lands every running transition at once
+    claim_.state().setWindowHidden(hidden);  // hiding lands every running transition at once
 }
 void DesktopHost::scheduleAnimation() {
     if (!window_) return;
@@ -759,7 +754,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_SETFOCUS: {
-        detail::access(ui_).windowActive(true);
+        claim_.state().windowActive(true);
         POINT point{};
         if (GetFocus() == window_ && GetCursorPos(&point) && ScreenToClient(window_, &point)) updateHover(point.x, point.y);
         syncIme(); InvalidateRect(window_, nullptr, FALSE); return 0;
@@ -786,7 +781,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         break;
     case WM_KILLFOCUS:
         logIme(L"wm:killfocus");
-        detail::access(ui_).windowActive(false);
+        claim_.state().windowActive(false);
         detail::access(ui_).cancelInput();
         drag_ = Drag::none;
         InvalidateRect(window_, nullptr, FALSE);
@@ -829,7 +824,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_SETTINGCHANGE:  // one case for every system setting we follow (a second label would not compile)
         refreshSystemAnimations();  // "Show animations in Windows"
         // "Always underline access keys and show keyboard focus": takes effect without a restart.
-        if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).setSystemKeyboardCues(systemKeyboardCues());
+        if (w == SPI_SETKEYBOARDCUES || w == 0) claim_.state().setSystemKeyboardCues(systemKeyboardCues());
         break;
     case WM_RBUTTONDOWN: {
         detail::access(ui_).pointerPressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
@@ -1090,12 +1085,14 @@ CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function
     return detail::DesktopHost::createForTest(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
 CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options, detail::RendererTestHooks* hooks) {
+    HostClaim claim(ui);
+    if (claim.status() == Status::busy) return {Status::busy, {}, {}};
     if (options.backend && *options.backend != DesktopBackendKind::windows)
         return {Status::failed, StartupFailure{StartupFailureKind::window, {}, {},
             u"Requested desktop backend is unavailable on Windows", options.backend}, {}};
     try {
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
-        impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
+        impl->host=std::unique_ptr<DesktopHost>(new DesktopHost(std::move(claim), ui, appearance, std::move(page), scroll, impl->options, false, false, hooks));
         auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
         if (desktop->impl_->options.onCloseRequested) {
             auto ptr = desktop.get();
