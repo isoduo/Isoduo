@@ -36,6 +36,20 @@ static void startup(const Appearance& appearance) {
         RendererTestHooks hooks; hooks.startupResourceError = "resource \xe4\xb8\xad\xe6\x96\x87";
         auto result = DesktopHost::createForTest(form.ui, appearance, [&] { return form.page(); }, form.scroll, {}, &hooks);
         check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::resource && result.failure->message == u"resource 中文", "startup resource error preserves kind and UTF-8");
+        auto next = Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll);
+        check(bool(next.desktop), "Retry creation after a resource error");
+        auto page = [&] { return form.page(); };
+        auto duplicate = Desktop::create(form.ui, appearance, page, form.scroll);
+        check(duplicate.status == Status::busy && !duplicate.desktop && !duplicate.failure, "Second desktop refused");
+        check(runDesktop(form.ui, appearance, page, form.scroll).status == Status::busy, "Second run refused");
+        bool pasted = false;
+        next.desktop->post([&] {
+            auto field = form.handles.name;
+            pasted = field.setValue(u"abc") && field.focus() && field.select(0, 3) && field.copy() &&
+                field.select(3, 3) && access(form.ui).pasteClipboard(form.ids().name) && field.draft().value == u"abcabc";
+            next.desktop->close();
+        });
+        check(next.desktop->run().status == Status::ok && pasted, "Retried desktop paints, processes work and pastes");
     }
     for (int mode=0; mode<2; ++mode) {
         editForm::Form form;
@@ -134,7 +148,14 @@ static void publicLifecycle(const Appearance& appearance, bool handled) {
     check(handled ? result.status==Status::ok && callbacks==1 : result.status==Status::rendererFailed && result.failure && result.failure->kind==RendererFailureKind::frameError, "public run result");
     check(form.handles.name.draft().value==u"workstation A", "public retained draft");
     check(IsWindow(otherHost.window()) != FALSE, "other host remains open");
-    if (!handled) check(form.handles.name.setValue(u"lost").status==Status::rendererFailed, "closed host preserves failure");
+    if (!handled) {
+        auto next = Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll);
+        check(next.desktop && !next.desktop->rendererFailed(), "Replacement host starts healthy");
+        check(bool(form.handles.name.setValue(u"recovered")), "Replacement host accepts edits");
+        UpdateWindow(static_cast<HWND>(next.desktop->nativeWindow()));
+        next.desktop->post([&] { next.desktop->close(); });
+        check(next.desktop->run().status == Status::ok, "Replacement host paints and closes");
+    }
 }
 static void failure(const Appearance& appearance, bool reset, bool handled, bool modal = false) {
     editForm::Form form(editForm::defaultIds(), true);

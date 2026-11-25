@@ -8,6 +8,7 @@
 #include "animation.hpp"
 #include "word_break.hpp"
 #include <array>
+#include <atomic>
 #include <map>
 #include <set>
 #include <thread>
@@ -29,6 +30,9 @@ struct Component : ComponentConfig {
 bool validTextControl(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
+    friend class HostClaim;
+    std::atomic_flag hostClaimed_{};
+    void resetHost();
     friend class isoduo::SemanticTree;
 public:
     using Action = std::function<Result()>;
@@ -738,6 +742,18 @@ private:
     struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
     std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, rendererFailed_ = false;
+};
+// Exclusive access to host bindings for one attachment. Moving transfers the rollback obligation.
+class HostClaim {
+public:
+    explicit HostClaim(Ui& ui);
+    HostClaim(HostClaim&& other) noexcept : state_(std::exchange(other.state_, nullptr)) {}
+    ~HostClaim() { release(); }
+    Status status() const { return state_ ? Status::ok : Status::busy; }
+    UiState& state() const { return *state_; }
+    void release();
+private:
+    UiState* state_;
 };
 const Placement* findPlacement(const Frame& frame, std::string_view id);
 unsigned placementTextOffset(const Frame& frame, std::string_view id, int x);
