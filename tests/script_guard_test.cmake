@@ -21,12 +21,28 @@ foreach(path IN LISTS forbidden)
   endif()
 endforeach()
 
+# Exercise CTest's result classification as well as the checker's exit status.
+set(probe "${CMAKE_CURRENT_BINARY_DIR}/script-guard-ctest")
+file(MAKE_DIRECTORY "${probe}")
+file(WRITE "${probe}/paths.txt" "Skipping tracked script check: forbidden.py\n")
+macro(run_guard option script)
+  file(WRITE "${probe}/CTestTestfile.cmake"
+    "set(CMAKE_COMMAND [=[${CMAKE_COMMAND}]=])\n"
+    "include([=[${CMAKE_CURRENT_LIST_DIR}/register_script_guard.cmake]=])\n"
+    "register_script_guard([=[${script}]=] [=[${option}]=])\n")
+  execute_process(COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${probe}" -V
+    RESULT_VARIABLE result OUTPUT_VARIABLE output)
+endmacro()
+run_guard("-DFILE_LIST=${probe}/paths.txt" "${checker}")
+if(NOT result OR NOT output MATCHES "Forbidden tracked script files")
+  message(FATAL_ERROR "Expected CTest to fail for the forbidden path: ${output}")
+endif()
+
 # Simulate a checkout with an index on a machine without Git.
 set(checkout "${CMAKE_CURRENT_BINARY_DIR}/script-guard-checkout")
 file(MAKE_DIRECTORY "${checkout}/.git" "${checkout}/tests")
 file(COPY "${checker}" DESTINATION "${checkout}/tests")
-execute_process(COMMAND "${CMAKE_COMMAND}" -DCMAKE_DISABLE_FIND_PACKAGE_Git=ON
-  -P "${checkout}/tests/script_guard.cmake" RESULT_VARIABLE result OUTPUT_VARIABLE output)
-if(result OR NOT output MATCHES "Skipping tracked script check: Git executable unavailable")
+run_guard("-DCMAKE_DISABLE_FIND_PACKAGE_Git=ON" "${checkout}/tests/script_guard.cmake")
+if(result OR NOT output MATCHES "guard [(]Skipped[)]" OR NOT output MATCHES "Skipping tracked script check: Git executable unavailable")
   message(FATAL_ERROR "Expected missing Git to skip the tracked script check: ${output}")
 endif()

@@ -3,7 +3,7 @@
 - A property asserted through more than one test seam uses one shared predicate.
 - A real-platform test (IME, DPI, clipboard) has a core-seam twin wherever the property is observable without the platform.
 - Production changes to layout or the desktop host list which real-platform runs they require.
-- Each row in README's "Real-platform runs per change" names a runnable command or script case. If the demo cannot reach a scenario, the row states the limit and names the test that covers it.
+- If the demo cannot reach a required scenario, state the limit and name the test that covers it.
 - Tests should exercise observable behavior through established public or host seams, with independent expected results.
 - Preserve user data and make platform failures distinguishable from unsupported or absent functionality.
 - Document reproducible verification steps and their limits. Keep run results, logs and screenshots out of the repository.
