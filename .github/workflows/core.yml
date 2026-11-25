@@ -3,16 +3,18 @@ on: [push, pull_request]
 jobs:
   core:
     runs-on: windows-latest
-    env:
-      ISODUO_MSVC_TOOLSET: '14.44'
     steps:
       - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: '14.44'
       - name: Build and test Release core
-        run: ./build.ps1 -Configuration Release -CoreOnly
+        run: cmake --workflow --preset windows-clang-cl-release-core
       - name: Build and test Debug core with a combined Debug and Release package
         env:
           ISODUO_PACKAGE_RELEASE_BUILD: ${{ github.workspace }}/build/Release-core
-        run: ./build.ps1 -Configuration Debug -CoreOnly
+        run: cmake --workflow --preset windows-clang-cl-debug-core
       - name: Upload CTest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
