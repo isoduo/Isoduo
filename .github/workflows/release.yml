@@ -3,6 +3,15 @@ on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
   # Exercise the source archive when the build entry points or archive rules change.
+  push:
+    paths:
+      - .github/workflows/release.yml
+      - .gitattributes
+      - CMakePresets.json
+      - cmake/SourceRevision.cmake
+      - cmake/LinuxPresets.json
+      - cmake/ci/*.cmake
+      - tests/release_decision.cmake
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -10,12 +19,14 @@ on:
       - CMakePresets.json
       - cmake/SourceRevision.cmake
       - cmake/LinuxPresets.json
+      - cmake/ci/*.cmake
+      - tests/release_decision.cmake
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.pull_request.number || 'main' }}
+  group: release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -34,10 +45,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Decide the release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./.github/scripts/decide-release.ps1
+        run: cmake -P cmake/ci/DecideRelease.cmake
 
   windows:
     needs: decide
@@ -49,19 +59,11 @@ jobs:
         with:
           arch: x64
           toolset: '14.44'
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Download and unpack the source archive
-        shell: pwsh
-        run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'source.zip'
-          Invoke-WebRequest -Uri "https://github.com/$env:GITHUB_REPOSITORY/archive/$env:SOURCE_SHA.zip" -OutFile $archive
-          $unpacked = Join-Path $env:RUNNER_TEMP 'unpacked'
-          Expand-Archive -LiteralPath $archive -DestinationPath $unpacked
-          $top = @(Get-ChildItem -LiteralPath $unpacked -Directory)
-          if ($top.Count -ne 1) { throw "Expected one folder in the archive, found $($top.Count)" }
-          # A short root: the full build unpacks HarfBuzz test data close to the 260-character path limit.
-          $source = Join-Path $env:RUNNER_TEMP 'Isoduo'
-          Move-Item -LiteralPath $top[0].FullName -Destination $source
-          if (Test-Path -LiteralPath (Join-Path $source '.git')) { throw 'The source archive contains .git' }
+        run: cmake -P cmake/ci/DownloadSourceArchive.cmake
       - name: Build and test Release core
         working-directory: ${{ runner.temp }}/Isoduo
         run: cmake --workflow --preset windows-clang-cl-release-core
@@ -85,43 +87,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Install missing build tools
-        shell: bash
-        run: |
-          missing=
-          printf 'cmake_minimum_required(VERSION 3.25)\n' > "$RUNNER_TEMP/cmake-version.cmake"
-          cmake -P "$RUNNER_TEMP/cmake-version.cmake" > /dev/null 2>&1 || missing="$missing cmake"
-          command -v ninja > /dev/null || missing="$missing ninja-build"
-          printf '#include <concepts>\n#include <span>\nint main() { return static_cast<int>(std::span<int>().size()); }\n' > "$RUNNER_TEMP/cxx20.cpp"
-          clang++ -std=c++20 "$RUNNER_TEMP/cxx20.cpp" -o "$RUNNER_TEMP/cxx20" > /dev/null 2>&1 || missing="$missing clang"
-          if [ -n "$missing" ]; then
-            echo "Installing:$missing"
-            sudo apt-get update
-            sudo apt-get install -y $missing
-          fi
-          cmake --version | head -n 1
-          echo "ninja $(ninja --version)"
-          clang++ --version | head -n 1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Download and unpack the source archive
-        shell: bash
-        run: |
-          curl -fsSL "https://github.com/$GITHUB_REPOSITORY/archive/$SOURCE_SHA.tar.gz" -o "$RUNNER_TEMP/source.tar.gz"
-          mkdir "$RUNNER_TEMP/Isoduo"
-          tar -xzf "$RUNNER_TEMP/source.tar.gz" -C "$RUNNER_TEMP/Isoduo" --strip-components=1
-          if [ -e "$RUNNER_TEMP/Isoduo/.git" ]; then echo 'The source archive contains .git'; exit 1; fi
+        run: cmake -P cmake/ci/DownloadSourceArchive.cmake
       - name: Build and test Linux core
-        shell: bash
-        env:
-          TMPDIR: ${{ runner.temp }}
-        run: sh "$RUNNER_TEMP/Isoduo/tools/test-linux-core.sh"
+        working-directory: ${{ runner.temp }}/Isoduo
+        run: cmake --workflow --preset linux-clang-release-core
       - name: Upload CTest results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: release-archive-linux-ctest
-          path: |
-            ${{ runner.temp }}/isoduo-core.*/ctest-results.xml
-            ${{ runner.temp }}/isoduo-core.*/Testing/Temporary/
+          path: ${{ runner.temp }}/Isoduo/build/linux-clang-release-core/Testing/Temporary/
           if-no-files-found: warn
 
   draft:
@@ -138,27 +117,13 @@ jobs:
       # Decide again: someone may have drafted this version while the archives were building.
       - name: Check the release again
         id: decide
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          "RELEASE_NOTES=$notesPath" >> $env:GITHUB_ENV
-          ./.github/scripts/decide-release.ps1 -NotesPath $notesPath
+        run: cmake "-DNOTES_PATH=${{ runner.temp }}/release-notes.md" -P cmake/ci/DecideRelease.cmake
       # The tag does not exist yet: GitHub creates it on the full SHA when the author publishes the draft.
       - name: Create the draft release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.decide.outputs.tag }}
           TITLE: ${{ steps.decide.outputs.title }}
-        run: |
-          # -f sends text as is; -F reads @file as text and turns true/false into booleans.
-          $fields = @(
-            '-f', "tag_name=$env:TAG", '-f', "target_commitish=$env:GITHUB_SHA", '-f', "name=$env:TITLE",
-            '-F', "body=@$env:RELEASE_NOTES",
-            '-F', 'draft=true', '-F', 'prerelease=false', '-F', 'generate_release_notes=true'
-          )
-          $url = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases" --jq '.html_url' @fields
-          if ($LASTEXITCODE -ne 0) { throw 'Creating the draft release failed' }
-          "Draft release for ${env:TITLE}: $url" | Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        run: cmake "-DNOTES_PATH=${{ runner.temp }}/release-notes.md" -P cmake/ci/DraftRelease.cmake
