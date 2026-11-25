@@ -322,6 +322,12 @@ ui.semantics().perform({"about.note"}, isoduo::Verb::setWritingMode, isoduo::Wri
 
 ## Desktop support
 
+A `Ui` can have one host at a time. While a `Desktop` owns it, another
+`Desktop::create` or `runDesktop` returns `Status::busy`. A failed creation
+releases the `Ui` immediately, so the application can retry with different settings.
+After `run()` returns or an unrun desktop is destroyed, a new desktop can host the
+same controls with their values, focus and page selection preserved.
+
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
 The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
