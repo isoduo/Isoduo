@@ -26,6 +26,8 @@ namespace {
 class X11Window final : public LinuxWindow {
 public:
     explicit X11Window(const DesktopConfig& config) {
+        static const bool threadsReady = XInitThreads() != 0;
+        if (!threadsReady) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to initialize X11 threading"}};
         display_ = XOpenDisplay(nullptr);
         if (!display_) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to connect to the X11 display"}};
         try {
@@ -89,6 +91,7 @@ public:
     const NativeWindow& reference() const override { return reference_; }
     EglWindow& renderWindow() override { return *egl_; }
     AsyncClipboard& clipboard() override { return *clipboard_; }
+    bool x11InputMethodOpen() const override { return ime_ && ime_->open(); }
     void updateIme(const std::optional<LinuxImeState>& state, bool) override { ime_->update(state); }
     void handoffClipboard() override {
         if (!clipboard_->beginHandoff()) return;
