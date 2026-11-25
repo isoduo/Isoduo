@@ -1,4 +1,4 @@
-ï»¿name: Render
+﻿name: Render
 on: [push, pull_request]
 
 env:
