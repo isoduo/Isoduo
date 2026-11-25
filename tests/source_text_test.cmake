@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 set(checker "${CMAKE_CURRENT_LIST_DIR}/source_text.cmake")
-set(root "${CMAKE_CURRENT_BINARY_DIR}/source_text_fixture")
+string(RANDOM LENGTH 12 suffix)
+set(root "${CMAKE_CURRENT_BINARY_DIR}/source_text_fixture_${suffix}")
 file(MAKE_DIRECTORY "${root}/src" "${root}/examples/third_party" "${root}/tests/build")
 
 function(expect_failure bytes diagnostic)
