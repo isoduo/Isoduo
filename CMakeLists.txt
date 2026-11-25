@@ -410,7 +410,7 @@ if(ISODUO_BUILD_DESKTOP AND WIN32)
     add_test(NAME demo_vulkan_smoke COMMAND isoduo_settings_demo_web --smoke --render-backend vulkan
       --settings-dir "${PROJECT_BINARY_DIR}/demo-vulkan-smoke")
     set_tests_properties(demo_vulkan_smoke PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
-    set_tests_properties(vulkan_startup demo_vulkan_smoke PROPERTIES LABELS vulkan)
+    set_tests_properties(vulkan_startup vulkan_no_driver demo_vulkan_smoke PROPERTIES LABELS vulkan)
     set_tests_properties(render_compare renderer_failure presentation_matrix_native demo_render_compare host_native PROPERTIES LABELS opengl)
     if(ISODUO_REQUIRE_VULKAN_TESTS)
       get_property(registered DIRECTORY PROPERTY TESTS)
