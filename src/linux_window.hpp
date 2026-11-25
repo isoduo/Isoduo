@@ -45,6 +45,7 @@ public:
     virtual bool prepareFrame() { return true; }
     virtual void requestFrame() {}
     virtual void discardFrame() {}
+    virtual bool x11InputMethodOpen() const { return false; }
     virtual void fullscreenForTest() {}
     virtual void pointerToClient(NativeEvent&) const {}
     LinuxClientGeometry geometry() const { return geometry_; }
