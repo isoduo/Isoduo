@@ -1,6 +1,6 @@
 # V01 minimal edit form (S1)
 
-> **Review-fix status (2026-11-05):** Applications and the V01 acceptance driver use typed handles and data connections; native input and geometry checks use the internal host interface. See [rework verification](evidence/rework-verification.md) for the results and limits. The original [verification](evidence/verification.md) records the earlier S1 revision.
+> **Review-fix status (2026-11-05):** Applications and the V01 acceptance driver use typed handles and data connections; native input and geometry checks use the internal host interface. See [rework verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md) for the results and limits. The original [verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/verification.md) records the earlier S1 revision.
 
 
 The [S1 implementation ticket #15](https://github.com/isoduo/Isoduo-issues/issues/15) delivers a minimal V01 edit form built with the official C01 label, C02 button, and C03 single-line text field. It runs with both Minimal Web and Material-inspired appearances. The two appearances share the same form logic, editing state, and acceptance cases. Only the presentation and arrangement of parts differ. Data stays in memory.
@@ -60,7 +60,7 @@ The form now includes **Notices** (initially checked) and **Mode** (initially No
 
 Application code creates these fields through `CheckboxHandle` and `RadioGroupHandle`, connects typed sources, and explicitly chooses immediate, confirmed, or group-confirmed writing. Option identities use `OptionValue`; a source of another type requires an explicit adapter. The fields expose draft and semantic state through their handles. The confirmation callback receives typed changes and can return errors associated with individual handles. Source notifications must be delivered on the UI thread and the source must outlive the connection, as for text fields.
 
-The S1-specific descriptions below are historical where they list only the original text field and focus order. The S2a verification and remaining limits are recorded in [rework verification](evidence/rework-verification.md).
+The S1-specific descriptions below are historical where they list only the original text field and focus order. The S2a verification and remaining limits are recorded in [rework verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md).
 
 ## Building and running
 
@@ -108,7 +108,7 @@ The V01 behavior cases drive the assembled form through public handles; native k
 | Manual run | `isoduo_host_verify --ime --evidence DIR` drives **real Microsoft Bopomofo** and real keyboard input with `SendInput`. It takes over the keyboard and mouse for up to about three minutes and stops sending keys immediately if the test window loses the foreground. The Traditional Chinese (Bopomofo) input method must be installed. |
 | Real DPI | `isoduo_host_verify --dpi --evidence DIR` uses the first two displays sorted by horizontal position. It moves the foreground window and checks real `WM_DPICHANGED` messages, selection, physical clicks, preedit, caret queries, candidate window positioning requests, and the dropdown popup. It requires displays with different scaling and Microsoft Bopomofo, moves the window, and briefly operates the keyboard and pointer. The candidate window's actual screen position still requires visual verification. |
 
-See [evidence/rework-verification.md](evidence/rework-verification.md) for the acceptance record, toolchain, and representative screenshots.
+See [the rework verification record](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md) for the acceptance record, toolchain, and representative screenshots.
 
 Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.
 
