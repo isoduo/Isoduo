@@ -61,8 +61,11 @@ if(WIN32)
   set(config "${work}/newer-toolset/lib/cmake/Isoduo/IsoduoConfig.cmake")
   file(READ "${config}" content)
   string(REPLACE "set(Isoduo_MSVC_TOOLSET_VERSION \"${TOOLSET}\")"
-    "set(Isoduo_MSVC_TOOLSET_VERSION \"99.99.99999\")" content "${content}")
-  file(WRITE "${config}" "${content}")
+    "set(Isoduo_MSVC_TOOLSET_VERSION \"99.99.99999\")" modified "${content}")
+  if(modified STREQUAL content)
+    message(FATAL_ERROR "Cannot set up older-toolset case: expected toolset '${TOOLSET}' in ${config}")
+  endif()
+  file(WRITE "${config}" "${modified}")
   run_case(older-toolset "${required}" TRUE "consumer MSVC toolset ${TOOLSET} is older than.*99[.]99[.]99999"
     "-DCMAKE_PREFIX_PATH=${work}/newer-toolset")
 endif()

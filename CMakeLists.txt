@@ -13,6 +13,10 @@ project(Isoduo VERSION 0.4.1 LANGUAGES C CXX)
 include(cmake/SourceRevision.cmake)
 set(ISODUO_THIRD_PARTY_NOTICES_FILE "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.txt")
 option(ISODUO_INSTALL "Install Isoduo" ${PROJECT_IS_TOP_LEVEL})
+if(ISODUO_INSTALL)
+  include(cmake/MSVCToolset.cmake)
+  isoduo_detect_msvc_toolset(ISODUO_PACKAGE_MSVC_TOOLSET_VERSION)
+endif()
 include(CMakePackageConfigHelpers)
 configure_file(cmake/version.hpp.in "${PROJECT_BINARY_DIR}/generated/include/isoduo/version.hpp" @ONLY)
 option(ISODUO_BUILD_DESKTOP "Build the native desktop host" ON)
@@ -155,7 +159,7 @@ if(ISODUO_BUILD_TESTS)
       "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
       "-DGENERATOR=${CMAKE_GENERATOR}" "-DCOMPILER=${CMAKE_CXX_COMPILER}"
       "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DBUILD_TYPE=$<CONFIG>" "-DMULTI_CONFIG=${package_multi_config}"
-      "-DDESKTOP=${ISODUO_BUILD_DESKTOP}" "-DTOOLSET=$ENV{VCToolsVersion}")
+      "-DDESKTOP=${ISODUO_BUILD_DESKTOP}" "-DTOOLSET=${ISODUO_PACKAGE_MSVC_TOOLSET_VERSION}")
     add_test(NAME consumer_example COMMAND "${CMAKE_COMMAND}" ${package_test_options}
       -P "${PROJECT_SOURCE_DIR}/tests/package/consumer.cmake")
     add_test(NAME package_cross_compiler COMMAND "${CMAKE_COMMAND}" ${package_test_options}
@@ -398,8 +402,6 @@ if(ISODUO_INSTALL)
   if(NOT CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
   endif()
-  include(cmake/MSVCToolset.cmake)
-  isoduo_detect_msvc_toolset(ISODUO_PACKAGE_MSVC_TOOLSET_VERSION)
   file(READ "${PROJECT_SOURCE_DIR}/cmake/MSVCToolset.cmake" ISODUO_TOOLSET_DETECTOR)
   configure_package_config_file(cmake/IsoduoConfig.cmake.in "${PROJECT_BINARY_DIR}/IsoduoConfig.cmake" INSTALL_DESTINATION lib/cmake/Isoduo)
   write_basic_package_version_file("${PROJECT_BINARY_DIR}/IsoduoConfigVersion.cmake" VERSION ${PROJECT_VERSION} COMPATIBILITY SameMinorVersion)
