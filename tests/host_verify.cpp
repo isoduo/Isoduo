@@ -331,6 +331,8 @@ void drawListInitial(const Appearance& appearance, Report& report, std::ofstream
             if(scenario==9) { state.setSystemKeyboardCues(true); setup=setup && bool(h.dialogOpen.invoke()) && *h.dialog.isOpen(); }
         }
         int width=960,height=720;
+        // Reveal the invalid field, including its error line, in the comparison viewport.
+        if (scenario == 3 && setup) f.host.layout(width, height, scale, f.form.scroll, f.ids.name);
         if(scenario==6 && setup) {
             auto frame=f.host.layout(width,height,scale,f.form.scroll,{});
             auto item=frame.find(f.form.list->handles.list);
@@ -415,6 +417,8 @@ int demoCompare(const std::filesystem::path& evidence) {
         // Windows may send a mouse move when the window appears under it): a hovered row or dropdown would change the picture. The
         // pictures are about the focus indicator, so the pointer stays out of them. Production behavior is untouched.
         host.pump(); detail::access(demo.ui).pointerLeft(); setup &= !detail::access(demo.ui).hoverTarget();
+        // Tab triggers validation. Reveal the invalid field for the comparison after focus moves on.
+        if (scenario == 1 && setup) host.layout(960, 720, scale, demo.scroll, "general.name");
         auto result=host.compareGpu(960,720,scale);
         auto hasRole=[&](std::string_view owner, unsigned role) {
             return test::hasPaintRole(result, owner, static_cast<detail::PaintRole>(role));
@@ -452,13 +456,13 @@ void tabsNative(const Appearance& appearance, Report& report, const std::filesys
     bool candidate = *h.tabs.active() == OptionValue{"v01"} && h.tabs.describe()->candidate == OptionValue{"v02"};
     f.tap(VK_RETURN); f.settle();
     bool activated = *h.tabs.active() == OptionValue{"v02"} && !f.host.frame().find(h.name) && f.host.frame().find(f.form.list->handles.search);
-    f.form.list->handles.search.setValue(u"\u5171\u7528\u7bc4\u672c"); f.form.list->handles.list.select({"T006"});
+    f.form.list->handles.search.setValue(u"Shared Template"); f.form.list->handles.list.select({"T006"});
     f.host.paint(); auto tab = f.host.frame().find(h.tabs);
     auto first = tab->options[0]; POINT point{first.x + first.w / 2, first.y + first.h / 2};
     f.mouse(WM_LBUTTONDOWN, point, MK_LBUTTON); f.mouse(WM_LBUTTONUP, point); f.settle();
     bool pointer = *h.tabs.active() == OptionValue{"v01"} && *h.name.draft() == u"draft" && f.form.list->handles.search.setValue(u"blocked").status == Status::hidden;
     h.tabs.activate({"v02"});
-    bool retained = *f.form.list->handles.search.draft() == u"\u5171\u7528\u7bc4\u672c" && f.form.list->selection() == OptionValue{"T006"};
+    bool retained = *f.form.list->handles.search.draft() == u"Shared Template" && f.form.list->selection() == OptionValue{"T006"};
     f.form.list->handles.reset.invoke();
     f.host.render(960, 720, 1.f, folder / (report.appearance + "-v02.bmp"));
     report.check("C09-native", candidate && activated && pointer && retained,
@@ -1080,14 +1084,14 @@ void contextMenuNative(const Appearance& appearance, Report& report) {
     const bool beside = open() && panel() && panel()->bounds.x == xOf(5) && panel()->bounds.y == y;
     report.check("CM-open-on-release", notOnPress && beside && core.focused() == field && selection().caret == 5,
                  std::string("not on press=") + (notOnPress ? "yes" : "NO") + ", panel=" + (panel() ? str(panel()->bounds) : "none") + ", pointer=" + std::to_string(xOf(5)) + "," + std::to_string(y) + ", caret moved to " + std::to_string(selection().caret));
-    // 2. It is painted: items with their letters and hints reach the draw list as visible ink.
+    // 2. It is painted: command labels and shortcut hints reach the draw list as visible ink.
     f.host.observePaint(true);
     f.host.paint();
     auto painted = [&](std::u16string_view text) {
         return std::any_of(f.host.paintObservations().begin(), f.host.paintObservations().end(),
             [&](const auto& event) { return event.type == detail::PaintObservation::Type::text && event.text == text && event.visible && event.popup && !event.tooltip; });
     };
-    const bool inked = painted(u"復原(U)") && painted(u"剪下(T)") && painted(u"全選(A)") && painted(u"Ctrl+X");
+    const bool inked = painted(u"Undo") && painted(u"Cut") && painted(u"Select All") && painted(u"Ctrl+X");
     f.host.observePaint(false);
     report.check("CM-painted", inked, std::string("labels and hints drawn as visible popup ink: ") + (inked ? "yes" : "NO"));
     // 3. Hover highlights a row; a press and release on a disabled row leaves the menu open.
@@ -2087,7 +2091,14 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
             };
             auto& region = h.region;
             auto prepareDropdown = [&] {
-                region.focus(); f.settle(); f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN); f.settle();
+                // A previous scroll may have clipped the focused dropdown. Moving focus first
+                // makes focusing it again reveal it before we try to reopen the popup.
+                if (region.describe()->focused && anchorVisibility(region) != "visible") {
+                    if (!h.tabs.focus()) return false;
+                    f.settle();
+                }
+                if (!region.focus()) return false;
+                f.settle(); f.tap(VK_RETURN); f.tap(VK_DOWN); f.tap(VK_DOWN); f.settle();
                 return region.describe()->expanded && region.describe()->candidate == OptionValue{"south"} &&
                     *region.draft() == OptionValue{"north"};
             };

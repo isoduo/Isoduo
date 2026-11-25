@@ -26,56 +26,56 @@ std::optional<FocusIndicatorMode> focusModeFromId(std::string_view id) {
     return std::nullopt;
 }
 Demo::Demo(AboutInfo about) : about_(std::move(about)) {
-    nav = ui.addNavigationList({.id="app.nav", .label=u"設定頁面"},
-        {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
+    nav = ui.addNavigationList({.id="app.nav", .label=u"Settings Pages"},
+        {{{"general"},u"General",true,{}},{{"items"},u"Items",true,{}},{{"appearance"},u"Appearance and Text",true,{}},{{"about"},u"About",true,{}}}, {"general"}).value.value();
     title_ = ui.addLabel({.id="app.page_title"}).value.value();
-    nameLabel_ = ui.addLabel({.id="general.name.label",.value=u"顯示名稱",.target="general.name",.labelKind=LabelKind::name}).value.value();
+    nameLabel_ = ui.addLabel({.id="general.name.label",.value=u"Display Name",.target="general.name",.labelKind=LabelKind::name}).value.value();
     name = ui.addTextField({.id="general.name",.value=nameValue_,.maxLength=64}).value.value();
-    nameHelp_ = ui.addLabel({.id="general.name.help",.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.labelKind=LabelKind::description}).value.value();
+    nameHelp_ = ui.addLabel({.id="general.name.help",.value=u"Single-line text in Traditional Chinese or English.",.target="general.name",.labelKind=LabelKind::description}).value.value();
     nameError_ = ui.addLabel({.id="general.name.error",.target="general.name",.labelKind=LabelKind::error}).value.value();
-    notices = ui.addCheckbox({.id="general.notices",.label=u"啟用提示"}).value.value();
-    mode = ui.addRadioGroup({.id="general.mode",.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
-    region = ui.addDropdown({.id="general.region",.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
-    volume = ui.addSlider({.id="general.volume",.label=u"音量"},{0,100,5}).value.value();
-    itemsSearch = ui.addTextField({.id="items.search",.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
-    itemsList = ui.addList({.id="items.list",.label=u"\u9805\u76ee"}, {}).value.value();
+    notices = ui.addCheckbox({.id="general.notices",.label=u"Enable Notices"}).value.value();
+    mode = ui.addRadioGroup({.id="general.mode",.label=u"Mode"}, {{{"normal"},u"Normal"},{{"focus"},u"Focus"},{{"offline"},u"Offline"}}).value.value();
+    region = ui.addDropdown({.id="general.region",.label=u"Region"}, {{{"north"},u"North"},{{"central"},u"Central"},{{"south"},u"South"}}).value.value();
+    volume = ui.addSlider({.id="general.volume",.label=u"Volume"},{0,100,5}).value.value();
+    itemsSearch = ui.addTextField({.id="items.search",.label=u"Search by Name"}).value.value();
+    itemsList = ui.addList({.id="items.list",.label=u"Items"}, {}).value.value();
     itemsCount_ = ui.addLabel({.id="items.count"}).value.value();
-    itemsAdd = ui.addButton({.id="items.add",.label=u"\u65b0\u589e\u2026"}).value.value();
-    itemsEdit = ui.addButton({.id="items.edit",.label=u"\u7de8\u8f2f\u2026",.enabled=false}).value.value();
-    itemsDelete = ui.addButton({.id="items.delete",.label=u"\u522a\u9664\u2026",.enabled=false}).value.value();
+    itemsAdd = ui.addButton({.id="items.add",.label=u"Add…"}).value.value();
+    itemsEdit = ui.addButton({.id="items.edit",.label=u"Edit…",.enabled=false}).value.value();
+    itemsDelete = ui.addButton({.id="items.delete",.label=u"Delete…",.enabled=false}).value.value();
     // Right-clicking a row selects it, then offers the same Edit and Delete as the buttons and the
     // Enter / Del shortcuts: each item runs the button's own action.
     itemsMenu = ui.addContextMenu(itemsList, {
-        {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .accessKey=u'E', .shortcutHint=u"Enter", .action=[this](const MenuContext&) { return itemsEdit.invoke(); }},
-        {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .accessKey=u'D', .shortcutHint=u"Del", .action=[this](const MenuContext&) { return itemsDelete.invoke(); }},
+        {.id="items.edit", .label=u"Edit", .enabled=false, .accessKey=u'E', .shortcutHint=u"Enter", .action=[this](const MenuContext&) { return itemsEdit.invoke(); }},
+        {.id="items.delete", .label=u"Delete", .enabled=false, .accessKey=u'D', .shortcutHint=u"Del", .action=[this](const MenuContext&) { return itemsDelete.invoke(); }},
     }).value.value();
-    font = ui.addDropdown({.id="appearance.font",.label=u"\u5b57\u578b"}, {{{"default"},about_.defaultFontLabel}}).value.value();
+    font = ui.addDropdown({.id="appearance.font",.label=u"Font"}, {{{"default"},about_.defaultFontLabel}}).value.value();
     fontStatus_ = ui.addLabel({.id="appearance.font.status"}).value.value();
     nav.addMember({"appearance"}, font); nav.addMember({"appearance"}, fontStatus_);
     refreshFonts();
     font.connectSource({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().fontFamily; return OptionValue{value.empty() ? "default" : "family:" + isoduo::detail::utf8FromUtf16(value)}; }, subscribeTo(fontChanged_)});
     font.connectImmediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.fontFamily = !c.value || c.value->id == "default" ? u"" : isoduo::detail::utf16FromUtf8(c.value->id.substr(7)); return setPresentation(settings); });
-    textSize = ui.addSlider({.id="appearance.text_size",.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
+    textSize = ui.addSlider({.id="appearance.text_size",.label=u"Text Size"},{12,28,1}).value.value();
     nav.addMember({"appearance"}, textSize);
     textSize.connectSource({[this] { return ui.presentation().textSize; }, subscribeTo(textSizeChanged_)});
     connectSlider(textSize, "appearance.text_size", [this](const Change<SliderHandle>& change, bool join) {
         auto settings = ui.presentation(); settings.textSize = change.value;
         return setPresentation(settings, join);
     });
-    dark = ui.addCheckbox({.id="appearance.dark",.label=u"\u6df1\u8272"}).value.value();
-    compact = ui.addCheckbox({.id="appearance.compact",.label=u"\u7dca\u6e4a"}).value.value();
+    dark = ui.addCheckbox({.id="appearance.dark",.label=u"Dark"}).value.value();
+    compact = ui.addCheckbox({.id="appearance.compact",.label=u"Compact"}).value.value();
     // WCAG 1.4.8: the user can turn justified text off for the whole window.
-    justifyLeft = ui.addCheckbox({.id="appearance.justify_left",.label=u"左右對齊文字改為靠左"}).value.value();
-    accent = ui.addDropdown({.id="appearance.accent",.label=u"強調色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    justifyLeft = ui.addCheckbox({.id="appearance.justify_left",.label=u"Align Justified Text to the Left"}).value.value();
+    accent = ui.addDropdown({.id="appearance.accent",.label=u"Accent Color"}, {{{"default"},u"Default"},{{"green"},u"Green"},{{"orange"},u"Orange"}}).value.value();
     nav.addMember({"appearance"}, accent);
     accent.connectSource({[this]() -> std::optional<OptionValue> { return OptionValue{accentValue_}; }, subscribeTo(accentChanged_)});
     accent.connectImmediate([this](const Change<DropdownHandle>& c) { return setAccent(c.value ? c.value->id : "default"); });
     // The focus ring (#90): one dropdown for when it shows, a thickness slider, a radius (same as the component, or a slider) and a color.
-    focusMode = ui.addDropdown({.id="appearance.focus_mode",.label=u"焦點標示"}, {{{"automatic"},u"自動"},{{"always"},u"一律顯示"},{{"never"},u"關閉"}}).value.value();
-    focusWidth = ui.addSlider({.id="appearance.focus_width",.label=u"焦點外框粗細"},{minFocusRingWidth,maxFocusRingWidth,1}).value.value();
-    focusRadiusSame = ui.addCheckbox({.id="appearance.focus_radius_same",.label=u"焦點外框圓角跟元件一樣"}).value.value();
-    focusRadius = ui.addSlider({.id="appearance.focus_radius",.label=u"焦點外框圓角"},{minFocusRingRadius,maxFocusRingRadius,1}).value.value();
-    focusColor = ui.addDropdown({.id="appearance.focus_color",.label=u"焦點外框顏色"}, {{{"default"},u"預設"},{{"green"},u"綠色"},{{"orange"},u"橘色"}}).value.value();
+    focusMode = ui.addDropdown({.id="appearance.focus_mode",.label=u"Focus Indicator"}, {{{"automatic"},u"Automatic"},{{"always"},u"Always"},{{"never"},u"Off"}}).value.value();
+    focusWidth = ui.addSlider({.id="appearance.focus_width",.label=u"Focus Ring Width"},{minFocusRingWidth,maxFocusRingWidth,1}).value.value();
+    focusRadiusSame = ui.addCheckbox({.id="appearance.focus_radius_same",.label=u"Match Component Corner Radius"}).value.value();
+    focusRadius = ui.addSlider({.id="appearance.focus_radius",.label=u"Focus Ring Corner Radius"},{minFocusRingRadius,maxFocusRingRadius,1}).value.value();
+    focusColor = ui.addDropdown({.id="appearance.focus_color",.label=u"Focus Ring Color"}, {{{"default"},u"Default"},{{"green"},u"Green"},{{"orange"},u"Orange"}}).value.value();
     for (ComponentHandle member : {ComponentHandle{focusMode}, ComponentHandle{focusWidth}, ComponentHandle{focusRadiusSame}, ComponentHandle{focusRadius}, ComponentHandle{focusColor}}) nav.addMember({"appearance"}, member);
     focusMode.connectSource({[this]() -> std::optional<OptionValue> {
         return OptionValue{focusModeId(ui.presentation().focusIndicator)};
@@ -105,8 +105,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     focusColor.connectSource({[this]() -> std::optional<OptionValue> { return OptionValue{focusColorValue_}; }, subscribeTo(focusColorChanged_)});
     focusColor.connectImmediate([this](const Change<DropdownHandle>& c) { return setFocusColor(c.value ? c.value->id : "default"); });
     refreshFocusControls();
-    preview_ = ui.addLabel({.id="appearance.preview",.value=u"\u9810\u89bd\uff1a\u7e41\u4e2d English \U0001f600 \U00020000",.textAlign=TextAlign::center}).value.value();
-    resetAppearance_ = ui.addButton({.id="appearance.reset",.label=u"\u9084\u539f\u9810\u8a2d\u5916\u89c0"}).value.value();
+    preview_ = ui.addLabel({.id="appearance.preview",.value=u"Preview: 繁中 English \U0001f600 \U00020000",.textAlign=TextAlign::center}).value.value();
+    resetAppearance_ = ui.addButton({.id="appearance.reset",.label=u"Reset Appearance Defaults"}).value.value();
     for (ComponentHandle member : {ComponentHandle{dark}, ComponentHandle{compact}, ComponentHandle{justifyLeft}, ComponentHandle{preview_}, ComponentHandle{resetAppearance_}}) nav.addMember({"appearance"}, member);
     justifyLeft.connectSource({[this] { return ui.presentation().justifyAsLeft; }, subscribeTo(justifyLeftChanged_)});
     justifyLeft.connectImmediate([this](const Change<CheckboxHandle>& c) { auto settings=ui.presentation(); settings.justifyAsLeft=c.value; return setPresentation(settings); });
@@ -123,19 +123,19 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         aboutLabels_.push_back(ui.addLabel({.id=id}).value.value());
         nav.addMember({"about"}, aboutLabels_.back());
     }
-    aboutLabels_[0].connectSource([] { return u"Isoduo 設定管理示範 0.1.0"; });
-    aboutLabels_[1].connectSource([] { return u"Isoduo 框架 " + std::u16string(isoduo::frameworkVersion); });
-    aboutLabels_[2].connectSource([this] { return u"建置：" + about_.build; });
-    aboutLabels_[3].connectSource([this] { return u"外觀：" + about_.appearance; });
-    aboutLabels_[4].connectSource([this] { return u"繪製：" + about_.renderer; });
-    aboutLabels_[5].connectSource([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
+    aboutLabels_[0].connectSource([] { return u"Isoduo Settings Demo 0.1.0"; });
+    aboutLabels_[1].connectSource([] { return u"Isoduo Framework " + std::u16string(isoduo::frameworkVersion); });
+    aboutLabels_[2].connectSource([this] { return u"Build: " + about_.build; });
+    aboutLabels_[3].connectSource([this] { return u"Appearance: " + about_.appearance; });
+    aboutLabels_[4].connectSource([this] { return u"Renderer: " + about_.renderer; });
+    aboutLabels_[5].connectSource([this] { return about_.diagnostics ? u"Diagnostics: Basic (in memory)" : u"Diagnostics: Off"; });
     aboutLabels_[6].connectSource([this] { return about_.settingsPath; });
     // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
     aboutVertical_ = ui.addLabel({.id="about.vertical",.value=u"Isoduo 設定管理示範（第 12 版），謹此致謝。",.writingMode=WritingMode::vertical}).value.value();
     nav.addMember({"about"}, aboutVertical_);
     std::vector<OptionItem> licenseOptions;
     for (const auto& license : about_.licenses) licenseOptions.push_back({license.id, license.name});
-    licenses = ui.addList({.id="about.licenses",.label=u"授權"}, std::move(licenseOptions)).value.value();
+    licenses = ui.addList({.id="about.licenses",.label=u"Licenses"}, std::move(licenseOptions)).value.value();
     licenseText_ = ui.addLabel({.id="about.license_text",.lineSpacing=1.4,.paragraphSpacing=8}).value.value();
     licenses.connectSource({[this] { return licenseSelection_; }, subscribeTo(licenseSelectionChanged_)});
     licenses.connectImmediate([this](const Change<ListHandle>& change) { licenseSelection_ = change.value; licenseScroll.offset = 0; if (licenseSelectionChanged_) licenseSelectionChanged_(); return Result{}; });
@@ -144,7 +144,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     nav.addMember({"about"}, licenseText_);
     for (int n=1; n<=20; ++n) {
         char id[8], number[8]; std::snprintf(id,sizeof(id),"T%03d",n); std::snprintf(number,sizeof(number),"%02d",n);
-        items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
+        items_.push_back({{id}, n==5 || n==6 ? u"Shared Template" : u"Template " + std::u16string(number,number+2), {}});
     }
     itemsSearch.connectSource({[this] { return searchValue_; }, subscribeTo(searchChanged_)});
     itemsSearch.connectImmediate([this](const Change<TextFieldHandle>& c) {
@@ -157,22 +157,22 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     itemsList.connectImmediate([this](const Change<ListHandle>& change) { selection_=change.value; itemsEdit.enable(selection_.has_value()); itemsDelete.enable(selection_.has_value()); itemsMenu.enableItem("items.edit", selection_.has_value()); itemsMenu.enableItem("items.delete", selection_.has_value()); if (selectionChanged_) selectionChanged_(); return Result{}; });
     for (ComponentHandle member : {ComponentHandle{itemsSearch}, ComponentHandle{itemsList}, ComponentHandle{itemsCount_}, ComponentHandle{itemsAdd}, ComponentHandle{itemsEdit}, ComponentHandle{itemsDelete}}) nav.addMember({"items"}, member);
     refreshItems();
-    status_ = ui.addLabel({.id="app.status",.value=u"使用預設值，尚未建立設定檔"}).value.value();
-    undo_ = ui.addButton({.id="app.undo",.label=u"復原",.enabled=false}).value.value();
-    redo_ = ui.addButton({.id="app.redo",.label=u"重做",.enabled=false}).value.value();
-    revert_ = ui.addButton({.id="app.revert",.label=u"還原為已儲存",.enabled=false}).value.value();
-    save_ = ui.addButton({.id="app.save",.label=u"儲存",.enabled=false}).value.value();
+    status_ = ui.addLabel({.id="app.status",.value=u"Using defaults. No settings file yet."}).value.value();
+    undo_ = ui.addButton({.id="app.undo",.label=u"Undo",.enabled=false}).value.value();
+    redo_ = ui.addButton({.id="app.redo",.label=u"Redo",.enabled=false}).value.value();
+    revert_ = ui.addButton({.id="app.revert",.label=u"Revert to Saved",.enabled=false}).value.value();
+    save_ = ui.addButton({.id="app.save",.label=u"Save",.enabled=false}).value.value();
     for (ComponentHandle member : {ComponentHandle{nameLabel_}, ComponentHandle{name}, ComponentHandle{nameHelp_}, ComponentHandle{nameError_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.addMember({"general"}, member);
-    title_.connectSource([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
+    title_.connectSource([this] { auto id=nav.selected()->id; return id=="general"?u"General":id=="items"?u"Items":id=="appearance"?u"Appearance and Text":u"About"; });
     name.connectSource({[this] { return nameValue_; }, subscribeTo(nameChanged_)});
     name.connectConfirmed([this](const Change<TextFieldHandle>& change) {
-        if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.setError(u"請填寫顯示名稱"); return Result{Status::invalidValue,u"請填寫顯示名稱"}; }
+        if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) { name.setError(u"Enter a display name"); return Result{Status::invalidValue,u"Enter a display name"}; }
         name.setError(u""); if (nameValue_ != change.value) { nameValue_=change.value; if (nameChanged_) nameChanged_(); dirty(); } return Result{};
     });
     name.onBlur([this] {
         auto draft = name.draft(); if (!draft) return;
         if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
-            name.setError(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); updateHistoryControls(); return;
+            name.setError(u"Enter a display name"); updateHistoryControls(); return;
         }
         name.setError(u"");
         if (nameValue_ != *draft) { nameValue_=*draft; if (nameChanged_) nameChanged_(); dirty(); }
@@ -187,23 +187,23 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     volume.connectSource({[this] { return volumeValue_; }, subscribeTo(volumeChanged_)});
     connectSlider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volumeValue_=c.value; if (volumeChanged_) volumeChanged_(); dirty(join); return Result{}; });
     itemTitle_ = ui.addLabel({.id="items.dialog.title"}).value.value();
-    itemNameLabel_ = ui.addLabel({.id="items.dialog.name.label",.value=u"\u540d\u7a31",.target="items.dialog.name",.labelKind=LabelKind::name}).value.value();
+    itemNameLabel_ = ui.addLabel({.id="items.dialog.name.label",.value=u"Name",.target="items.dialog.name",.labelKind=LabelKind::name}).value.value();
     itemName = ui.addTextField({.id="items.dialog.name",.maxLength=64}).value.value();
     itemNameError_ = ui.addLabel({.id="items.dialog.name.error",.target="items.dialog.name",.labelKind=LabelKind::error}).value.value();
-    itemNoteLabel_ = ui.addLabel({.id="items.dialog.note.label",.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.labelKind=LabelKind::name}).value.value();
-    itemNoteBold = ui.addButton({.id="items.dialog.note.bold",.label=u"粗體"}).value.value();
-    itemNoteItalic = ui.addButton({.id="items.dialog.note.italic",.label=u"斜體"}).value.value();
-    itemNoteUnderline = ui.addButton({.id="items.dialog.note.underline",.label=u"底線"}).value.value();
-    itemNoteColor = ui.addDropdown({.id="items.dialog.note.color",.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
+    itemNoteLabel_ = ui.addLabel({.id="items.dialog.note.label",.value=u"Note (Optional)",.target="items.dialog.note",.labelKind=LabelKind::name}).value.value();
+    itemNoteBold = ui.addButton({.id="items.dialog.note.bold",.label=u"Bold"}).value.value();
+    itemNoteItalic = ui.addButton({.id="items.dialog.note.italic",.label=u"Italic"}).value.value();
+    itemNoteUnderline = ui.addButton({.id="items.dialog.note.underline",.label=u"Underline"}).value.value();
+    itemNoteColor = ui.addDropdown({.id="items.dialog.note.color",.label=u"Text Color"}, {{{"default"},u"Default"},{{"red"},u"Red"},{{"green"},u"Green"},{{"blue"},u"Blue"}}).value.value();
     itemNote = ui.addTextField({.id="items.dialog.note",.maxLength=200,.multiline=true,.visibleLines=3,.rich=true}).value.value();
     // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
     itemNote.setColors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
-    itemCancel_ = ui.addButton({.id="items.dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
-    itemOk = ui.addButton({.id="items.dialog.ok",.label=u"\u78ba\u5b9a"}).value.value();
-    deleteTitle_ = ui.addLabel({.id="items.delete_dialog.title",.value=u"\u522a\u9664\u9805\u76ee"}).value.value();
+    itemCancel_ = ui.addButton({.id="items.dialog.cancel",.label=u"Cancel"}).value.value();
+    itemOk = ui.addButton({.id="items.dialog.ok",.label=u"OK"}).value.value();
+    deleteTitle_ = ui.addLabel({.id="items.delete_dialog.title",.value=u"Delete Item"}).value.value();
     deleteMessage_ = ui.addLabel({.id="items.delete_dialog.message"}).value.value();
-    deleteCancel_ = ui.addButton({.id="items.delete_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
-    deleteConfirm_ = ui.addButton({.id="items.delete_dialog.confirm",.label=u"\u522a\u9664"}).value.value();
+    deleteCancel_ = ui.addButton({.id="items.delete_dialog.cancel",.label=u"Cancel"}).value.value();
+    deleteConfirm_ = ui.addButton({.id="items.delete_dialog.confirm",.label=u"Delete"}).value.value();
     itemDialog = ui.addDialog("items.dialog", {itemTitle_,itemNameLabel_,itemName,itemNameError_,itemNoteLabel_,itemNoteBold,itemNoteItalic,itemNoteUnderline,itemNoteColor,itemNote,itemCancel_,itemOk}, itemName, itemsAdd, [](bool) {}, itemTitle_).value.value();
     deleteDialog = ui.addDialog("items.delete_dialog", {deleteTitle_,deleteMessage_,deleteCancel_,deleteConfirm_}, deleteCancel_, itemsAdd, [](bool) {}, deleteTitle_).value.value();
     itemName.connectSource({[this] { return itemNameSource_; }, subscribeTo(itemNameChanged_)});
@@ -224,7 +224,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         editing_=edit;
         auto found=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
         if (edit && found==items_.end()) return {Status::invalidValue,u"No selection"};
-        itemTitle_.connectSource([edit] { return edit ? u"\u7de8\u8f2f\u9805\u76ee" : u"\u65b0\u589e\u9805\u76ee"; });
+        itemTitle_.connectSource([edit] { return edit ? u"Edit Item" : u"Add Item"; });
         auto result=itemDialog.open(); if (!result) return result;
         itemNameSource_=edit ? found->name : u""; itemNoteSource_=edit ? isoduo::RichText{found->note, found->noteSpans} : isoduo::RichText{};
         noteColorValue_="default"; if (noteColorChanged_) noteColorChanged_();
@@ -239,7 +239,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     ui.connectConfirmation(itemOk, {itemName, itemNote}, [this](const std::vector<ConfirmFieldChange>& changes) -> ConfirmationResult {
         const auto& value=std::get<Change<TextFieldHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextFieldHandle, RichText>>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
-            return {{Status::invalidValue,u"Name required"}, {{itemName,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
+            return {{Status::invalidValue,u"Name required"}, {{itemName,u"Enter a name"}}};
         }
         OptionValue id;
         bool changed=false;
@@ -261,7 +261,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     itemsDelete.bind([this] {
         auto it=std::find_if(items_.begin(),items_.end(),[this](const Item& x) { return selection_ && x.id==*selection_; });
         if (it==items_.end()) return Result{Status::invalidValue,u"No selection"};
-        auto message=u"\u8981\u522a\u9664\u300c" + it->name + u"\u300d\u55ce\uff1f\u522a\u9664\u5f8c\u53ef\u4ee5\u6309\u300c\u5fa9\u539f\u300d\u627e\u56de\u3002";
+        auto message=u"Delete “" + it->name + u"”? Choose Undo to restore it.";
         deleteMessage_.connectSource([message] { return message; }); return deleteDialog.open();
     });
     deleteCancel_.bind([this] { return deleteDialog.settle(false); });
@@ -271,23 +271,23 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (auto r=refreshItems(); !r) return r;
         dirty(); return Result{};
     });
-    closeTitle_ = ui.addLabel({.id="app.close_dialog.title",.value=u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f"}).value.value();
-    closeMessage_ = ui.addLabel({.id="app.close_dialog.message",.value=u"\u6709\u5c1a\u672a\u5132\u5b58\u7684\u4fee\u6539\u3002\u95dc\u9589\u524d\u8981\u5148\u5132\u5b58\u55ce\uff1f"}).value.value();
-    closeSave = ui.addButton({.id="app.close_dialog.save",.label=u"\u5132\u5b58"}).value.value();
-    closeDiscard = ui.addButton({.id="app.close_dialog.discard",.label=u"\u4e0d\u5132\u5b58"}).value.value();
-    closeCancel = ui.addButton({.id="app.close_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
+    closeTitle_ = ui.addLabel({.id="app.close_dialog.title",.value=u"Save changes?"}).value.value();
+    closeMessage_ = ui.addLabel({.id="app.close_dialog.message",.value=u"You have unsaved changes. Save them before closing?"}).value.value();
+    closeSave = ui.addButton({.id="app.close_dialog.save",.label=u"Save"}).value.value();
+    closeDiscard = ui.addButton({.id="app.close_dialog.discard",.label=u"Don't Save"}).value.value();
+    closeCancel = ui.addButton({.id="app.close_dialog.cancel",.label=u"Cancel"}).value.value();
     closeDialog = ui.addDialog("app.close_dialog", {closeTitle_,closeMessage_,closeSave,closeDiscard,closeCancel}, closeSave, save_, [](bool) {}, closeTitle_).value.value();
     closeCancel.bind([this] { return closeDialog.settle(false); });
     closeDiscard.bind([this] { auto result=closeDialog.settle(true); if (result && closeHandler_) closeHandler_(); return result; });
     closeSave.bind([this] { auto result=closeDialog.settle(true); if (!result) return result; result=saveDocument(); if (result && closeHandler_) closeHandler_(); return result; });
     loadTitle_ = ui.addLabel({.id="app.load_dialog.title"}).value.value();
     loadMessage_ = ui.addLabel({.id="app.load_dialog.message"}).value.value();
-    loadOk_ = ui.addButton({.id="app.load_dialog.ok",.label=u"確定"}).value.value();
+    loadOk_ = ui.addButton({.id="app.load_dialog.ok",.label=u"OK"}).value.value();
     loadDialog_ = ui.addDialog("app.load_dialog", {loadTitle_,loadMessage_,loadOk_}, loadOk_, save_, [this](bool) { nav.focus(); }).value.value();
     loadOk_.bind([this] { return loadDialog_.settle(true); });
-    errorTitle_ = ui.addLabel({.id="app.error_dialog.title",.value=u"無法儲存"}).value.value();
+    errorTitle_ = ui.addLabel({.id="app.error_dialog.title",.value=u"Cannot Save"}).value.value();
     errorMessage_ = ui.addLabel({.id="app.error_dialog.message"}).value.value();
-    errorOk_ = ui.addButton({.id="app.error_dialog.ok",.label=u"確定"}).value.value();
+    errorOk_ = ui.addButton({.id="app.error_dialog.ok",.label=u"OK"}).value.value();
     errorDialog_ = ui.addDialog("app.error_dialog", {errorTitle_,errorMessage_,errorOk_}, errorOk_, save_, [](bool) {}).value.value();
     errorOk_.bind([this] { return errorDialog_.settle(true); });
     ui.addShortcut({.key=Key::enter},itemsEdit,itemsList);
@@ -332,8 +332,8 @@ Result Demo::refreshItems() {
     auto oldCount = itemsCount_.describe();
     if (!oldCount) return {oldCount.status, oldCount.message};
     auto number = [](std::size_t n) { auto str=std::to_string(n); return std::u16string(str.begin(),str.end()); };
-    auto text = u"\u5171 " + number(items_.size()) + u" \u7b46\uff0c\u986f\u793a " + number(count) + u" \u7b46";
-    if (items_.size() >= 1000) text += u"\uff08\u5df2\u9054\u4e0a\u9650\uff09";
+    auto text = u"Showing " + number(count) + u" of " + number(items_.size());
+    if (items_.size() >= 1000) text += u" (limit reached)";
     if (auto r=itemsCount_.connectSource([text] { return text; }); !r) return r;
     if (auto r=itemsList.setItems(std::move(visible)); !r) {
         auto previous = oldCount->value;
@@ -364,10 +364,10 @@ void Demo::refreshFonts() {
         options.push_back({{"family:" + isoduo::detail::utf8FromUtf16(family.key)}, family.displayName});
         found = found || family.key == key;
     }
-    if (!found) options.push_back({{"family:" + isoduo::detail::utf8FromUtf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
+    if (!found) options.push_back({{"family:" + isoduo::detail::utf8FromUtf16(key)}, key + u" (not installed)"});
     font.setItems(std::move(options));
     auto resolution = about_.resolveFont ? about_.resolveFont(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
-    auto status = resolution.requestedAvailable ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";
+    auto status = resolution.requestedAvailable ? u"Current font: " + resolution.primary : u"Font “" + key + u"” is unavailable. The default font is used until the selected font is available.";
     fontStatus_.connectSource([status] { return status; });
 }
 namespace {
@@ -433,7 +433,7 @@ Result Demo::presentationChanged() {
     return refreshFocusControls();
 }
 Result Demo::refreshFocusControls() {
-    // The indicator off leaves nothing to style: the three controls are disabled but keep their values for when it comes back.
+    // The indicator off leaves nothing to style: the four styling components are disabled but keep their values for when it comes back.
     const bool styling = ui.presentation().focusIndicator != FocusIndicatorMode::never;
     for (auto result : {focusWidth.enable(styling), focusRadiusSame.enable(styling), focusRadius.enable(styling), focusColor.enable(styling)})
         if (!result) return result;
@@ -454,7 +454,7 @@ void Demo::updateHistoryControls() {
     bool changed = saved_ && (snapshot() != *saved_ || (draft && *draft != nameValue_));
     save_.enable(changed); revert_.enable(changed);
     if (changed != dirtyState_) { dirtyState_=changed; if (dirtyChanged_) dirtyChanged_(changed); }
-    status_.connectSource([changed, this] { return changed && saveFailed_ ? u"有未儲存的修改（上次儲存失敗）" : changed ? u"\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539" : savedOnce_ ? u"\u6240\u6709\u4fee\u6539\u5df2\u5132\u5b58" : u"\u4f7f\u7528\u9810\u8a2d\u503c\uff0c\u5c1a\u672a\u5efa\u7acb\u8a2d\u5b9a\u6a94"; });
+    status_.connectSource([changed, this] { return changed && saveFailed_ ? u"Unsaved changes (last save failed)" : changed ? u"Unsaved changes" : savedOnce_ ? u"All changes saved" : u"Using defaults. No settings file yet."; });
 }
 void Demo::dirty(bool coalesce) {
     if (!coalesce) dragGroup_.clear();
@@ -486,7 +486,7 @@ Result Demo::apply(const SettingsDocument& value) {
 }
 Result Demo::loadDocument(const SettingsDocument& value) {
     auto result = apply(value); saved_=value; current_=value; savedOnce_=true; undoHistory_.clear(); redoHistory_.clear(); updateHistoryControls();
-    if (!result) showLoadNotice(u"設定檔沒有完全套用", u"有一部分設定無法套用：" + result.message);
+    if (!result) showLoadNotice(u"Settings Were Partially Applied", u"Some settings could not be applied: " + result.message);
     return result;
 }
 void Demo::showLoadNotice(std::u16string title, std::u16string message) {
@@ -497,15 +497,15 @@ Result Demo::saveDocument() {
         auto draft = name.draft();
         if (!draft) return Result{draft.status, draft.message};
         if (std::all_of(draft->begin(), draft->end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
-            nav.select({"general"}); name.setError(u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"); name.focus();
-            return Result{Status::invalidValue, u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31"};
+            nav.select({"general"}); name.setError(u"Enter a display name"); name.focus();
+            return Result{Status::invalidValue, u"Enter a display name"};
         }
         if (nameValue_ != *draft) { nameValue_=*draft; if (nameChanged_) nameChanged_(); dirty(); }
         if (saveHandler_) {
             auto error=saveHandler_(snapshot());
             if (!error.empty()) {
                 saveFailed_=true; updateHistoryControls();
-                auto message=u"無法寫入 " + settingsPath_ + u"：" + error + u"。修改仍保留，尚未儲存。";
+                auto message=u"Cannot write " + settingsPath_ + u": " + error + u". Your changes are still unsaved.";
                 errorMessage_.connectSource([message] { return message; }); errorDialog_.open();
                 return Result{Status::invalidValue, error};
             }

@@ -27,7 +27,7 @@ int main() {
 #endif
         auto name = appearance.name();
         isoduo::DesktopConfig options;
-        options.title = u"Isoduo 編輯表單 — " + std::u16string(name.begin(), name.end());
+        options.title = u"Isoduo Edit Form — " + std::u16string(name.begin(), name.end());
         auto creation = isoduo::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
         return creation.desktop->run().status == isoduo::Status::ok ? 0 : 1;

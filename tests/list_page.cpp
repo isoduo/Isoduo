@@ -23,7 +23,7 @@ void deletionRecoversCursorThenReentryStartsAtFirst() {
 void filteringClearsSelectionWithoutRestoringIt() {
     listPage::Page page; auto& list = page.handles.list;
     list.focus(); list.select({"T003"});
-    check(bool(page.handles.search.setValue(u"範本 20")), "Filter by name");
+    check(bool(page.handles.search.setValue(u"Template 20")), "Filter by name");
     check(!page.selection() && list.describe()->items.size() == 1 && list.describe()->items[0].value == OptionValue{"T020"}, "Filtering clears the hidden selection");
     check(bool(page.handles.search.setValue(u"")) && !page.selection(), "Clearing search does not restore it");
 }
@@ -62,7 +62,7 @@ void emptySingleAndKeyboardEndpoints() {
 }
 void filteringUsesOldOrderForCursorRecovery() {
     listPage::Page page; page.handles.hundred.invoke(); auto& list = page.handles.list;
-    list.focus(); list.select({"T009"}); page.handles.search.setValue(u"範本 1");
+    list.focus(); list.select({"T009"}); page.handles.search.setValue(u"Template 1");
     check(!page.selection() && list.describe()->candidate == OptionValue{"T010"}, "T010 is the next surviving item after filtering T009");
 }
 int main() {

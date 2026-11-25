@@ -1,7 +1,7 @@
 execute_process(COMMAND git rev-parse --short=12 HEAD WORKING_DIRECTORY "${SOURCE_DIR}"
   OUTPUT_VARIABLE revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE result)
 if(NOT result EQUAL 0 OR NOT revision MATCHES "^[0-9a-fA-F]+$")
-  set(revision "未知")
+  set(revision "Unknown")
 endif()
 set(content "#pragma once\n#define ISODUO_DEMO_REVISION u\"${revision}\"\n")
 if(EXISTS "${OUTPUT_FILE}")

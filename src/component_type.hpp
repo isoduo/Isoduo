@@ -12,7 +12,7 @@
 // ComponentKind.
 //
 // A type that applications configure from code also needs, outside this file (names follow CODING_STANDARDS.md,
-// "公開名稱": one word for the enumerator, the addX suffix and the handle prefix):
+// "public names": one word for the enumerator, the addX suffix and the handle prefix):
 //   - its ComponentKind enumerator, and its typed XxxHandle class and the ComponentHandle variant, in include/isoduo/core.hpp;
 //   - Ui::addX (core.cpp), which gives the component its ComponentKind (the caller's ComponentConfig names none), and
 //     UiState::addX with its kind check, which registers the component and its state;
@@ -211,9 +211,9 @@ public:
     // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
     virtual bool hasBuiltinMenu() const { return false; }
     virtual void builtinMenuEntries(const UiState&, const Component&, bool /*clipboardText*/, std::vector<UiState::MenuEntry>&) const {}
-    virtual Result runBuiltinMenu(UiState&, const std::string&, std::string_view) const { return {Status::notFound, u"沒有這個選單項目"}; }
+    virtual Result runBuiltinMenu(UiState&, const std::string&, std::string_view) const { return {Status::notFound, u"Menu item not found"}; }
     virtual std::optional<OptionValue> menuCursor(const UiState&, const Component&) const { return std::nullopt; }
-    virtual Result checkMenuItem(const UiState&, const Component&, const OptionValue&) const { return {Status::invalidValue, u"只有清單可以指定項目"}; }
+    virtual Result checkMenuItem(const UiState&, const Component&, const OptionValue&) const { return {Status::invalidValue, u"Only lists support specifying an item"}; }
     virtual void menuRowChosen(UiState&, const std::string&, const OptionValue&) const {}
     virtual std::optional<Query<OptionValue>> menuRow(const UiState&, const Component&, std::size_t /*option*/) const { return std::nullopt; }
     virtual void arrange(ComponentLayout&) const = 0;

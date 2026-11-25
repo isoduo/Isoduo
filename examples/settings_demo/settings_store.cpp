@@ -24,13 +24,13 @@ LoadResult SettingsStore::load() const {
     CloseHandle(h);
     if (!tooLarge) if (auto doc=parseSettings(bytes)) return {LoadKind::loaded,std::move(doc),{},false};
     auto bad=file; bad+=L".bad"; auto injected=fault("rename"); bool renamed=!injected && MoveFileExW(file.c_str(),bad.c_str(),MOVEFILE_REPLACE_EXISTING)!=0; if (injected) SetLastError(injected);
-    std::u16string reason = u"格式或欄位不合法";
-    if (!renamed) reason += u"；原檔無法改名（" + errorText(GetLastError()) + u"）";
+    std::u16string reason = u"Invalid settings format or fields";
+    if (!renamed) reason += u". Cannot rename the original file (" + errorText(GetLastError()) + u")";
     return {LoadKind::corrupt,{},std::move(reason),renamed};
 }
 std::u16string SettingsStore::save(const SettingsDocument& doc) const {
     auto bytes = writeSettings(doc);
-    if (bytes.size() > maxSettingsBytes) return u"\u8a2d\u5b9a\u6a94\u8d85\u904e 1 MiB";
+    if (bytes.size() > maxSettingsBytes) return u"Settings file exceeds 1 MiB";
     if (auto e=fault("directory")) return errorText(e);
     std::error_code ec; std::filesystem::create_directories(directory_,ec); if (ec) return errorText(static_cast<DWORD>(ec.value()));
     auto tmp=path(); tmp+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";

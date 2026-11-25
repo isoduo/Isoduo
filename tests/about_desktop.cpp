@@ -37,7 +37,7 @@ void verifyAbout() {
             test::check(node && !node->value.empty(), "About label is populated");
         }
         test::check(tree.get({"about.framework"})->value.find(isoduo::frameworkVersion) != std::u16string::npos, "framework version");
-        test::check(tree.get({"about.renderer"})->value == u"繪製：" + caps.version + u" — " + caps.renderer, "renderer capabilities");
+        test::check(tree.get({"about.renderer"})->value == u"Renderer: " + caps.version + u" — " + caps.renderer, "renderer capabilities");
         auto notices = isoduo::thirdPartyNotices();
         test::check(info.licenses.size() == 6 && notices.size() == 4, "six license entries");
         test::check(normalized(info.licenses[0].text) == licenseFile(ISODUO_SOURCE_DIR "/LICENSE"), "framework license matches source");
