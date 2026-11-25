@@ -337,9 +337,7 @@ Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* h
 
 #include "renderer_vulkan_draw.hpp"
 #include "renderer_vulkan_frame.hpp"
-#ifdef _WIN32
 #include "renderer_vulkan_present.hpp"
-#endif
 }
 Image renderVulkanOffscreen(const DrawList& list,int width,int height) {
     if (width<=0 || height<=0) return {width,height,{}};
@@ -357,10 +355,13 @@ std::unique_ptr<Renderer> createVulkanRenderer(HWND window,RendererTestHooks* ho
     return std::make_unique<SurfaceRenderer>(window,hooks,VkExtent2D{uint32_t(client.right),uint32_t(client.bottom)});
 }
 #else
-void startVulkan(VulkanWindow window, RendererTestHooks* hooks) {
-    Session session;
-    initialize(session, window, hooks, true);
-    unavailable("Vulkan drawing is not connected to this native desktop backend yet");
+std::unique_ptr<Renderer> createVulkanRenderer(VulkanWindow window, RendererTestHooks* hooks, int width, int height) {
+    if (window.backend == DesktopBackendKind::wayland) {
+        Session session;
+        initialize(session, window, hooks, true);
+        unavailable("Vulkan drawing is not connected to this native desktop backend yet");
+    }
+    return std::make_unique<SurfaceRenderer>(window, hooks, VkExtent2D{uint32_t(width), uint32_t(height)});
 }
 #endif
 }

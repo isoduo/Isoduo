@@ -330,7 +330,7 @@ same controls with their values, focus and page selection preserved.
 
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
-The Windows host supports OpenGL 3.3 (default) and Vulkan 1.3 and exposes a UI Automation provider.
+The Windows and X11 hosts support OpenGL 3.3 (default) and Vulkan 1.3. The Windows host exposes a UI Automation provider.
 The edit form and settings demo accept `--render-backend opengl|vulkan`. Vulkan requires a system loader,
 dynamic rendering, synchronization2, and a device that can present an RGBA8 or BGRA8 UNORM swapchain to the window.
 Applications can handle an unavailable Vulkan backend explicitly and retry with the same Ui:

@@ -8,6 +8,9 @@
 #else
 #include "desktop_linux_test.hpp"
 #include <dlfcn.h>
+#include "linux_window.hpp"
+#include <X11/Xlib.h>
+#undef Status
 #endif
 #include <iostream>
 
@@ -70,6 +73,41 @@ void presentation(DesktopConfig config) {
     host.clientSize(473,321); host.pump(); host.paint(); report("resized");
     check(!host.rendererFailed() && host.compareGpu(473,321,1).passed,"Resize and occlusion keep renderer usable");
 }
+#else
+void x11Presentation(DesktopConfig config) {
+    Ui ui;
+    ScrollState scroll;
+    RendererTestHooks hooks;
+    hooks.startupResultOnce = {"vkAcquireNextImageKHR", 2}; // VK_TIMEOUT
+    unsigned frames = 0, recoveries = 0;
+    config.width = 320;
+    config.height = 240;
+    config.onRendererFailed = [&](Desktop& desktop, const RendererFailure& failure) {
+        check(failure.kind == RendererFailureKind::deviceReset && desktop.rendererFailed(), "Resize reports device loss");
+        check(desktop.rebuildRenderer() && desktop.capabilities().renderBackend == RenderBackendKind::vulkan,
+              "Rebuild the same Vulkan desktop");
+        ++recoveries;
+    };
+    auto result = LinuxDesktopTest::create(ui, webAppearance(), page, scroll, config, &hooks);
+    check(bool(result.desktop), "Create X11 presentation fixture");
+    auto& desktop = *result.desktop;
+    LinuxDesktopTest::observeFrames(desktop, [&](const Frame&, const LinuxClientGeometry& geometry) {
+        if (++frames == 1) {
+            check(!hooks.startupResultOnce, "The timed-out acquire retries and presents");
+            hooks.startupResultOnce = {"vkCreateSwapchainKHR", -4}; // VK_ERROR_DEVICE_LOST
+            auto& window = *desktop.nativeWindow();
+            auto display = static_cast<Display*>(window.display);
+            XResizeWindow(display, window.windowId, 451, 319);
+            XFlush(display);
+        } else if (geometry.width == 451 && geometry.height == 319) {
+            Frame frame;
+            check(recoveries == 1 && LinuxDesktopTest::compareFrame(desktop, 451, 319, geometry.scale, frame).passed,
+                  "Resize recreates the chain and the recovered frame matches the CPU image");
+            desktop.close();
+        }
+    });
+    check(desktop.run().status == Status::ok && recoveries == 1, "Finish the X11 resize and rebuild trial");
+}
 #endif
 int failures(DesktopConfig config) {
     Ui ui;
@@ -88,26 +126,27 @@ int failures(DesktopConfig config) {
     loader.hideVulkanLoader = true;
     auto absent = create(loader);
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
-#ifdef _WIN32
-    {
+    bool connected = true;
+#ifndef _WIN32
+    config.backend = absent.backend;
+    connected = config.backend == DesktopBackendKind::x11;
+#endif
+    if (connected) {
         auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
         if (result.failure && (result.failure->kind == StartupFailureKind::contextVersion ||
             (result.failure->kind == StartupFailureKind::renderBackendUnavailable &&
              result.failure->message.find(u"not connected") == result.failure->message.npos))) return 77;
-        check(bool(result.desktop), "Win32 Vulkan creates a drawable desktop");
+        check(bool(result.desktop), "Vulkan creates a drawable desktop");
         auto caps = result.desktop->capabilities();
         check(caps.renderBackend == RenderBackendKind::vulkan && caps.version.starts_with(u"Vulkan ") &&
             !caps.renderer.empty() && !caps.vendor.empty() && caps.resetDetection, "VK04 Vulkan capabilities");
         std::cout << utf8FromUtf16(caps.renderer) << " / " << utf8FromUtf16(caps.vendor) << " / " << utf8FromUtf16(caps.version) << '\n';
+    } else {
+        auto base = create({});
+        if (base.kind == StartupFailureKind::contextVersion || (base.kind == StartupFailureKind::renderBackendUnavailable &&
+            base.message.find(u"not connected") == base.message.npos)) return 77;
+        check(base.message.find(u"not connected") != base.message.npos, "Native backend handoff");
     }
-#else
-    auto base = create({});
-    std::cout << utf8FromUtf16(base.message) << '\n';
-    if (base.kind == StartupFailureKind::contextVersion || (base.kind == StartupFailureKind::renderBackendUnavailable &&
-        base.message.find(u"not connected") == base.message.npos)) return 77;
-    check(base.kind == StartupFailureKind::renderBackendUnavailable && base.message.find(u"not connected") != base.message.npos,
-          "VK03 qualified device reaches native backend handoff");
-#endif
     auto requirement = [&](RendererTestHooks hooks, std::u16string_view required, std::u16string_view actual = {}) {
         auto failure = create(hooks);
         check(failure.kind == StartupFailureKind::contextVersion && failure.required == required &&
@@ -140,13 +179,19 @@ int failures(DesktopConfig config) {
     inject("vkCreateInstance", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
 #ifdef _WIN32
     presentation(config);
-    inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+#else
+    if (connected) x11Presentation(config);
+#endif
+    if (connected) {
+        inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+    }
+#ifdef _WIN32
     const char* surfaceCall = "vkCreateWin32SurfaceKHR";
 #else
-    const char* surfaceCall = base.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
+    const char* surfaceCall = config.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
 #endif
     inject(surfaceCall, -1000000000, StartupFailureKind::contextCreation, "VK_ERROR_SURFACE_LOST_KHR");
     inject("vkCreateDevice", -4, StartupFailureKind::contextCreation, "VK_ERROR_DEVICE_LOST");

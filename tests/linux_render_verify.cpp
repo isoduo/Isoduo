@@ -164,6 +164,7 @@ void showcase(DesktopConfig config, const Appearance& appearance, std::string_vi
             setup = handles.name.focus() && handles.name.setValue(u"");
             handles.apply.invoke();
             setup &= handles.name.describe()->invalid;
+            reveal = ids.name;
             break;
         case 4:
             setup = bool(handles.region.focus());
@@ -278,8 +279,9 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
         bool setup = bool(demo.ui.setPresentation(settings));
         if (scene == 2 || scene == 7) state.setSystemKeyboardCues(true);
         Frame frame;
+        std::string reveal;
         switch (scene) {
-        case 0: setup &= bool(demo.name.focus()); break;
+        case 0: setup &= bool(demo.name.focus()); reveal = "general.name"; break;
         case 1:
             setup &= demo.name.focus() && demo.name.setValue(u"");
             key(state, Key::tab);
@@ -288,6 +290,7 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
         case 2:
         case 3:
             setup &= demo.nav.select({"items"}) && demo.itemsList.select({"T003"}) && demo.itemsList.focus();
+            if (scene == 2) reveal = "items.list";
             if (scene == 3) setup &= demo.itemsEdit.invoke() && demo.itemDialog.isOpen().value.value_or(false);
             break;
         case 4: {
@@ -313,7 +316,7 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
         const auto name = std::string("SD-") + char('a' + scene) + "-" + std::string(appearanceName) +
             (dark ? "-dark" : "-light") + (scale == 1.f ? "-100" : "-150");
         const auto result = report.compare(name, width, height, scale, setup, [&] {
-            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
+            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 0, reveal);
         });
         if (!result) continue;
         auto has = [&](std::string_view owner, PaintRole role) { return test::hasPaintRole(*result, owner, role); };
@@ -418,11 +421,15 @@ void diagnostics(DesktopConfig config, bool receiver) {
 
 int main(int argc, char** argv) {
     try {
-        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|presentation-matrix|diagnostics|no-receiver> [evidence]");
+        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|presentation-matrix|diagnostics|no-receiver> [evidence] [--vulkan]");
         std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Specify a native desktop backend");
         DesktopConfig config;
         config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
+        if (argc == 5 && std::string_view(argv[4]) == "--vulkan") {
+            config.renderBackend = RenderBackendKind::vulkan;
+            --argc;
+        }
         config.title = u"Isoduo render verification";
         config.width = width;
         config.height = height;
