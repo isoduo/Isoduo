@@ -898,7 +898,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
                 auto at = detail::placementTextHit(frame_, id, x, y);
                 auto cell = detail::placementTextCell(frame_, id, x, y);
-                detail::access(ui_).setClickSettings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
+                claim_.state().setClickSettings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
                 detail::access(ui_).textPointerDown(id, at, cell, x, y, (w & MK_SHIFT) != 0);
                 drag_ = Drag::text;
                 if (!touch) detail::access(ui_).hoverCapture(id);
