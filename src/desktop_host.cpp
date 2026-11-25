@@ -1078,6 +1078,7 @@ struct Desktop::Impl {
     std::unique_ptr<detail::DesktopHost> host;
     DesktopConfig options;
     std::thread::id owner = std::this_thread::get_id();
+    bool running = false;
 };
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
@@ -1107,11 +1108,18 @@ CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appear
       catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16FromUtf8(message),DesktopBackendKind::windows},{}}; }
 }
 RunResult Desktop::run() {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrongThread, {}, {}};
+    if (impl_->running) return {Status::busy, {}, {}};
     auto& host=*impl_->host;
+    if (!host.window()) return {Status::notFound, {}, {}};
+    impl_->running = true;
+    struct RunScope {
+        Impl& impl;
+        ~RunScope() { impl.host->close(); impl.running = false; }
+    } run{*impl_};
     ShowWindow(host.window(),SW_SHOW); SetFocus(host.window()); UpdateWindow(host.window());
     int result=host.run();
     auto failure=host.rendererFailure();
-    host.close();
     if (failure) return {Status::rendererFailed,failure,{}};
     return {result ? Status::failed : Status::ok,{}, {}};
 }
