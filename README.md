@@ -432,11 +432,13 @@ A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `
 
 ## Using Isoduo from another CMake project
 
-Isoduo ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating Isoduo. Install both configurations into one prefix:
+Isoduo ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating Isoduo. In an x64 Visual Studio developer environment, install both configurations into one prefix:
 
 ```powershell
-.\build.ps1 -Configuration Release -Install C:\sdk\Isoduo
-.\build.ps1 -Configuration Debug -Install C:\sdk\Isoduo
+cmake --workflow --preset windows-clang-cl-release
+cmake --install build/Release --prefix C:\sdk\Isoduo
+cmake --workflow --preset windows-clang-cl-debug
+cmake --install build/Debug --prefix C:\sdk\Isoduo
 ```
 
 Then in your project:
@@ -455,16 +457,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\s
 cmake --build build
 ```
 
-Run these commands in a Visual Studio x64 developer environment. Without `build.ps1`, the equivalent framework build and install for each configuration is:
-
-```powershell
-cmake -S . -B build/Release -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release
-cmake --build build/Release
-ctest --test-dir build/Release --output-on-failure
-cmake --install build/Release --prefix C:\sdk\Isoduo
-```
-
-Repeat with `Debug` in the build directory and build type. Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build Isoduo. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. Isoduo itself builds with clang-cl and Ninja.
+Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build Isoduo. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. Isoduo itself builds with clang-cl and Ninja.
 
 Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `Desktop`, and `Diagnostics`. Each appearance and Desktop automatically imports Core. Desktop includes the Windows host, OpenGL, text, UI Automation, FreeType and HarfBuzz. Diagnostics is available in a full desktop build. Without `COMPONENTS`, only Core is imported. All public headers are installed regardless of the selected component; using a Desktop or Diagnostics API requires linking its corresponding target. Draw lists and the rendering backend are internal.
 
