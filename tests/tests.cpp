@@ -15,7 +15,7 @@ void coreBehavior(){
     auto name = ui.addTextField({.id = "name", .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
     auto locked = ui.addTextField({.id = "locked", .value = u"keep", .readOnly = true}).value.value();
     auto run = ui.addButton({.id = "run"}).value.value();
-    ui.addButton({.id = "cancel", .page = "dialog"}).value.value();
+    (void)ui.addButton({.id = "cancel", .page = "dialog"}).value.value();
     name.connectSource({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
     name.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     locked.connectSource({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});
@@ -49,7 +49,7 @@ void coreBehavior(){
     check(bool(name.setValue(u"new")),"Normal callback must finish");
     run.bind([&]{return run.invoke();});
     check(run.invoke().status==Status::busy&&!detail::access(ui).stopped(),"Recursive commands must be rejected without stopping UI");
-    run.bind([]{throw std::runtime_error("extension");return Result{};});
+    run.bind([]() -> Result { throw std::runtime_error("extension"); });
     check(run.invoke().status==Status::failed&&detail::access(ui).stopped(),"Throwing extension stops the affected UI");
     check(name.setValue(u"unsafe").status==Status::failed,"Stopped UI rejects new work");
     Ui bad; bad.addButton({.id="x"}); bool duplicate = bad.addButton({.id="x"}).status == Status::invalidValue;

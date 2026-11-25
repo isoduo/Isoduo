@@ -9,6 +9,7 @@
 // more type in handleKinds::All (examples/consumer/handle_kinds.hpp, shared with the consumer example).
 #include "isoduo/core.hpp"
 #include "check.hpp"
+#include "utf.hpp"
 #include "../examples/consumer/handle_kinds.hpp"
 #include <concepts>
 #include <functional>
@@ -298,7 +299,7 @@ const std::vector<HandleKind>& kinds() {
     };
     return list;
 }
-std::string narrow(std::u16string_view text) { return {text.begin(), text.end()}; }  // the texts checked here are ASCII
+std::string narrow(std::u16string_view text) { return isoduo::detail::utf8FromUtf16(text); }
 // The generic lifetime driver: each operation answers notFound with its text of today.
 void expectGone(const HandleKind& kind, const std::vector<Op>& operations) {
     for (const auto& op : operations) {
