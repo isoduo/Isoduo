@@ -1,11 +1,11 @@
-# V01 最小編輯表單（S1）
+# V01 minimal edit form (S1)
 
 > **Review-fix status (2026-11-05):** Applications and the V01 acceptance driver use typed handles and data connections; native input and geometry checks use the internal host interface. See [rework verification](evidence/rework-verification.md) for the results and limits. The original [verification](evidence/verification.md) records the earlier S1 revision.
 
 
-[S1 實作票 #15](https://github.com/isoduo/Isoduo-issues/issues/15) 的交付：以正式的 C01 標籤、C02 按鈕、C03 單行文字欄位組成最小 V01 編輯表單，分別以 Minimal Web 與 Material-inspired 外觀啟動。兩套外觀共用同一份表單邏輯、編輯狀態及驗收案例；差異只在呈現與部件安排。資料只在記憶體。
+The [S1 implementation ticket #15](https://github.com/isoduo/Isoduo-issues/issues/15) delivers a minimal V01 edit form built with the official C01 label, C02 button, and C03 single-line text field. It runs with both Minimal Web and Material-inspired appearances. The two appearances share the same form logic, editing state, and acceptance cases. Only the presentation and arrangement of parts differ. Data stays in memory.
 
-這不是穩定公開 API。型別與回呼形式仍可能隨 S2–S5 調整。
+The public API is still unstable. Its types and callback signatures may change during S2-S5.
 
 
 ## S3: tabs and page scopes (#21)
@@ -62,56 +62,56 @@ Application code creates these fields through `CheckboxHandle` and `RadioGroupHa
 
 The S1-specific descriptions below are historical where they list only the original text field and focus order. The S2a verification and remaining limits are recorded in [rework verification](evidence/rework-verification.md).
 
-## 建置與啟動
+## Building and running
 
-需要 Visual Studio C++ Build Tools／Windows SDK、clang-cl、CMake 與 Ninja；沿用 repo 內附的 HarfBuzz／FreeType 原始碼，不下載、不使用套件管理器。在 repo 根目錄的 PowerShell 執行：
+You need Visual Studio C++ Build Tools and the Windows SDK, clang-cl, CMake, and Ninja. The build uses the HarfBuzz and FreeType sources bundled in the repository, with no downloads or package manager. Run these commands in PowerShell from the repository root.
 
 ~~~powershell
-.\build.ps1 -Configuration Release          # 建置並執行全部 CTest（含真實視窗的原生驗證）
+.\build.ps1 -Configuration Release          # Build and run all CTests, including native verification with a real window
 .\build\Release\isoduo_edit_form_web.exe       # Minimal Web
 .\build\Release\isoduo_edit_form_material.exe  # Material-inspired
-.\build.ps1 -Configuration Release -CoreOnly  # 只建核心：不建立視窗、不連結 OpenGL／字型
+.\build.ps1 -Configuration Release -CoreOnly  # Build only Core, with no window creation or linking against OpenGL or font libraries
 ~~~
 
-兩個執行檔來自同一份 `main.cpp`，只在組裝時連結不同的外觀函式庫。需要 OpenGL 3.3 core 驅動，以及 Windows 內建的 Segoe UI 與微軟正黑體。
+Both executables use the same `main.cpp` and link different appearance libraries when assembled. They require an OpenGL 3.3 core driver and the Windows fonts Segoe UI and Microsoft JhengHei.
 
-## 畫面與操作
+## Form and interaction
 
-- **名稱欄**：初值「測試使用者」。改名稱只改草稿（「目前編輯值」），不動「上次套用結果」與「套用次數」。
-- **套用**：名稱有效才更新結果並恰好加一次計數。名稱空白或全空白（含全形空白）時，在離焦或套用時顯示「請填寫顯示名稱」，無效套用會聚焦名稱且保留舊結果；修正後錯誤即清除。名稱欄裡按 Enter、IME 確認都不會套用。
-- **測試入口**（資料區停用時仍可用）：正常、名稱唯讀、資料區停用、名稱錯誤、長說明、重設。「重設」恢復初值、清除名稱欄歷史與顯示偏移、頁面捲回頂端，焦點留在重設按鈕。
-- **鍵盤**：Tab／Shift+Tab 依序到達測試入口、名稱、套用並循環，略過停用元件；按鈕上 Enter 按下即啟動、Space 放開才啟動，長按不連發。名稱欄支援 ←／→、Home／End、Shift 選取、Ctrl+A、Backspace／Delete、Ctrl+C／X／V、Ctrl+Z、Ctrl+Y／Ctrl+Shift+Z（只作用於名稱欄本身）。
-- **指標**：按鈕要在按鈕內按下並放開才啟動；按下後移出再放開即取消。名稱欄可點擊定位、拖曳選取、Shift+點擊延伸選取。
+- **Name field.** The initial value is `測試使用者` (test user). Editing the name changes only the draft (`目前編輯值`, current edit value). The last applied result (`上次套用結果`) and apply count (`套用次數`) stay the same.
+- **Apply (`套用`).** A valid name updates the result and increments the count exactly once. If the name is empty or consists only of whitespace, including ideographic spaces, leaving the field or pressing Apply shows `請填寫顯示名稱` (enter a display name). An invalid Apply attempt focuses the name field and keeps the previous result. Correcting the name clears the error. Enter and IME commits in the name field do not trigger Apply.
+- **Test controls.** These remain available when the data area is disabled. The controls are Normal (`正常`), Name read-only (`名稱唯讀`), Disable data area (`資料區停用`), Name error (`名稱錯誤`), Long description (`長說明`), and Reset (`重設`). Reset restores the initial values, clears the name field's history and display offset, scrolls the page to the top, and leaves focus on the Reset button.
+- **Keyboard.** Tab and Shift+Tab cycle through the test controls, the name field, and Apply, skipping disabled components. A button activates on Enter press or Space release, once per press even if held. The name field supports Left/Right, Home/End, Shift selection, Ctrl+A, Backspace/Delete, Ctrl+C/X/V, Ctrl+Z, and Ctrl+Y/Ctrl+Shift+Z. These operations affect only the name field.
+- **Pointer.** A button activates when you press and release inside it. Pressing inside and releasing outside cancels activation. In the name field, click to place the caret, drag to select, or Shift+click to extend the selection.
 
-## 本切片的政策與界線
+## Policies and limits for this slice
 
-| 項目 | 決定 |
+| Item | Decision |
 | --- | --- |
-| 貼上換行 | CRLF 算一個換行，單獨 CR／LF 各算一個，每個換行轉成一個空白；其他控制字元（如 Tab）使整次貼上被拒絕，原文字與歷史不變。 |
-| 歷史粒度 | 一般輸入／刪除每次一筆；一次貼上（含選取取代）、一次剪下、一次 IME 確認各一筆；新編輯清除該欄位的 redo。 |
-| 文字長度上限 | 保留為**公開**的每欄位設定 `ComponentConfig::maxLength`，預設 `isoduo::defaultMaxTextLength = 4096` UTF-16 單位。數值沿用 MVP，但現在寫在公開標頭、可由使用端改；超限的整筆編輯被拒絕，不破壞舊文字及歷史。理由：單行欄位需要有界的輸入，S1 不打算為此另訂數值研究。 |
-| E01 單欄位失焦 | **離焦即提交組字**。依真實微軟注音事件確定：點別的元件或同一欄位，宿主先請 IME 完成組字（`CPS_COMPLETE`），IME 同步送回結果；視窗失去前景時注音自行提交。組字中按 Tab 由 IME 處理（焦點不動、組字保留）；Esc 取消。欄位 Handle 的 `focus()` 在組字中也採同一政策。原型的「離焦取消」不採用。 |
+| Line breaks on paste | CRLF counts as one line break. A lone CR or LF also counts as one, and each break becomes a space. The presence of other control characters, such as Tab, causes the entire paste to be rejected and leaves the original text and history intact. |
+| History granularity | Each ordinary insertion or deletion records one entry. A paste, including replacement of a selection, a cut, or an IME commit each records one entry. A new edit clears the field's redo history. |
+| Text length limit | The **public** per-field setting `ComponentConfig::maxLength` defaults to `isoduo::defaultMaxTextLength = 4096` UTF-16 units. The value comes from the MVP. It is now in a public header and can be changed by the application. An edit that goes over the limit is rejected in full, preserving the previous text and history. Single-line fields need bounded input, and S1 does not call for a separate study of the limit. |
+| E01 focus loss in a single field | **Commit preedit on focus loss.** Real Microsoft Bopomofo events established this policy. When you click another component or the same field, the host first asks the IME to complete preedit (`CPS_COMPLETE`), and the IME returns the result synchronously. When the window leaves the foreground, Bopomofo commits on its own. During preedit, the IME handles Tab, keeping focus and preedit in place. Esc cancels preedit. The field handle's `focus()` follows the same policy during preedit. The prototype's cancel-on-blur policy was dropped. |
 | E01 close | On WM_CLOSE the host asks the IME to complete preedit using the same policy as focus loss. If the IME does not deliver a result synchronously, the remaining preedit is cancelled. |
-| 文字支援邊界（T01） | 預設單行（`ComponentConfig::multiline` 建立時可選多行，見根目錄 README「Multi-line text fields」；本表單的欄位都是單行），由左至右。游標與刪除以 Unicode 碼位為單位，不切開 UTF-16 代理對；繪製與命中以 HarfBuzz cluster 為停駐點。字型：Segoe UI 為主，缺字時改用微軟正黑體（逐碼位選字型），兩者都沒有的字形畫成缺字記號。不支援完整 grapheme cluster、RTL、彩色 emoji。 |
-| 版面（B01–B03） | 提供本展示頁需要的直排／橫排、依最小欄寬自動決定欄數的格線與巢狀捲動區。清單有固定高度視口；鍵盤目標逐層揭露，滾輪在內層到達邊界時可交給外層。窄窗（640 DIP）時結果區移到表單下方。 |
+| Text support limits (T01) | Text is left-to-right and single-line by default. Use `ComponentConfig::multiline` at creation to opt into multiple lines (see "Multi-line text fields" in the root README). This form uses single-line fields. Caret movement and deletion work by Unicode code point and keep UTF-16 surrogate pairs intact. Drawing and hit testing use HarfBuzz cluster boundaries as stops. Segoe UI is the primary font, with Microsoft JhengHei as a fallback selected per code point. If neither font contains a glyph, a missing-glyph marker is drawn. Full grapheme cluster support, RTL, and color emoji are out of scope. |
+| Layout (B01-B03) | The demo provides columns, rows, grids that determine the column count from the minimum column width, and nested scroll regions. The list has a fixed-height viewport. Keyboard targets are revealed through each enclosing scroll region. When the inner region reaches its boundary, wheel input can pass to the outer region. At a narrow window width (640 DIP), the results move below the form. |
 
-## 驗證
+## Verification
 
 The V01 behavior cases drive the assembled form through public handles; native keyboard, pointer, focus traversal and geometry checks use the host/test interface. The independent consumer also checks that string-ID layout and operations are unavailable.
 
-| 入口 | 內容 |
+| Entry point | Coverage |
 | --- | --- |
-| CTest `components`、`layout`、`edit_form` | 核心公開操作、版面與表單驗收；不建立視窗、不需要字型或 GPU。表單案例以「兩套外觀 × 兩組不同邏輯識別」各跑一次。 |
+| CTest `components`, `layout`, `edit_form` | Core public operations, layout, and form acceptance. These tests create no windows and require no fonts or GPU. The form cases run once for each combination of two appearances and two distinct sets of logical IDs. |
 | Clipboard stress | `isoduo_host_verify --clipboard-only --repeat 100 --evidence DIR` repeats the native copy/paste case and a short forced-contention case for both appearances. |
-| CTest `consumer_example` | 以獨立 CMake 專案（[examples/consumer](../consumer)）只透過公開 target 與 `include/` 組出另一張表單並執行。 |
-| CTest `host_native` | `isoduo_host_verify --evidence DIR`：真實 Win32 視窗，鍵盤與滑鼠訊息經宿主自己的 `TranslateMessage`／`DispatchMessage` 派送；兩套外觀；960×720／640×480 DIP × 100%／150% 離屏排版與截圖。不會搶前景。 |
-| 手動執行 | `isoduo_host_verify --ime --evidence DIR`：以 `SendInput` 驅動**真實微軟注音**與真實鍵盤，約 3 分鐘內會接管鍵盤與滑鼠；只要前景視窗不是測試視窗就立即停止送鍵。需要已安裝繁體中文（注音）輸入法。 |
-| 真實 DPI | `isoduo_host_verify --dpi --evidence DIR`：使用前兩個依水平位置排序的螢幕，移動前景視窗並觀察實際 `WM_DPICHANGED`、選取、實體點擊、組字、游標查詢、候選窗定位請求及下拉彈出層。需要不同縮放的螢幕及微軟注音；這會移動視窗並短暫操作鍵盤與指標。候選窗的實際畫面位置仍需目視驗證。 |
+| CTest `consumer_example` | An independent CMake project ([examples/consumer](../consumer)) builds and runs another form using only the public targets and `include/`. |
+| CTest `host_native` | `isoduo_host_verify --evidence DIR` uses a real Win32 window, with keyboard and mouse messages dispatched through the host's own `TranslateMessage` and `DispatchMessage`. It checks both appearances with offscreen layout and screenshots at 960 x 720 and 640 x 480 DIP, each at 100% and 150%. It does not take the foreground. |
+| Manual run | `isoduo_host_verify --ime --evidence DIR` drives **real Microsoft Bopomofo** and real keyboard input with `SendInput`. It takes over the keyboard and mouse for up to about three minutes and stops sending keys immediately if the test window loses the foreground. The Traditional Chinese (Bopomofo) input method must be installed. |
+| Real DPI | `isoduo_host_verify --dpi --evidence DIR` uses the first two displays sorted by horizontal position. It moves the foreground window and checks real `WM_DPICHANGED` messages, selection, physical clicks, preedit, caret queries, candidate window positioning requests, and the dropdown popup. It requires displays with different scaling and Microsoft Bopomofo, moves the window, and briefly operates the keyboard and pointer. The candidate window's actual screen position still requires visual verification. |
 
-驗收紀錄、工具鏈與代表畫面見 [evidence/rework-verification.md](evidence/rework-verification.md)。
+See [evidence/rework-verification.md](evidence/rework-verification.md) for the acceptance record, toolchain, and representative screenshots.
 
 Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.
 
 ## Justified text comparison (#84)
 
-The 呈現設定 page (V04) ends with a mixed Chinese, English and digit paragraph (a label, justified at first) and two dropdowns: 對齊 (靠左／置中／靠右／左右對齊／分散對齊) and 對齊方法 (自動／只拉空格／每字元). Choosing from them sets the label's `textAlign` and `justifyMethod` live, so the project author can compare every alignment and method at any window width. Below it, a short label `姓　名` is distributed next to the same label left-aligned. The paragraph is left-aligned while the user setting `PresentationSettings::justifyAsLeft` is on (the settings demo has the checkbox).
+The presentation settings page (`呈現設定`, V04) ends with an initially justified label containing a paragraph in mixed Chinese, English, and digits, along with two dropdowns. Alignment (`對齊`) offers left (`靠左`), center (`置中`), right (`靠右`), justified (`左右對齊`), and distributed (`分散對齊`). Justification method (`對齊方法`) offers automatic (`自動`), spaces only (`只拉空格`), and per character (`每字元`). Choosing from them sets the label's `textAlign` and `justifyMethod` live, so the project author can compare every alignment and method at any window width. Below it, a short label `姓　名` (surname and given name) is distributed next to the same label left-aligned. The paragraph is left-aligned while the user setting `PresentationSettings::justifyAsLeft` is on (the settings demo has the checkbox).

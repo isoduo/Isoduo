@@ -11,7 +11,7 @@
   bumps `project(Isoduo VERSION 0.Y.Z)` to `0.(Y+1).0` in the same PR when any `0.Y` version already has a
   published or draft release. `find_package(Isoduo 0.Y)` accepts every `0.Y.z`. A deleted draft does not undo the bump.
 
-## 公開名稱 (public names)
+## Public names
 
 All Isoduo C++ names across the repository (public headers, implementation, tests, examples, demo and showcase), and
 comments referring to them, follow the rules below. A renamed name keeps no alias. The
