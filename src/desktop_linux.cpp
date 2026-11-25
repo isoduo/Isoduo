@@ -642,6 +642,10 @@ CreateResult LinuxDesktopTest::create(Ui& ui, const Appearance& appearance, std:
         return {Status::failed, StartupFailure{StartupFailureKind::resource, {}, {}, utf16FromUtf8(error.what()), backend}, {}};
     }
 }
+bool LinuxDesktopTest::x11InputMethodOpen(const Desktop& desktop) {
+    const auto& window = desktop.impl_->window;
+    return window && window->x11InputMethodOpen();
+}
 GpuComparison LinuxDesktopTest::compareDrawList(Desktop& desktop, const DrawList& list, int width, int height) {
     return detail::compareDrawList(*desktop.impl_->renderer, list, width, height);
 }
