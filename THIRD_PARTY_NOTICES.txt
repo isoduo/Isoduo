@@ -605,7 +605,7 @@ Unicode Character Database 18.0.0 (Vertical_Orientation)
 License: Unicode License v3
 Source: https://www.unicode.org/Public/18.0.0/ucd/VerticalOrientation.txt
 SHA256: 0803e09669d7aa7137de678e55b848bd418c6632694fa1b05f0b40941103c748
-Use: the Vertical_Orientation property of UAX #50 decides which characters stand upright and which turn when a label is set vertically; src/vertical_orientation_data.inc is generated from this file by third_party/unicode/gen_vertical_orientation.py.
+Use: the Vertical_Orientation property of UAX #50 decides which characters stand upright and which turn when a label is set vertically; src/vertical_orientation_data.inc is generated from this file by third_party/unicode/gen_vertical_orientation.cmake.
 License text: https://www.unicode.org/license.txt (SHA256 e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96)
 ------------------------------------------------------------------------ LICENSE-UNICODE-V3.txt
 UNICODE LICENSE V3

@@ -49,7 +49,7 @@ void multiLineCopy(HWND window, isoduo::detail::WindowsClipboard& clipboard) {
     check(windowsText == u"one\r\ntwo", "the shared predicate gives Windows CRLF");
     isoduo::Ui ui;
     auto field = ui.addTextField({.id = "note", .value = u"one\ntwo", .multiline = true, .visibleLines = 2}).value.value();
-    check(bool(field.connectSource({[] { return std::u16string(u"one\ntwo"); }, [](std::function<void()>) { return [] {}; }})) &&
+    check(bool(field.connectSource({[] { return std::u16string(u"one\ntwo"); }, test::ignoreNotifications})) &&
           bool(field.connectConfirmed([](const auto&) { return isoduo::Result{}; })), "connect the field");
     auto& host = isoduo::detail::access(ui);
     host.setClipboard(&clipboard);

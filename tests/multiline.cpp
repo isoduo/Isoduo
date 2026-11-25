@@ -30,7 +30,7 @@ TextFieldHandle connect(Ui& ui, ComponentConfig control) {
     auto query = ui.addTextField(std::move(control));
     check(bool(query), "Create the text field");
     auto field = *query;
-    check(bool(field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
+    check(bool(field.connectSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a source");
     check(bool(field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
@@ -151,7 +151,8 @@ void aSourceValueWithCarriageReturnIsIgnored() {
     auto model = std::make_shared<std::u16string>(u"a\nb");
     std::function<void()> notify;
     auto field = *ui.addTextField(multi("note", u"a\nb"));
-    check(bool(field.connectSource({[model] { return *model; }, [&](std::function<void()> cb) { notify = cb; return [] {}; }})), "Connect a source");
+    const auto connected = field.connectSource({[model] { return *model; }, [&](std::function<void()> cb) { notify = cb; return [] {}; }});
+    check(bool(connected), "Connect a source");
     *model = u"c\rd"; notify();
     check(valueOf(ui, "note") == u"a\nb", "An invalid source value is ignored like any invalid value");
     *model = u"c\nd"; notify();

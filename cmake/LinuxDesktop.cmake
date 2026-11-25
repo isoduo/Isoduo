@@ -100,7 +100,6 @@ if(ISODUO_BUILD_TESTS)
   target_include_directories(isoduo_linux_clipboard_native PRIVATE src)
   target_link_libraries(isoduo_linux_clipboard_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 
-  # Run linux_accessibility_client.py in a native session or use its headless text fixture.
   add_executable(isoduo_linux_accessibility_host tests/linux_accessibility_host.cpp)
   isoduo_target(isoduo_linux_accessibility_host)
   target_include_directories(isoduo_linux_accessibility_host PRIVATE src)

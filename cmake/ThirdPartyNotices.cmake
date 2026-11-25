@@ -67,7 +67,7 @@ foreach(name glcorearb khrplatform)
   endif()
 endforeach()
 section("Unicode Character Database ${unicode_vo_VERSION} (Vertical_Orientation)")
-string(APPEND notice "License: Unicode License v3\nSource: ${unicode_vo_URL}\nSHA256: ${unicode_vo_SHA256}\nUse: the Vertical_Orientation property of UAX #50 decides which characters stand upright and which turn when a label is set vertically; src/vertical_orientation_data.inc is generated from this file by third_party/unicode/gen_vertical_orientation.py.\nLicense text: ${unicode_license_URL} (SHA256 ${unicode_license_SHA256})\n")
+string(APPEND notice "License: Unicode License v3\nSource: ${unicode_vo_URL}\nSHA256: ${unicode_vo_SHA256}\nUse: the Vertical_Orientation property of UAX #50 decides which characters stand upright and which turn when a label is set vertically; src/vertical_orientation_data.inc is generated from this file by third_party/unicode/gen_vertical_orientation.cmake.\nLicense text: ${unicode_license_URL} (SHA256 ${unicode_license_SHA256})\n")
 append_file("LICENSE-UNICODE-V3.txt" "${ROOT}/third_party/unicode/LICENSE-UNICODE-V3.txt" FALSE)
 # CMake writes text files with native CRLF on Windows; notices must use LF.
 function(write_lf path content)

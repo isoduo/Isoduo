@@ -1,6 +1,6 @@
 # Settings demo
 
-The web and material executables share navigation, settings persistence, undo and redo, About information and semantic access. Windows also provides UIA access and the native renderer recovery prompts. Clipboard, IME and DPI checks require an idle desktop.
+The web and material executables share navigation, settings persistence, undo and redo, About information and semantic access. Windows also provides UIA access and the native renderer recovery prompts.
 
 ## Running on Linux
 
@@ -8,21 +8,10 @@ Build with the [Linux native desktop configuration](../../README.md#linux-native
 
 Use `--settings-dir "path with spaces"` to read and save settings in a separate directory. About displays the selected file. A missing file starts with defaults. A malformed file is moved to `settings.json.bad` when possible. If a save fails, the dialog shows the reason and you can retry with your edits intact.
 
-To copy a legacy Linux settings directory, run `python3 tools/migrate-settings.py` from the source root. It copies `LcarsUI/SettingsDemo` to `Isoduo/SettingsDemo` under the same XDG configuration root, including nested and hidden backups. The source is retained. Use `--config-root <directory>` to select a separate configuration root. Migration refuses an existing destination and leaves backup-only inputs as backups. The Windows migration command remains `tools/migrate-settings.ps1`.
-
-
 The **Appearance and Text** page has an **Accent Color** dropdown (`appearance.accent`) with **Default**, **Green**, and **Orange** choices. Each choice is a palette override list (`Ui::setPaletteOverrides`) that sets `accent`, `on_accent` and `selection` for both appearances in light and dark; every choice passes the contrast rules. The choice is saved as `presentation.accent` in `settings.json`; files without that field load as the default, and **Reset Appearance Defaults** resets it too.
 
 The **Appearance and Text** page also has five components for the focus ring (#90). The **Focus Indicator** dropdown (`appearance.focus_mode`) offers **Automatic**, **Always**, and **Off** (`FocusIndicatorMode::never`). The **Focus Ring Width** slider (`appearance.focus_width`) ranges from 2-6 DIP. The **Match Component Corner Radius** checkbox (`appearance.focus_radius_same`) shows the **Focus Ring Corner Radius** slider (`appearance.focus_radius`, 0-32 DIP) when unchecked. The **Focus Ring Color** dropdown (`appearance.focus_color`) defaults to the accent. Green and orange override the palette role `focus`, each passing the 3:1 rule on every surface. With the indicator off, the four styling components are disabled and keep their values. They are saved in `presentation` as `focusIndicator`, `focusRingWidth` / `focusRingRadius` (a number, or `null` for the appearance's / component's own) and `focusColor`. Files without them load the defaults. An unknown or out-of-range value makes the whole file corrupt, as for the accent. The **Reset Appearance Defaults** button resets them too.
 
 The **Appearance and Text** page also has the **Align Justified Text to the Left** checkbox (`appearance.justify_left`). It is `PresentationSettings::justifyAsLeft` (WCAG 1.4.8, see "Justified text" in the top-level README): while it is on, every justified or distributed text is drawn left-aligned. It is saved as `presentation.justifyAsLeft` in `settings.json` (files without it load as off) and the **Reset Appearance Defaults** button turns it off. The About page's license text is left-aligned.
 
-Right-clicking a row on the Items page selects it and opens a menu with **Edit** and **Delete**. Their access keys are E and D, and their shortcut hints are Enter and Del. They run the same actions as the corresponding buttons. Every text field has the built-in edit menu. Opening a menu with the real mouse, keyboard and Narrator is part of the author trial.
-## Vertical label author trial
-
-The About page shows a vertical-writing label (`about.vertical`, the sample sentence `Isoduo 設定管理示範（第 12 版），謹此致謝。`). Automated checks cover the geometry, the pixels of every piece in three JhengHei weights, the CPU/OpenGL agreement and the UIA name and box; looking at it on the author's machine is the author's confirmation. In both executables (`isoduo_settings_demo_web`, `isoduo_settings_demo_material`), light and dark theme, open **About** and check:
-
-1. Punctuation: the comma and the period sit in the middle of their cells; the parentheses face up and down.
-2. Latin and digits: `Isoduo` is turned clockwise and reads downward; `12` sits side by side in one cell, no wider than a character.
-3. Columns run from right to left; the first column starts with `Isoduo`.
-4. Change the text size and the display scale (move the window between monitors, or change the scale in Windows settings): the columns reflow and nothing is cut off; when the window is narrow the label scrolls sideways (wheel, Shift+wheel, thumb, Left/Right after Tab focus).
+Right-clicking a row on the Items page selects it and opens a menu with **Edit** and **Delete**. Their access keys are E and D, and their shortcut hints are Enter and Del. They run the same actions as the corresponding buttons. Every text field has the built-in edit menu.

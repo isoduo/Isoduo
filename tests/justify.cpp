@@ -281,7 +281,7 @@ std::size_t laidSegments(Ui& ui, const LabelHandle& handle) {
 TextFieldHandle fieldOf(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.addTextField(std::move(control));
-    check(bool(field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
+    check(bool(field.connectSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a source");
     check(bool(field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
@@ -478,7 +478,7 @@ TextFieldHandle richFieldOf(Ui& ui, ComponentConfig control, std::vector<StyleSp
     control.rich = true;
     auto model = std::make_shared<RichText>(RichText{control.value, std::move(spans)});
     auto field = *ui.addTextField(std::move(control));
-    check(bool(field.connectRichSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
+    check(bool(field.connectRichSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a rich source");
     check(bool(field.connectRichConfirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; })), "Connect a rich write");
     return field;
 }

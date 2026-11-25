@@ -462,7 +462,7 @@ void semanticWrongThreadDrivers() {
                         if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
                                       std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>) return h.select(*ref.item).status;
                         else if constexpr (std::is_same_v<T, TabsHandle>) return h.activate(*ref.item).status;
-                        return {};
+                        else return {};
                     }
                     if (verb == Verb::focus) { if constexpr (requires { h.focus(); }) return h.focus().status; }
                     if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
@@ -2686,10 +2686,10 @@ void popupAndScrollMatrix() {
         if (beforeModal.maximum > 0) {
             int current = form.scroll.offset;
             int next = current < beforeModal.maximum ? current + 1 : current - 1;
-            auto viewport = beforeModal.regions.front().clip;
+            auto pageClip = beforeModal.regions.front().clip;
             int delta = next > current ? -1 : 1;
             check(!beforeModal.scrollTo(form.ui, form.scroll, next) &&
-                  !beforeModal.wheel(form.ui, viewport.x + 1, viewport.y + 1, delta) && form.scroll.offset == current,
+                  !beforeModal.wheel(form.ui, pageClip.x + 1, pageClip.y + 1, delta) && form.scroll.offset == current,
                   "X02 a newly opened modal blocks scrolling through the preceding frame");
         }
         auto dialog = draw();
