@@ -72,6 +72,13 @@ foreach(config IN LISTS configs)
   set(required_tests profile_alias)
   if(DESKTOP)
     list(APPEND required_tests notices_smoke)
+  else()
+    execute_process(COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${binary}" -C "${config}"
+      -R "^notices_smoke$" --show-only=json-v1 OUTPUT_VARIABLE listing COMMAND_ERROR_IS_FATAL ANY)
+    string(JSON notices_tests LENGTH "${listing}" tests)
+    if(notices_tests)
+      message(FATAL_ERROR "Core consumer registered the desktop-only notices_smoke test")
+    endif()
   endif()
   foreach(test IN LISTS required_tests)
     execute_process(COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${binary}" -C "${config}"
