@@ -16,9 +16,8 @@ file(ARCHIVE_EXTRACT INPUT "${work}/glslang.zip" DESTINATION "${work}/glslang")
 find_program(compiler glslang PATHS "${work}/glslang/bin" NO_DEFAULT_PATH REQUIRED)
 find_program(validator spirv-val PATHS "${sdk}/Bin" NO_DEFAULT_PATH REQUIRED)
 find_file(layer VkLayer_khronos_validation.json PATHS "${sdk}/Bin" NO_DEFAULT_PATH REQUIRED)
-file(TO_CMAKE_PATH "${work}" work)
-file(APPEND "$ENV{GITHUB_ENV}" "VK_LAYER_PATH=${work}/sdk/Bin\n")
-file(APPEND "$ENV{GITHUB_PATH}" "${work}/glslang/bin\n")
+cmake_path(NATIVE_PATH sdk NORMALIZE sdk_native)
+file(APPEND "$ENV{GITHUB_ENV}" "VK_LAYER_PATH=${sdk_native}\\Bin\n")
 # Supply exact paths to CMake even when another SDK is already on PATH.
 file(WRITE "${work}/tools.cmake"
   "set(glslang_tool [==[${compiler}]==] CACHE FILEPATH \"\")\n"
