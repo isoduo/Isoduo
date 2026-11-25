@@ -2,6 +2,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
+#include "renderer_vulkan.hpp"
 #include "pointer_routing.hpp"
 #include "uia_provider.hpp"
 #include <windowsx.h>
@@ -258,6 +259,7 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         throw StartupError{{StartupFailureKind::window, {}, {}, u"Window creation failed"}};
     }
     try {
+        if (options.renderBackend == RenderBackendKind::vulkan) startVulkan(window_, hooks_);
         if (hooks_ && !hooks_->startupResourceError.empty()) throw std::runtime_error(hooks_->startupResourceError);
         if (options.platformAccessibilityEnabled) uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
             RECT client{}; GetClientRect(window_, &client);

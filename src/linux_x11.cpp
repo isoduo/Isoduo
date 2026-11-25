@@ -42,9 +42,10 @@ public:
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"X11 client dimensions exceed the protocol limit"}};
             geometry_.width = std::max(1, static_cast<int>(width));
             geometry_.height = std::max(1, static_cast<int>(height));
-            egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_X11_KHR, display_);
+            if (config.renderBackend == RenderBackendKind::openGL)
+                egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_X11_KHR, display_);
             XVisualInfo match{};
-            match.visualid = egl_->visualId();
+            match.visualid = egl_ ? egl_->visualId() : XVisualIDFromVisual(DefaultVisual(display_, DefaultScreen(display_)));
             match.screen = DefaultScreen(display_);
             int count = 0;
             std::unique_ptr<XVisualInfo, decltype(&XFree)> visual(
@@ -79,7 +80,7 @@ public:
             XkbSetDetectableAutoRepeat(display_, True, &detectable);
             detectableRepeat_ = detectable;
             XSync(display_, False);
-            egl_->nativeWindow(&window_);
+            if (egl_) egl_->nativeWindow(&window_);
             reference_ = {DesktopBackendKind::x11, display_, nullptr, window_};
         } catch (...) {
             release();

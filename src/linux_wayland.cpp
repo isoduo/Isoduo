@@ -69,10 +69,12 @@ public:
             wl_surface_commit(surface_);
             if (!waitFor(configured_, deadline))
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"Wayland did not configure the initial window"}};
-            eglWindow_ = wl_egl_window_create(surface_, geometry_.width, geometry_.height);
-            if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
-            egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
-            egl_->nativeWindow(eglWindow_);
+            if (config.renderBackend == RenderBackendKind::openGL) {
+                eglWindow_ = wl_egl_window_create(surface_, geometry_.width, geometry_.height);
+                if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
+                egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
+                egl_->nativeWindow(eglWindow_);
+            }
             reference_ = {DesktopBackendKind::wayland, display_, surface_, 0};
         } catch (...) {
             release();

@@ -46,9 +46,22 @@ two files, update `cmake/ThirdPartyManifest.cmake`, run the generator with the n
 cmake -DSOURCE=third_party/unicode/VerticalOrientation-18.0.0.txt -DTARGET=src/vertical_orientation_data.inc -P third_party/unicode/gen_vertical_orientation.cmake
 ```
 
+## Vulkan headers
+
+The private Vulkan-Headers subset is pinned to `vulkan-sdk-1.4.363.0`, commit
+`6802bb4733b63ed5efd3adb308a6c885ef180ea1`. The file inventory and checksums are in
+`cmake/ThirdPartyManifest.cmake`.
+Source: https://github.com/KhronosGroup/Vulkan-Headers/tree/6802bb4733b63ed5efd3adb308a6c885ef180ea1
+
 # CI-only tools
 
 - mesa-dist-win 26.2.5 MSVC, used only for Windows llvmpipe CI, not distributed with Isoduo:
   https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
   SHA256 `997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2`
   Version 26.2.6's MSVC package omits OpenGL because of its documented build regression.
+
+- glslang 16.6.0 release binaries for shader regeneration:
+  - https://github.com/KhronosGroup/glslang/releases/download/16.6.0/glslang-16.6.0-windows-x86_64-release.zip
+    SHA256 `82bf434e69b9bb4829de7e2b4bc2c5e7a7861e53d66cf75e5cc70f5f694a8d9b`
+  - https://github.com/KhronosGroup/glslang/releases/download/16.6.0/glslang-16.6.0-linux-x86_64-release.tar.gz
+    SHA256 `2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce`
