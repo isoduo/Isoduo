@@ -16,13 +16,13 @@ diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 
 ## Linux core build and tests
 
-With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout or an unpacked source archive:
+With CMake 3.25 or newer, Ninja, and Clang or GCC with C++20 standard-library headers and a linker already on the Linux system, run from the checkout or an unpacked source archive:
 
 ```sh
 cmake --workflow --preset linux-clang-release-core
 ```
 
-The workflow builds the core from the checked-in sources and runs the headless CTest suite. Use `linux-clang-debug-core` for Debug. Each preset writes to its own directory under `build/`.
+The workflow builds the core from the checked-in sources and runs the headless CTest suite. Use `linux-clang-debug-core` for Debug. With GCC, use `linux-gcc-release-core` or `linux-gcc-debug-core`. Each preset writes to its own directory under `build/`.
 
 On Linux or WSL with unprivileged user and network namespaces enabled, configure, build and test without network access using:
 
@@ -73,7 +73,7 @@ cmake --workflow --preset linux-clang-release
 ./build/linux-clang-release/isoduo_edit_form_web
 ```
 
-The desktop workflow builds without running tests. Use `linux-clang-debug` for Debug.
+The desktop workflow builds without running tests. Use `linux-clang-debug` for Debug. With GCC, use `linux-gcc-release` or `linux-gcc-debug`.
 
 `DesktopConfig::backend` is a `std::optional<DesktopBackendKind>` and is empty by
 default, which selects the backend automatically. On Linux this
