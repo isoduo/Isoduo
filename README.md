@@ -157,13 +157,19 @@ animation setting or its enabled default. The headless `linux_fonts` and
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
 
 ```powershell
-.\build.ps1 -Configuration Release
+cmake --workflow --preset windows-clang-cl-release
 .\build\Release\isoduo_edit_form_web.exe
 .\build\Release\isoduo_edit_form_material.exe
-.\build.ps1 -Configuration Release -CoreOnly
+cmake --workflow --preset windows-clang-cl-release-core
 ```
 
-`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
+Run these commands in an x64 Visual Studio Developer Command Prompt. Replace
+`release` with `debug` for a Debug build. Each workflow configures, builds and
+runs CTest. For a build only, run `cmake --preset <name>` followed by
+`cmake --build --preset <name>`. Use `ctest --preset <name> -R <regex>` to run
+selected tests. Install with `cmake --install build/Release --prefix <path>`,
+using `build/Release-core`, `build/Debug` or `build/Debug-core` for the other variants.
+For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
 
 The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
@@ -513,9 +519,9 @@ material with temporary settings. Each case writes a result to
 - **RI03** Drag the items page scrollbar thumb and verify steady motion and the stop at the end of travel.
 - **RI04** Open the note color dropdown at a 660 px window width and confirm that the modal blocks a page thumb drag. The modal's 20 DIP margin prevents the dropdown from covering the page scrollbar in this demo. The CTest `pointer_routing` case `anOpenDialogBlocksThePageScrollbarUnderItsComponents` exercises the overlap.
 
-`build.ps1` records the built commit and working-tree dirty flag in
-`build/<Configuration>/source-revision.txt`; in a source archive without `.git`
-it builds without this file. The real-input and presentation
+CMake records the commit and working-tree dirty flag at configure time in the
+build directory's `source-revision.txt`. When Git or the checkout metadata is
+unavailable, both fields contain `unknown`. The real-input and presentation
 runs copy the Release file into their evidence directories and warn when the
 recorded commit differs from current HEAD.
 
