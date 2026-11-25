@@ -21,3 +21,4 @@ Ticket #37 reviews the Vulkan mapping in spec #32. Coordinates remain physical p
 The spec's instanced-buffer batching was an engineering proposal. This slice uses one generated quad per command, uploads complete atlas pages once for a fitting frame, and segments overflow one glyph at a time. Command order and pixel semantics are unchanged. Performance work remains for S7.
 
 Host changes require idle-desktop clipboard, IME and DPI checks using `verify-idle.ps1`; the coordinator schedules those runs.
+
