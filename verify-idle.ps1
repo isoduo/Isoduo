@@ -14,7 +14,7 @@ if ($Only.Count -eq 1 -and $Only[0] -eq 'v1-final') {
     exit $LASTEXITCODE
 }
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot 'build/Release/evidence/idle' }
-if (-not $EvidenceDir) { $EvidenceDir = Join-Path $PSScriptRoot 'examples/edit_form/evidence/final-b5535b6' }
+if (-not $EvidenceDir) { $EvidenceDir = $OutDir }
 $selected = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
 if (-not $selected.Count -or @($selected | Where-Object { $_ -notin @('clipboard', 'ime', 'dpi', 'perf', 'presentation', 'real-input', 'uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia', 'demo') }).Count) {
     throw '-Only contains an unknown verification selection'
@@ -161,12 +161,12 @@ foreach ($name in @('clipboard', 'ime', 'dpi', 'presentation')) {
         $unavailable = 0; $reported = 0
         $folder = Join-Path $OutDir $name
         if ($name -eq 'dpi' -and $count -gt 1) { $folder = Join-Path $folder "run-$i" }
-        if ($DryRun) {
+        $tsv = Join-Path $folder "$name.tsv"
+        if ($DryRun -and $PSBoundParameters.ContainsKey('EvidenceDir')) {
             $sourceName = if ($name -eq 'dpi') { 'dpi-window' } else { $name }
             $tsv = Join-Path (Join-Path $EvidenceDir $sourceName) "$name.tsv"
-        } else {
+        } elseif (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $folder | Out-Null
-            $tsv = Join-Path $folder "$name.tsv"
             # Avoid counting an old report if the verifier aborts before creating one.
             if (Test-Path -LiteralPath $tsv) { Remove-Item -LiteralPath $tsv }
             # @() keeps a single flag as an array so += appends instead of concatenating strings.

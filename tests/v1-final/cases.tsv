@@ -28,4 +28,4 @@ DG05	manual	verify-v1-final.ps1	RenderDoc capture with component groups
 DG03	manual	verify-v1-final.ps1	Debugger output of OutputDebugStringW
 TD01	manual	verify-v1-final.ps1	TDR screenshots and diagnostics
 RF06	manual	verify-v1-final.ps1	TDR screenshots and diagnostics
-UT01	manual	verify-v1-final.ps1	examples/settings_demo/evidence/v1/trial-*.md
+UT01	manual	verify-v1-final.ps1	Completed trial records for both appearances
