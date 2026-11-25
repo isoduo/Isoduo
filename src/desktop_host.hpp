@@ -136,6 +136,8 @@ private:
     std::function<CloseDecision()> closeCallback_;
     std::thread::id owner_ = std::this_thread::get_id();
     RendererTestHooks* hooks_ = nullptr;
+    RenderBackendKind renderBackend_ = RenderBackendKind::openGL;
+    std::unique_ptr<Renderer> createRenderer();
     DebugContext debugContext_ = DebugContext::buildDefault;
     RendererCapabilities capabilities_;
     std::optional<RendererFailure> rendererFailure_;

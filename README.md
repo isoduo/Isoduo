@@ -330,7 +330,23 @@ same controls with their values, focus and page selection preserved.
 
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
-The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+The Windows host supports OpenGL 3.3 (default) and Vulkan 1.3 and exposes a UI Automation provider.
+The edit form and settings demo accept `--render-backend opengl|vulkan`. Vulkan requires a system loader,
+dynamic rendering, synchronization2, and a device that can present an RGBA8 or BGRA8 UNORM swapchain to the window.
+Applications can handle an unavailable Vulkan backend explicitly and retry with the same Ui:
+
+```cpp
+isoduo::DesktopConfig config;
+config.renderBackend = isoduo::RenderBackendKind::vulkan;
+auto result = isoduo::Desktop::create(ui, appearance, page, scroll, config);
+if (result.failure && (result.failure->kind == isoduo::StartupFailureKind::renderBackendUnavailable ||
+                       result.failure->kind == isoduo::StartupFailureKind::contextVersion)) {
+    config.renderBackend = isoduo::RenderBackendKind::openGL;
+    result = isoduo::Desktop::create(ui, appearance, page, scroll, config);
+}
+```
+
+MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
 ## Motion (animations)
 

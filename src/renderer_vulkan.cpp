@@ -10,6 +10,8 @@
 #include <dlfcn.h>
 #endif
 #include <vulkan/vulkan.h>
+#include <cstring>
+#include <limits>
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -107,6 +109,7 @@ struct Session {
 #else
     void* library = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
 #endif
+    bool debugUtils = false;
     PFN_vkGetInstanceProcAddr lookup{};
     VkInstance instance{};
     VkSurfaceKHR surface{};
@@ -147,14 +150,16 @@ struct Session {
 #endif
         if (!lookup) unavailable("Missing vkGetInstanceProcAddr");
     }
-    void loadInstanceFunctions() {
+    void loadInstanceFunctions(bool surfaceNeeded) {
         getPhysicalDeviceProperties = function<PFN_vkGetPhysicalDeviceProperties>("vkGetPhysicalDeviceProperties");
         getPhysicalDeviceFeatures2 = function<PFN_vkGetPhysicalDeviceFeatures2>("vkGetPhysicalDeviceFeatures2");
         enumerateDeviceExtensionProperties = function<PFN_vkEnumerateDeviceExtensionProperties>("vkEnumerateDeviceExtensionProperties");
         getPhysicalDeviceQueueFamilyProperties = function<PFN_vkGetPhysicalDeviceQueueFamilyProperties>("vkGetPhysicalDeviceQueueFamilyProperties");
+        if (surfaceNeeded) {
         getPhysicalDeviceSurfaceSupportKHR = function<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>("vkGetPhysicalDeviceSurfaceSupportKHR");
         getPhysicalDeviceSurfaceFormatsKHR = function<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>("vkGetPhysicalDeviceSurfaceFormatsKHR");
         destroySurfaceKHR = function<PFN_vkDestroySurfaceKHR>("vkDestroySurfaceKHR");
+        }
         createDevice = function<PFN_vkCreateDevice>("vkCreateDevice");
         getDeviceProcAddr = function<PFN_vkGetDeviceProcAddr>("vkGetDeviceProcAddr");
     }
@@ -176,7 +181,7 @@ const char* platformExtension(VulkanWindow window) {
     return window.backend == DesktopBackendKind::wayland ? VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME : VK_KHR_XCB_SURFACE_EXTENSION_NAME;
 #endif
 }
-std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks) {
+std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks, bool surfaceNeeded = true) {
     auto getVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(s.lookup(nullptr, "vkEnumerateInstanceVersion"));
     uint32_t version = VK_API_VERSION_1_0;
     if (getVersion) check("vkEnumerateInstanceVersion", getVersion(&version));
@@ -187,7 +192,7 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     const char* required[] = {VK_KHR_SURFACE_EXTENSION_NAME, platformExtension(window)};
     const char* missingExtension = nullptr;
     for (auto name : required) {
-        if (!hasExtension(extensions, name) || (hooks && hooks->hideInstanceExtension)) {
+        if (surfaceNeeded && (!hasExtension(extensions, name) || (hooks && hooks->hideInstanceExtension))) {
             missingExtension = name;
             break;
         }
@@ -198,8 +203,12 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     info.pApplicationInfo = &app;
     // An installed loader with no ICD may advertise no surface extensions.
     // Probe without WSI in that case so absence of a driver remains distinguishable.
-    info.enabledExtensionCount = missingExtension ? 0 : 2;
-    info.ppEnabledExtensionNames = required;
+    std::vector<const char*> enabled;
+    if (surfaceNeeded && !missingExtension) enabled.assign(std::begin(required),std::end(required));
+    s.debugUtils = hasExtension(extensions,VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (s.debugUtils) enabled.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    info.enabledExtensionCount = static_cast<uint32_t>(enabled.size());
+    info.ppEnabledExtensionNames = enabled.data();
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
     s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
@@ -208,7 +217,7 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
         [&](uint32_t* n, VkPhysicalDevice* out){ return s.enumeratePhysicalDevices(s.instance, n, out); });
     if (devices.empty() || (hooks && hooks->hidePhysicalDevices)) unavailable("No Vulkan physical devices");
     if (missingExtension) throw StartupError{missing(missingExtension)};
-    s.loadInstanceFunctions();
+    s.loadInstanceFunctions(surfaceNeeded);
     return devices;
 }
 template<class F, class Info> void surfaceCall(Session& s, const char* name, Info& info, RendererTestHooks* hooks) {
@@ -239,6 +248,7 @@ struct Selection {
     VkPhysicalDevice physical{};
     std::optional<uint32_t> graphicsQueue, presentQueue;
     VkSurfaceFormatKHR format{};
+    uint32_t timestampBits{};
 };
 std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererTestHooks* hooks) {
     auto dev = selected.physical;
@@ -253,7 +263,7 @@ std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererT
     if (!features.synchronization2 || (hooks && hooks->hideSynchronization2)) return missing("synchronization2");
     auto extensions = enumerate<VkExtensionProperties>("vkEnumerateDeviceExtensionProperties",
         [&](uint32_t* n, VkExtensionProperties* out){ return s.enumerateDeviceExtensionProperties(dev, nullptr, n, out); });
-    if ((hooks && hooks->hideDeviceExtension) || !hasExtension(extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME))
+    if (s.surface && ((hooks && hooks->hideDeviceExtension) || !hasExtension(extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME)))
         return missing(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     uint32_t count{};
     s.getPhysicalDeviceQueueFamilyProperties(dev, &count, nullptr);
@@ -261,7 +271,7 @@ std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererT
     s.getPhysicalDeviceQueueFamilyProperties(dev, &count, queues.data());
     for (uint32_t index = 0; index < count; ++index) {
         VkBool32 present{};
-        check("vkGetPhysicalDeviceSurfaceSupportKHR", s.getPhysicalDeviceSurfaceSupportKHR(dev, index, s.surface, &present));
+        if (s.surface) check("vkGetPhysicalDeviceSurfaceSupportKHR", s.getPhysicalDeviceSurfaceSupportKHR(dev, index, s.surface, &present));
         bool graphics = (queues[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
         if (graphics && present) {
             selected.graphicsQueue = selected.presentQueue = index;
@@ -271,6 +281,8 @@ std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererT
         if (present && !selected.presentQueue) selected.presentQueue = index;
     }
     if (!selected.graphicsQueue) return missing("graphics queue family");
+    selected.timestampBits=queues[*selected.graphicsQueue].timestampValidBits;
+    if (!s.surface) return {};
     if (!selected.presentQueue || (hooks && hooks->hidePresentQueue)) return missing("present queue family");
     auto formats = enumerate<VkSurfaceFormatKHR>("vkGetPhysicalDeviceSurfaceFormatsKHR",
         [&](uint32_t* n, VkSurfaceFormatKHR* out){ return s.getPhysicalDeviceSurfaceFormatsKHR(dev, s.surface, n, out); });
@@ -294,22 +306,22 @@ void createDevice(Session& s, const Selection& selected, RendererTestHooks* hook
     features.dynamicRendering = features.synchronization2 = VK_TRUE;
     VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, &features};
     VkDeviceQueueCreateInfo queues[] = {queue, queue};
-    queues[1].queueFamilyIndex = *selected.presentQueue;
-    info.queueCreateInfoCount = selected.graphicsQueue == selected.presentQueue ? 1 : 2;
+    queues[1].queueFamilyIndex = selected.presentQueue.value_or(*selected.graphicsQueue);
+    info.queueCreateInfoCount = queues[0].queueFamilyIndex == queues[1].queueFamilyIndex ? 1 : 2;
     info.pQueueCreateInfos = queues;
     const char* name = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    info.enabledExtensionCount = 1;
+    info.enabledExtensionCount = s.surface ? 1 : 0;
     info.ppEnabledExtensionNames = &name;
     check("vkCreateDevice", invoke(hooks, "vkCreateDevice", [&]{ return s.createDevice(selected.physical, &info, nullptr, &s.device); }));
     s.destroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(s.getDeviceProcAddr(s.device, "vkDestroyDevice"));
 }
 }
-void startVulkan(VulkanWindow window, RendererTestHooks* hooks) {
+namespace {
+Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* hooks, bool surfaceNeeded) {
     if (hooks && hooks->hideVulkanLoader) unavailable("Vulkan loader unavailable");
-    Session session;
     session.load();
-    auto devices = createInstance(session, window, hooks);
-    createSurface(session, window, hooks);
+    auto devices = createInstance(session, window, hooks, surfaceNeeded);
+    if (surfaceNeeded) createSurface(session, window, hooks);
     std::optional<StartupFailure> firstFailure;
     for (auto device : devices) {
         Selection selection{device};
@@ -318,9 +330,37 @@ void startVulkan(VulkanWindow window, RendererTestHooks* hooks) {
             continue;
         }
         createDevice(session, selection, hooks);
-        unavailable("Vulkan drawing is not connected to this native desktop backend yet");
+        return selection;
     }
     throw StartupError{std::move(*firstFailure)};
 }
-}
 
+#include "renderer_vulkan_draw.hpp"
+#include "renderer_vulkan_frame.hpp"
+#ifdef _WIN32
+#include "renderer_vulkan_present.hpp"
+#endif
+}
+Image renderVulkanOffscreen(const DrawList& list,int width,int height) {
+    if (width<=0 || height<=0) return {width,height,{}};
+#ifdef _WIN32
+    Drawing renderer(nullptr,false,nullptr);
+#else
+    Drawing renderer(NativeWindow{},false,nullptr);
+#endif
+    return readPixels(renderer,list,width,height);
+}
+#ifdef _WIN32
+std::unique_ptr<Renderer> createVulkanRenderer(HWND window,RendererTestHooks* hooks) {
+    RECT client{};
+    GetClientRect(window,&client);
+    return std::make_unique<SurfaceRenderer>(window,hooks,VkExtent2D{uint32_t(client.right),uint32_t(client.bottom)});
+}
+#else
+void startVulkan(VulkanWindow window, RendererTestHooks* hooks) {
+    Session session;
+    initialize(session, window, hooks, true);
+    unavailable("Vulkan drawing is not connected to this native desktop backend yet");
+}
+#endif
+}

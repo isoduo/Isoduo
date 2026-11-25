@@ -1,5 +1,7 @@
 #include "check.hpp"
-#include "renderer.hpp"
+#include "renderer_vulkan.hpp"
+#include "draw_list_fixture.hpp"
+#include "glyph_atlas.hpp"
 #include "utf.hpp"
 #ifdef _WIN32
 #include "desktop_host.hpp"
@@ -35,6 +37,40 @@ void defaultFrame(DesktopConfig config) {
     check(!loaded, "VK01 Vulkan module loaded");
 #endif
 }
+#ifdef _WIN32
+void presentation(DesktopConfig config) {
+    Ui ui;
+    ScrollState scroll;
+    RendererTestHooks hooks;
+    DesktopHost host(ui,webAppearance(),page,scroll,config,false,true,&hooks);
+    ShowWindow(host.window(),SW_SHOWNOACTIVATE);
+    host.pump(); host.paint();
+    auto report=[&](const char* phase) {
+        std::cout << phase << " frames=" << host.frames() << " acquire=" << hooks.lastAcquire
+            << " present=" << hooks.lastPresent << " FIFO present (ms)=" << hooks.presentMs
+            << " compositeAlpha mask=" << hooks.compositeAlphaMask << '\n';
+    };
+    check(host.frames()>0 && !host.rendererFailed(),"Vulkan first frame");
+    report("visible");
+    ShowWindow(host.window(),SW_MINIMIZE);
+    int frames=host.frames();
+    for (int i=0;i<4;++i) { host.pump(); host.paint(); Sleep(20); }
+    report("minimized");
+    check(host.frames()==frames && !host.rendererFailed() && !hooks.retryTimers,"VK09 minimized desktop stays idle");
+    ShowWindow(host.window(),SW_RESTORE);
+    host.pump(); host.paint();
+    check(host.frames()>frames && host.compareGpu(64,64,1).passed,"VK09 restore draws a matching frame");
+    report("restored");
+    RECT bounds{}; GetWindowRect(host.window(),&bounds);
+    HWND cover=CreateWindowExW(WS_EX_TOPMOST|WS_EX_NOACTIVATE,L"STATIC",L"",WS_POPUP|WS_VISIBLE,
+        bounds.left,bounds.top,bounds.right-bounds.left,bounds.bottom-bounds.top,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    check(cover!=nullptr,"Create covering window");
+    host.paint(); report("covered");
+    DestroyWindow(cover);
+    host.clientSize(473,321); host.pump(); host.paint(); report("resized");
+    check(!host.rendererFailed() && host.compareGpu(473,321,1).passed,"Resize and occlusion keep renderer usable");
+}
+#endif
 int failures(DesktopConfig config) {
     Ui ui;
     ScrollState scroll;
@@ -52,12 +88,26 @@ int failures(DesktopConfig config) {
     loader.hideVulkanLoader = true;
     auto absent = create(loader);
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
+#ifdef _WIN32
+    {
+        auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
+        if (result.failure && (result.failure->kind == StartupFailureKind::contextVersion ||
+            (result.failure->kind == StartupFailureKind::renderBackendUnavailable &&
+             result.failure->message.find(u"not connected") == result.failure->message.npos))) return 77;
+        check(bool(result.desktop), "Win32 Vulkan creates a drawable desktop");
+        auto caps = result.desktop->capabilities();
+        check(caps.renderBackend == RenderBackendKind::vulkan && caps.version.starts_with(u"Vulkan ") &&
+            !caps.renderer.empty() && !caps.vendor.empty() && caps.resetDetection, "VK04 Vulkan capabilities");
+        std::cout << utf8FromUtf16(caps.renderer) << " / " << utf8FromUtf16(caps.vendor) << " / " << utf8FromUtf16(caps.version) << '\n';
+    }
+#else
     auto base = create({});
     std::cout << utf8FromUtf16(base.message) << '\n';
     if (base.kind == StartupFailureKind::contextVersion || (base.kind == StartupFailureKind::renderBackendUnavailable &&
         base.message.find(u"not connected") == base.message.npos)) return 77;
     check(base.kind == StartupFailureKind::renderBackendUnavailable && base.message.find(u"not connected") != base.message.npos,
           "VK03 qualified device reaches native backend handoff");
+#endif
     auto requirement = [&](RendererTestHooks hooks, std::u16string_view required, std::u16string_view actual = {}) {
         auto failure = create(hooks);
         check(failure.kind == StartupFailureKind::contextVersion && failure.required == required &&
@@ -89,6 +139,11 @@ int failures(DesktopConfig config) {
     inject("vkCreateInstance", -9, StartupFailureKind::renderBackendUnavailable, "VK_ERROR_INCOMPATIBLE_DRIVER");
     inject("vkCreateInstance", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
 #ifdef _WIN32
+    presentation(config);
+    inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
     const char* surfaceCall = "vkCreateWin32SurfaceKHR";
 #else
     const char* surfaceCall = base.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
@@ -101,6 +156,33 @@ int failures(DesktopConfig config) {
 }
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--offscreen") {
+            auto list = test::layeredDrawList();
+            try {
+                auto image = renderVulkanOffscreen(list, 8, 6);
+                auto comparison = compareImages(renderCpu(list, 8, 6), image, {});
+                check(comparison.regionsOk && comparison.differentPixels == 0, "VO01 layered draw list");
+                GlyphAtlas atlas(3,1);
+                RecordingCanvas canvas(8,1,{0,0,0});
+                canvas.beginGroup("eviction", false, false);
+                for (unsigned x=0;x<8;++x) {
+                    canvas.glyphDeferred({255,255,255},[&,x]{
+                        auto generation=atlas.batches();
+                        auto glyph=atlas.get({1,x,1},[x]{return GlyphBitmap{1,1,0,0,{static_cast<unsigned char>(32+x*30)}};});
+                        return ResolvedGlyph{{int(x),0,1,1},glyph.region,atlas.batches(),atlas.batches()!=generation};
+                    });
+                }
+                canvas.endGroup();
+                auto striped=renderVulkanOffscreen(canvas.list,8,1);
+                auto stripes=compareImages(renderCpu(canvas.list,8,1),striped,{});
+                check(atlas.batches()>0 && stripes.regionsOk && stripes.differentPixels==0, "VO01 replay across atlas eviction");
+            } catch (const StartupError& error) {
+                std::cerr << utf8FromUtf16(error.failure.message) << '\n';
+                return error.failure.kind == StartupFailureKind::renderBackendUnavailable ||
+                    error.failure.kind == StartupFailureKind::contextVersion ? 77 : 1;
+            }
+            return 0;
+        }
         DesktopConfig config;
         if (argc == 3) config.backend = std::string_view(argv[2]) == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
         if (argc >= 2 && std::string_view(argv[1]) == "--default-frame") {
