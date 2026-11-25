@@ -260,7 +260,7 @@ void pointerHitsMapToThePaintedCaretPositions() {
 void longTextKeepsCaretVisibleAndResetClearsOffset() {
     Ui ui;
     auto nameField = ui.addTextField({.id = "name", .value = std::u16string(60, u'A')}).value.value();
-    ui.addButton({.id = "apply"}).value.value();
+    (void)ui.addButton({.id = "apply"}).value.value();
     nameField.connectSource({[] { return std::u16string(60, u'A'); }, [](std::function<void()>) { return [] {}; }});
     nameField.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     FakeMeasure measure;

@@ -1,12 +1,14 @@
 #pragma once
 // Minimal case runner shared by the behavior suites; no third-party test framework.
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace test {
+inline std::function<void()> ignoreNotifications(std::function<void()>) { return [] {}; }
 inline int checks = 0;
 inline void check(bool condition, const char* expectation) {
     ++checks;

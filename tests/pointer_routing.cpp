@@ -17,7 +17,7 @@ detail::UiState& core(Ui& ui) { return detail::access(ui); }
 TextFieldHandle addField(Ui& ui, ComponentConfig config) {
     auto model = std::make_shared<std::u16string>(config.value);
     auto handle = ui.addTextField(std::move(config)).value.value();
-    check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect field source");
+    check(bool(handle.connectSource({[model] { return *model; }, test::ignoreNotifications})), "connect field source");
     check(bool(handle.connectImmediate([model](const Change<TextFieldHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
     return handle;
 }

@@ -634,8 +634,8 @@ public:
         p.textTop = (row - line) / 2;
         float offset = c.ui.textOffset(control.id) * c.scale;
         if (c.ui.focused() != control.id) {
-            auto anchor = c.ui.textAnchor(control.id, p.textSize);
-            if (anchor) offset = p.run.x(anchor);
+            auto textAnchor = c.ui.textAnchor(control.id, p.textSize);
+            if (textAnchor) offset = p.run.x(textAnchor);
         }
         float room = static_cast<float>(p.textField.editor.w - static_cast<int>(std::lround(c.presentation().inset * c.scale)));
         if (c.ui.focused() == control.id) {

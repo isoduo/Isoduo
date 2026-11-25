@@ -48,7 +48,7 @@ struct Field {
         auto query = ui.addTextField(std::move(control));
         check(bool(query), "Create the text field");
         handle = *query;
-        check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
+        check(bool(handle.connectSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a source");
         check(bool(handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
         host().setWordBreaker(std::move(breaker));
         check(bool(handle.setWordSegmentation(mode)), "Choose the segmentation");
@@ -564,7 +564,7 @@ void doubleClickOnACenteredLineSelectsTheWordUnderThePointer() {
         Ui ui;
         auto model = std::make_shared<std::u16string>(multiline ? text : u"aa bb cc");
         auto handle = *ui.addTextField({.id = "c", .value = *model, .multiline = multiline, .visibleLines = 4, .textAlign = TextAlign::center});
-        check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) && bool(handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect the field");
+        check(bool(handle.connectSource({[model] { return *model; }, test::ignoreNotifications})) && bool(handle.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect the field");
         check(bool(handle.setWordSegmentation(WordSegmentation::scriptRun)), "Words without a dictionary");
         test::FakeMeasure measure; ScrollState scroll;
         auto frame = arrange(layout::component(handle), ui, webAppearance(), measure, 200, 400, 1.f, scroll);
@@ -589,7 +589,7 @@ void doubleClickOnACenteredLineSelectsTheWordUnderThePointer() {
 
 TextFieldHandle richField(Ui& ui, std::shared_ptr<RichText> model, TextAlign align = TextAlign::left) {
     auto handle = *ui.addTextField({.id = "r", .value = model->text, .multiline = true, .visibleLines = 4, .textAlign = align, .rich = true});
-    check(bool(handle.connectRichSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
+    check(bool(handle.connectRichSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a rich source");
     check(bool(handle.connectRichImmediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "Connect a rich write");
     check(bool(handle.setWordSegmentation(WordSegmentation::scriptRun)), "Words without a dictionary");
     return handle;
