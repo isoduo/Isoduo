@@ -102,6 +102,7 @@ runs CTest. For a build only, run `cmake --preset <name>` followed by
 `cmake --build --preset <name>`. Use `ctest --preset <name> -R <regex>` to run
 selected tests. Install with `cmake --install build/Release --prefix <path>`,
 using `build/Release-core`, `build/Debug` or `build/Debug-core` for the other variants.
+CMake writes the commit and working-tree dirty flag to `source-revision.txt` in the build directory at configure time. Both fields contain `unknown` when Git or the checkout metadata is unavailable.
 
 The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
