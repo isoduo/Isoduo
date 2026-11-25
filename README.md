@@ -19,15 +19,15 @@ diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout or an unpacked source archive:
 
 ```sh
-sh tools/test-linux-core.sh
+cmake --workflow --preset linux-clang-release-core
 ```
 
-The script configures a Release build with the desktop host and installation disabled, builds against the checked-in sources, and runs the headless CTest suite. Each run leaves a fresh directory under `${TMPDIR:-/tmp}` with `ctest-tests.json` and `ctest-results.xml`. Set `CC` and `CXX` to select different compiler executables, or `CMAKE_BUILD_PARALLEL_LEVEL` to set build parallelism.
+The workflow builds the core from the checked-in sources and runs the headless CTest suite. Use `linux-clang-debug-core` for Debug. Each preset writes to its own directory under `build/`.
 
 On Linux or WSL with unprivileged user and network namespaces enabled, configure, build and test without network access using:
 
 ```sh
-unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh tools/test-linux-core.sh
+unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY cmake --workflow --preset linux-clang-release-core
 ```
 
 `word_select` exercises the portable selection and fallback behavior. `word_select_icu`
@@ -69,11 +69,11 @@ unavailable, animations stay enabled. Focus indicators follow Isoduo's automatic
 rules unless the application sets a different focus indicator mode.
 
 ```sh
-cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DISODUO_BUILD_DESKTOP=ON
-cmake --build build-linux
-ctest --test-dir build-linux --output-on-failure
-./build-linux/isoduo_edit_form_web
+cmake --workflow --preset linux-clang-release
+./build/linux-clang-release/isoduo_edit_form_web
 ```
+
+The desktop workflow builds without running tests. Use `linux-clang-debug` for Debug.
 
 `DesktopConfig::backend` is a `std::optional<DesktopBackendKind>` and is empty by
 default, which selects the backend automatically. On Linux this
@@ -417,7 +417,7 @@ A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `
 2. On the Actions page, open **Release** and press **Run workflow** on `main`. The workflow refuses with a reason
    if the version is not three numbers, its tag or release already exists, or `Core` or `Render` has not passed.
    Otherwise it builds GitHub's source archive of the commit, which has no `.git`: on Windows, the Release core with
-   its tests and then the full build; on Ubuntu, `tools/test-linux-core.sh`. When both pass, it creates a draft
+   its tests and then the full build; on Ubuntu, the `linux-clang-release-core` workflow. When both pass, it creates a draft
    release, which only people with write access can see.
 3. Complete real-machine verification on the draft commit before publishing. If a check fails, delete the draft.
 4. Update the draft summary, keep the commit and merged PRs, and press **Publish release**.
