@@ -1,4 +1,5 @@
 #include "linux_window.hpp"
+#include "renderer_vulkan.hpp"
 #include "linux_preferences.hpp"
 #include "linux_accessibility.hpp"
 #include "desktop_linux_test.hpp"
@@ -168,6 +169,7 @@ struct Desktop::Impl {
     }
     void attach() {
         window = openWindow(config);
+        if (config.renderBackend == RenderBackendKind::vulkan) startVulkan(window->reference(), hooks);
         createRenderer();
         text.setStyledLookup(systemStyledFontFile);
         auto& state = claim.state();
