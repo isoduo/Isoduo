@@ -11,6 +11,7 @@
 #endif
 #include <vulkan/vulkan.h>
 #include <cstring>
+#include <limits>
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -108,6 +109,7 @@ struct Session {
 #else
     void* library = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
 #endif
+    bool debugUtils = false;
     PFN_vkGetInstanceProcAddr lookup{};
     VkInstance instance{};
     VkSurfaceKHR surface{};
@@ -201,8 +203,12 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     info.pApplicationInfo = &app;
     // An installed loader with no ICD may advertise no surface extensions.
     // Probe without WSI in that case so absence of a driver remains distinguishable.
-    info.enabledExtensionCount = !surfaceNeeded || missingExtension ? 0 : 2;
-    info.ppEnabledExtensionNames = required;
+    std::vector<const char*> enabled;
+    if (surfaceNeeded && !missingExtension) enabled.assign(std::begin(required),std::end(required));
+    s.debugUtils = hasExtension(extensions,VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (s.debugUtils) enabled.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    info.enabledExtensionCount = static_cast<uint32_t>(enabled.size());
+    info.ppEnabledExtensionNames = enabled.data();
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
     s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
@@ -242,6 +248,7 @@ struct Selection {
     VkPhysicalDevice physical{};
     std::optional<uint32_t> graphicsQueue, presentQueue;
     VkSurfaceFormatKHR format{};
+    uint32_t timestampBits{};
 };
 std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererTestHooks* hooks) {
     auto dev = selected.physical;
@@ -274,6 +281,7 @@ std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererT
         if (present && !selected.presentQueue) selected.presentQueue = index;
     }
     if (!selected.graphicsQueue) return missing("graphics queue family");
+    selected.timestampBits=queues[*selected.graphicsQueue].timestampValidBits;
     if (!s.surface) return {};
     if (!selected.presentQueue || (hooks && hooks->hidePresentQueue)) return missing("present queue family");
     auto formats = enumerate<VkSurfaceFormatKHR>("vkGetPhysicalDeviceSurfaceFormatsKHR",

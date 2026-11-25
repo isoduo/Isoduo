@@ -103,12 +103,23 @@ class SurfaceRenderer final : public Renderer {
     void restoreAtlas(
         const std::vector<const AtlasPage *> &) override { /* Frame recording uploads current CPU pages before use. */ }
     Image readBack(const DrawList &list, int width, int height) override { return readPixels(d, list, width, height); }
-    double draw(const DrawList &list, int width, int height, bool, bool offscreen, double *submission,
+    double draw(const DrawList &list, int width, int height, bool measure, bool offscreen, double *submission,
                 std::chrono::steady_clock::time_point *displayed) override {
         auto start = std::chrono::steady_clock::now();
-        if (offscreen)
-            readBack(list, width, height);
-        else {
+        if (offscreen) {
+            CommandFrame frame(d, measure);
+            auto target = d.texture(frame.objects, {uint32_t(width), uint32_t(height)}, VK_FORMAT_R8G8B8A8_UNORM,
+                                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+            frame.record(list, target, d.rgbaPipeline);
+            frame.submit();
+            if (submission)
+                *submission =
+                    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            frame.wait();
+            if (displayed)
+                *displayed = std::chrono::steady_clock::now();
+            return measure ? frame.gpuMilliseconds() : 0;
+        } else {
             bool rebuilt = false;
             for (;;) {
                 if (dirty || !chain || chain->extent.width != uint32_t(width) ||
@@ -118,7 +129,7 @@ class SurfaceRenderer final : public Renderer {
                     rebuild({uint32_t(width), uint32_t(height)});
                     rebuilt = true;
                 }
-                CommandFrame frame(d);
+                CommandFrame frame(d, measure);
                 VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
                 auto ready = d.make<VkSemaphore>(frame.objects, "vkCreateSemaphore", d.api.CreateSemaphore, info,
                                                  d.api.DestroySemaphore);
@@ -168,7 +179,7 @@ class SurfaceRenderer final : public Renderer {
                     dirty = true;
                 else
                     presentationResult("vkQueuePresentKHR", result);
-                break;
+                return measure ? frame.gpuMilliseconds() : 0;
             }
         }
         return 0;
