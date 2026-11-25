@@ -1,4 +1,4 @@
-ï»¿# Trial only: do not require this check until 20 consecutive first-attempt passes.
+﻿# Trial only: do not require this check until 20 consecutive first-attempt passes.
 name: UIA trial
 on: [push, pull_request]
 jobs:
