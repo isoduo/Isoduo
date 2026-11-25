@@ -1,7 +1,7 @@
 ﻿file(GLOB_RECURSE sources "${SOURCE_DIR}/src/*.cpp" "${SOURCE_DIR}/src/*.hpp")
 foreach(path IN LISTS sources)
   file(READ "${path}" content)
-  if(NOT path MATCHES "renderer_vulkan[.](cpp|hpp)$" AND content MATCHES "(^|[^A-Za-z0-9_])(vk[A-Z][A-Za-z0-9_]*|Vk[A-Z][A-Za-z0-9_]*|VK_(ERROR|KHR|EXT|API|FORMAT|STRUCTURE|QUEUE|USE|NO)_[A-Z0-9_]+)([^A-Za-z0-9_]|$)")
+  if(NOT path MATCHES "renderer_vulkan(_draw|_frame|_present)?[.](cpp|hpp)$" AND content MATCHES "(^|[^A-Za-z0-9_])(vk[A-Z][A-Za-z0-9_]*|Vk[A-Z][A-Za-z0-9_]*|VK_(ERROR|KHR|EXT|API|FORMAT|STRUCTURE|QUEUE|USE|NO)_[A-Z0-9_]+)([^A-Za-z0-9_]|$)")
     message(FATAL_ERROR "Vulkan-specific assumption in ${path}")
   endif()
   if(path MATCHES "renderer_opengl(_egl)?\\.(cpp|hpp)$")
