@@ -1,0 +1,335 @@
+{
+  "version": 6,
+  "include": ["cmake/LinuxPresets.json"],
+  "configurePresets": [
+    {
+      "name": "windows-clang-cl",
+      "hidden": true,
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "ISODUO_REQUIRE_VS_ENV": "ON"
+      }
+    },
+    {
+      "name": "windows-clang-cl-debug",
+      "inherits": "windows-clang-cl",
+      "binaryDir": "${sourceDir}/build/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "windows-clang-cl-release",
+      "inherits": "windows-clang-cl",
+      "binaryDir": "${sourceDir}/build/Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ISODUO_BUILD_DESKTOP": "ON"
+      }
+    },
+    {
+      "name": "windows-clang-cl-debug-core",
+      "inherits": "windows-clang-cl-debug",
+      "binaryDir": "${sourceDir}/build/Debug-core",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
+    },
+    {
+      "name": "windows-clang-cl-release-core",
+      "inherits": "windows-clang-cl-release",
+      "binaryDir": "${sourceDir}/build/Release-core",
+      "cacheVariables": {
+        "ISODUO_BUILD_DESKTOP": "OFF"
+      }
+    },
+    {
+      "name": "windows-cl",
+      "hidden": true,
+      "inherits": "windows-clang-cl",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "windows-cl-debug",
+      "inherits": [
+        "windows-cl",
+        "windows-clang-cl-debug"
+      ]
+    },
+    {
+      "name": "windows-cl-release",
+      "inherits": [
+        "windows-cl",
+        "windows-clang-cl-release"
+      ]
+    },
+    {
+      "name": "windows-cl-debug-core",
+      "inherits": [
+        "windows-cl",
+        "windows-clang-cl-debug-core"
+      ]
+    },
+    {
+      "name": "windows-cl-release-core",
+      "inherits": [
+        "windows-cl",
+        "windows-clang-cl-release-core"
+      ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-clang-cl-debug",
+      "configurePreset": "windows-clang-cl-debug",
+      "jobs": 4
+    },
+    {
+      "name": "windows-clang-cl-release",
+      "configurePreset": "windows-clang-cl-release",
+      "jobs": 4
+    },
+    {
+      "name": "windows-clang-cl-debug-core",
+      "configurePreset": "windows-clang-cl-debug-core",
+      "jobs": 4
+    },
+    {
+      "name": "windows-clang-cl-release-core",
+      "configurePreset": "windows-clang-cl-release-core",
+      "jobs": 4
+    },
+    {
+      "name": "windows-cl-debug",
+      "inherits": "windows-clang-cl-debug",
+      "configurePreset": "windows-cl-debug"
+    },
+    {
+      "name": "windows-cl-release",
+      "inherits": "windows-clang-cl-release",
+      "configurePreset": "windows-cl-release"
+    },
+    {
+      "name": "windows-cl-debug-core",
+      "inherits": "windows-clang-cl-debug-core",
+      "configurePreset": "windows-cl-debug-core"
+    },
+    {
+      "name": "windows-cl-release-core",
+      "inherits": "windows-clang-cl-release-core",
+      "configurePreset": "windows-cl-release-core"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-clang-cl-debug",
+      "configurePreset": "windows-clang-cl-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-clang-cl-release",
+      "configurePreset": "windows-clang-cl-release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-clang-cl-debug-core",
+      "configurePreset": "windows-clang-cl-debug-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-clang-cl-release-core",
+      "configurePreset": "windows-clang-cl-release-core",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "windows-cl-debug",
+      "inherits": "windows-clang-cl-debug",
+      "configurePreset": "windows-cl-debug"
+    },
+    {
+      "name": "windows-cl-release",
+      "inherits": "windows-clang-cl-release",
+      "configurePreset": "windows-cl-release"
+    },
+    {
+      "name": "windows-cl-debug-core",
+      "inherits": "windows-clang-cl-debug-core",
+      "configurePreset": "windows-cl-debug-core"
+    },
+    {
+      "name": "windows-cl-release-core",
+      "inherits": "windows-clang-cl-release-core",
+      "configurePreset": "windows-cl-release-core"
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "windows-clang-cl-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-clang-cl-debug"
+        },
+        {
+          "type": "build",
+          "name": "windows-clang-cl-debug"
+        },
+        {
+          "type": "test",
+          "name": "windows-clang-cl-debug"
+        }
+      ]
+    },
+    {
+      "name": "windows-clang-cl-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-clang-cl-release"
+        },
+        {
+          "type": "build",
+          "name": "windows-clang-cl-release"
+        },
+        {
+          "type": "test",
+          "name": "windows-clang-cl-release"
+        }
+      ]
+    },
+    {
+      "name": "windows-clang-cl-debug-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-clang-cl-debug-core"
+        },
+        {
+          "type": "build",
+          "name": "windows-clang-cl-debug-core"
+        },
+        {
+          "type": "test",
+          "name": "windows-clang-cl-debug-core"
+        }
+      ]
+    },
+    {
+      "name": "windows-clang-cl-release-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-clang-cl-release-core"
+        },
+        {
+          "type": "build",
+          "name": "windows-clang-cl-release-core"
+        },
+        {
+          "type": "test",
+          "name": "windows-clang-cl-release-core"
+        }
+      ]
+    },
+    {
+      "name": "windows-cl-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-cl-debug"
+        },
+        {
+          "type": "build",
+          "name": "windows-cl-debug"
+        },
+        {
+          "type": "test",
+          "name": "windows-cl-debug"
+        }
+      ]
+    },
+    {
+      "name": "windows-cl-release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-cl-release"
+        },
+        {
+          "type": "build",
+          "name": "windows-cl-release"
+        },
+        {
+          "type": "test",
+          "name": "windows-cl-release"
+        }
+      ]
+    },
+    {
+      "name": "windows-cl-debug-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-cl-debug-core"
+        },
+        {
+          "type": "build",
+          "name": "windows-cl-debug-core"
+        },
+        {
+          "type": "test",
+          "name": "windows-cl-debug-core"
+        }
+      ]
+    },
+    {
+      "name": "windows-cl-release-core",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "windows-cl-release-core"
+        },
+        {
+          "type": "build",
+          "name": "windows-cl-release-core"
+        },
+        {
+          "type": "test",
+          "name": "windows-cl-release-core"
+        }
+      ]
+    }
+  ]
+}

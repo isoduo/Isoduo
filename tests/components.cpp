@@ -14,10 +14,10 @@ void populate(Ui& ui, std::vector<detail::Component> controls) {
         if (control.kind == ComponentKind::textField) {
             auto model = std::make_shared<std::u16string>(control.value);
             auto field = ui.addTextField(std::move(control)).value.value();
-            check(bool(field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect fixture source");
+            check(bool(field.connectSource({[model] { return *model; }, test::ignoreNotifications})), "Connect fixture source");
             check(bool(field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect fixture write");
-        } else if (control.kind == ComponentKind::button) ui.addButton(std::move(control)).value.value();
-        else ui.addLabel(std::move(control)).value.value();
+        } else if (control.kind == ComponentKind::button) (void)ui.addButton(std::move(control)).value.value();
+        else (void)ui.addLabel(std::move(control)).value.value();
     }
 }
 std::vector<detail::Component> nameForm() {
@@ -1038,9 +1038,10 @@ void progressSourceIsReadOnlyAndDisconnects() {
         Ui ui;
         saved = ui.addProgress({.id = "progress", .label = u"Progress"}).value.value();
         check(saved.connectSource({{}, {}}).status == Status::invalidValue, "Incomplete sources are rejected");
-        check(bool(saved.connectSource({[&] { return source; }, [&](std::function<void()> cb) {
+        const auto connected = saved.connectSource({[&] { return source; }, [&](std::function<void()> cb) {
             changed = std::move(cb); return [&] { changed = {}; };
-        }})), "Progress accepts a read-only numeric source");
+        }});
+        check(bool(connected), "Progress accepts a read-only numeric source");
         auto s = saved.describe();
         check(s->readOnly && !s->focusable && s->verbs.empty() && s->value == u"0%" && source == -10,
               "Progress semantics are read-only and do not alter the out-of-range source");
@@ -1103,7 +1104,7 @@ void dropdownCandidateIsNotADraftUntilConfirmed() {
     Ui ui;
     auto region = ui.addDropdown({.id = "region"},
         {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
-    check(bool(region.connectSource({[&] { return model; }, [](std::function<void()>) { return [] {}; }})), "Connect region source");
+    check(bool(region.connectSource({[&] { return model; }, test::ignoreNotifications})), "Connect region source");
     check(bool(region.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; })), "Connect confirmed write");
     check(bool(region.focus()) && bool(region.open()), "Open the dropdown");
     detail::access(ui).keyDown({.key = Key::down});
@@ -1387,9 +1388,10 @@ void labelSourceNotificationRepaintsTheNewText() {
     Ui ui;
     auto label = ui.addLabel({.id = "clock"}).value.value();
     int frames = 0; detail::access(ui).onInvalidate([&] { ++frames; });
-    check(bool(label.connectSource({[&] { return clock; }, [&](std::function<void()> callback) {
+    const auto connected = label.connectSource({[&] { return clock; }, [&](std::function<void()> callback) {
         changed = std::move(callback); return [&] { changed = {}; };
-    }})) && label.describe()->value == u"10:00", "A label reads its text from the source");
+    }});
+    check(bool(connected) && label.describe()->value == u"10:00", "A label reads its text from the source");
     clock = u"10:01"; frames = 0; changed();
     check(frames == 1 && label.describe()->value == u"10:01", "A notification asks for a repaint that shows the new text");
 }
@@ -1628,7 +1630,7 @@ void throwingSubscribeKeepsThePreviousConnection() {
         aValue = 1; notifyA();
         const auto showsA2 = probe.shown();
         expect(showsA2 != showsA1, "Notifying source A still updates the component");
-        expect(bool(probe.connect([] { return 2; }, [](std::function<void()>) { return [] {}; }))  && !notifyA,
+        expect(bool(probe.connect([] { return 2; }, test::ignoreNotifications))  && !notifyA,
                "A later source still replaces A and cancels its subscription");
         expect(probe.shown() != showsA1, "Source B's value was never shown before (it differs from A1)");
     }

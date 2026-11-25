@@ -343,8 +343,8 @@ void Canvas::blend(int x,int y,Color color,unsigned alpha){
     if(!clip.contains(x,y)||x<0||y<0||x>=width||y>=height)return;
     if(countInk && alpha) ++ink;
     auto index=(static_cast<std::size_t>(y)*width+x)*4;
-    const unsigned char ink[]={color.r,color.g,color.b};
-    for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((ink[c]*alpha+pixels[index+c]*(255-alpha))/255);
+    const unsigned char channels[]={color.r,color.g,color.b};
+    for(int c=0;c<3;++c)pixels[index+c]=static_cast<unsigned char>((channels[c]*alpha+pixels[index+c]*(255-alpha))/255);
     pixels[index+3]=255;
 }
 void Canvas::fill(Rect r,Color color,unsigned alpha){

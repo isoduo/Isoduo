@@ -1913,8 +1913,8 @@ void tabWalkAndVisibleFocus(const Appearance& appearance, Report& report, const 
     bool visible = ring.r == accent.r && ring.g == accent.g && ring.b == accent.b;
     const Placement* other = nullptr;
     for (const auto& item : frame.items) {
-        auto visible = intersect(item.bounds, item.clip);
-        if (item.kind == ComponentKind::button && item.id != f.ids.apply && visible.w > 2 && visible.h == item.bounds.h &&
+        auto visibleBounds = intersect(item.bounds, item.clip);
+        if (item.kind == ComponentKind::button && item.id != f.ids.apply && visibleBounds.w > 2 && visibleBounds.h == item.bounds.h &&
             item.bounds.x >= 0 && item.bounds.y >= 0 && item.bounds.y + item.bounds.h <= pixels.height) { other = &item; break; }
     }
     bool distinct = false;
@@ -2357,8 +2357,8 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
                 int old = f.form.scroll.offset;
                 if (thumb) {
                     POINT start{bar.thumb.x + bar.thumb.w / 2, bar.thumb.y + bar.thumb.h / 2};
-                    POINT end{start.x, old < bar.maximum ? bar.track.y + bar.track.h - 1 : bar.track.y};
-                    f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, end, MK_LBUTTON); f.mouse(WM_LBUTTONUP, end);
+                    POINT dragEnd{start.x, old < bar.maximum ? bar.track.y + bar.track.h - 1 : bar.track.y};
+                    f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, dragEnd, MK_LBUTTON); f.mouse(WM_LBUTTONUP, dragEnd);
                 } else {
                     POINT p{bar.track.x + bar.track.w / 2, old < bar.maximum ? bar.track.y + bar.track.h - 1 : bar.track.y};
                     f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
@@ -2388,11 +2388,11 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
                     return std::max(0, std::min(top + anchor->bounds.h, anchor->clip.y + anchor->clip.h) - std::max(top, anchor->clip.y));
                 };
                 auto desired = [&](int offset) { int visible = heightAt(offset); return partial ? visible > 0 && visible < anchor->bounds.h : visible == 0; };
-                int target = -1, before = -1, pointerY = 0;
+                int target = -1, startingOffset = -1, pointerY = 0;
                 if (input == 0) {
                     for (int n = 0; n <= bar.maximum && target < 0; ++n) if (desired(n))
                         for (int pre : {n - 1, n + 1}) if (pre >= 0 && pre <= bar.maximum && heightAt(pre) > 0) {
-                            target = n; before = pre; break;
+                            target = n; startingOffset = pre; break;
                         }
                 } else {
                     for (int y = bar.track.y; y < bar.track.y + bar.track.h && target < 0; ++y) {
@@ -2402,7 +2402,7 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
                             if (n == start || heightAt(start) <= 0) continue;
                             int thumbTop = bar.track.y + (bar.track.h - bar.thumb.h) * start / std::max(1, bar.maximum);
                             if (input == 1 && y >= thumbTop && y < thumbTop + bar.thumb.h) continue;
-                            target = n; before = start; pointerY = y; break;
+                            target = n; startingOffset = start; pointerY = y; break;
                         }
                     }
                 }
@@ -2412,27 +2412,27 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
                         ", maximum=" + std::to_string(bar.maximum) + ", track=" + str(bar.track) + ", thumb height=" + std::to_string(bar.thumb.h));
                     continue;
                 }
-                geometry.scrollTo(f.form.ui, f.form.scroll, before); f.host.paint();
+                geometry.scrollTo(f.form.ui, f.form.scroll, startingOffset); f.host.paint();
                 now += 600; state.tooltipTime(now); f.host.paint();
-                bool opened = *h.progressTip.visible();
+                bool tipOpened = *h.progressTip.visible();
                 if (input == 0) {
                     POINT p{bar.clip.x + 2, bar.clip.y + 2}; ClientToScreen(f.host.window(), &p);
                     int unit = int(std::ceil(120.0 / (48 * scale)));
-                    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(target > before ? -unit : unit)), MAKELPARAM(p.x, p.y));
+                    f.post(WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(target > startingOffset ? -unit : unit)), MAKELPARAM(p.x, p.y));
                 } else if (input == 1) {
                     POINT p{bar.track.x + bar.track.w / 2, pointerY};
                     f.mouse(WM_LBUTTONDOWN, p, MK_LBUTTON); f.mouse(WM_LBUTTONUP, p);
                 } else {
                     auto thumb = f.host.frame().regions.front().thumb;
-                    POINT start{thumb.x + thumb.w / 2, thumb.y + thumb.h / 2}; POINT end{start.x, pointerY};
-                    f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, end, MK_LBUTTON); f.mouse(WM_LBUTTONUP, end);
+                    POINT start{thumb.x + thumb.w / 2, thumb.y + thumb.h / 2}; POINT dragEnd{start.x, pointerY};
+                    f.mouse(WM_LBUTTONDOWN, start, MK_LBUTTON); f.mouse(WM_MOUSEMOVE, dragEnd, MK_LBUTTON); f.mouse(WM_LBUTTONUP, dragEnd);
                 }
                 f.settle();
                 auto actual = anchorVisibility(h.progressHalf);
-                bool pass = opened && f.form.scroll.offset != before && actual == (partial ? "partial" : "clipped") &&
+                bool pass = tipOpened && f.form.scroll.offset != startingOffset && actual == (partial ? "partial" : "clipped") &&
                     !*h.progressTip.visible() && h.progressHalf.describe()->focused;
-                report.check(caseId, pass, detail + ": before=" + std::to_string(before) + ", target=" + std::to_string(target) +
-                    ", actual offset=" + std::to_string(f.form.scroll.offset) + ", anchor=" + actual + ", opened=" + std::to_string(opened));
+                report.check(caseId, pass, detail + ": before=" + std::to_string(startingOffset) + ", target=" + std::to_string(target) +
+                    ", actual offset=" + std::to_string(f.form.scroll.offset) + ", anchor=" + actual + ", opened=" + std::to_string(tipOpened));
             }
             // Pointer-only eligibility: a scroll at 400 ms cancels the old deadline;
             // a new complete 500 ms dwell may show the tip if the anchor remains under it.
@@ -2449,17 +2449,17 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
                 now += 400; state.tooltipTime(now); f.host.paint();
                 bool pending = !*h.progressTip.visible();
                 int old = f.form.scroll.offset;
-                POINT wheel{hoverBar.clip.x + 2, hoverBar.clip.y + 2}; ClientToScreen(f.host.window(), &wheel);
+                POINT hoverWheel{hoverBar.clip.x + 2, hoverBar.clip.y + 2}; ClientToScreen(f.host.window(), &hoverWheel);
                 int unit = int(std::ceil(120.0 / (48 * scale)));
                 // Do not pump unrelated TrackMouseEvent leaves caused by the physical
                 // desktop cursor: this scenario explicitly owns a synthetic pointer visit.
-                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(old < hoverBar.maximum ? -unit : unit)), MAKELPARAM(wheel.x, wheel.y));
+                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(old < hoverBar.maximum ? -unit : unit)), MAKELPARAM(hoverWheel.x, hoverWheel.y));
                 f.host.paint();
                 now += 100; state.tooltipTime(now); f.host.paint(); bool stale = !*h.progressTip.visible();
                 now += 399; state.tooltipTime(now); f.host.paint(); bool waits = !*h.progressTip.visible();
                 ++now; state.tooltipTime(now); f.host.paint(); bool fresh = *h.progressTip.visible();
                 int firstOffset = f.form.scroll.offset;
-                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(firstOffset < hoverBar.maximum ? -unit : unit)), MAKELPARAM(wheel.x, wheel.y));
+                SendMessageW(f.host.window(), WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(firstOffset < hoverBar.maximum ? -unit : unit)), MAKELPARAM(hoverWheel.x, hoverWheel.y));
                 f.host.paint(); bool closed = !*h.progressTip.visible() && firstOffset != f.form.scroll.offset;
                 now += 499; state.tooltipTime(now); f.host.paint(); bool secondWait = !*h.progressTip.visible();
                 ++now; state.tooltipTime(now); f.host.paint(); bool reopened = *h.progressTip.visible();
@@ -4739,7 +4739,7 @@ int wmain(int argc, wchar_t** argv) {
         if (demoPerf) return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,demoPerfFont);
         // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
         // Report-only (code review 2026-11-12, item 14): a setup problem (no real mouse, window not in front, ...) is printed and
-        // leaves no report; it never fails the run, so it can never fail an idle verification. verify-idle shows the missing report.
+        // leaves no report; it never fails the run, so it can never fail an idle verification.
         if (perf==L"slider-drag-text-size") {
             try { return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv"); }
             catch (const std::exception& e) { std::cerr << "slider-drag-text-size is report-only and could not run: " << e.what() << '\n'; return 0; }

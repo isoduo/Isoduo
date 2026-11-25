@@ -97,7 +97,7 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "UA01: " << (navigation && navChanged ? "PASS" : "FAIL") << '\n';
         auto hiddenName = findId(uia, root, L"general.name"); navigation = navigation && navChanged && !hiddenName && patterns(uia, root); if (hiddenName) hiddenName->Release();
         IUIAutomationValuePattern* cachedValue = nullptr; BSTR cachedText = nullptr;
-        bool ua02 = !hiddenName && cachedName && SUCCEEDED(cachedName->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&cachedValue))) && cachedValue && SUCCEEDED(cachedValue->get_CurrentValue(&cachedText)) && cachedValue->SetValue(L"hidden edit") == UIA_E_INVALIDOPERATION;
+        bool ua02 = !hiddenName && cachedName && SUCCEEDED(cachedName->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&cachedValue))) && cachedValue && SUCCEEDED(cachedValue->get_CurrentValue(&cachedText)) && setTextValue(cachedValue, L"hidden edit") == UIA_E_INVALIDOPERATION;
         SysFreeString(cachedText); if (cachedValue) cachedValue->Release(); if (cachedName) cachedName->Release();
         std::cout << "UA02: " << (ua02 ? "PASS" : "FAIL") << '\n'; ok &= ua02;
         bool itemModal = invoke(uia, root, L"items.add") && closeModal(uia, root, L"items.dialog");
@@ -107,7 +107,7 @@ int wmain(int argc, wchar_t** argv) {
             bool note = invoke(uia, root, L"items.add");
             auto field = note ? findId(uia, root, L"items.dialog.note") : nullptr;
             IUIAutomationValuePattern* noteValue = nullptr; IUIAutomationTextPattern* noteText = nullptr; IUIAutomationScrollPattern* noteScroll = nullptr;
-            note = note && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&noteValue))) && noteValue && SUCCEEDED(noteValue->SetValue(L"l1\nl2\nl3\nl4\nl5\nl6"));
+            note = note && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&noteValue))) && noteValue && SUCCEEDED(setTextValue(noteValue, L"l1\nl2\nl3\nl4\nl5\nl6"));
             RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             BSTR whole = nullptr;
             note = note && SUCCEEDED(field->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(&noteText))) && noteText;
@@ -166,7 +166,7 @@ int wmain(int argc, wchar_t** argv) {
             };
             auto read = [&](IUIAutomationTextRange* range, TEXTATTRIBUTEID id, VARIANT& out) { VariantInit(&out); return range && SUCCEEDED(range->GetAttributeValue(id, &out)); };
             IUIAutomationTextRange* boldRange = rich ? slice(0, 2) : nullptr; IUIAutomationTextRange* italicRange = rich ? slice(2, 2) : nullptr; IUIAutomationTextRange* redRange = rich ? slice(4, 2) : nullptr;
-            VARIANT weight, slant, line, plainSlant, plainLine, plainWeight, red, plainLight, mixedWeight, mixedColor;
+            VARIANT weight, slant, line, plainSlant, plainLine, plainWeight, red, plainLight{}, mixedWeight, mixedColor;
             IUnknown* reservedMixed = nullptr;
             rich = rich && boldRange && italicRange && redRange && SUCCEEDED(UiaGetReservedMixedAttributeValue(&reservedMixed));
             rich = rich && read(boldRange, UIA_FontWeightAttributeId, weight) && weight.vt == VT_I4 && weight.lVal == 700 &&
@@ -209,7 +209,7 @@ int wmain(int argc, wchar_t** argv) {
             bool units = invoke(uia, root, L"items.add");
             auto field = units ? findId(uia, root, L"items.dialog.note") : nullptr;
             IUIAutomationValuePattern* unitValue = nullptr; IUIAutomationTextPattern* unitText = nullptr; IUIAutomationTextRange* range = nullptr;
-            units = units && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&unitValue))) && unitValue && SUCCEEDED(unitValue->SetValue(const_cast<wchar_t*>(wide(shared::text).c_str())));
+            units = units && field && SUCCEEDED(field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&unitValue))) && unitValue && SUCCEEDED(setTextValue(unitValue, wide(shared::text).c_str()));
             RedrawWindow(s.window, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
             auto read = [](IUIAutomationTextRange* r) { BSTR t = nullptr; std::wstring out; if (r && SUCCEEDED(r->GetText(-1, &t)) && t) out.assign(t, SysStringLen(t)); SysFreeString(t); return out; };
             int moved = -99;
@@ -241,9 +241,9 @@ int wmain(int argc, wchar_t** argv) {
         if (itemSelection) itemSelection->Release(); if (itemsList) itemsList->Release();
         std::cout << "optional list=" << optionalList << '\n'; navigation &= optionalList;
         auto edit = findId(uia, root, L"items.edit"); auto events = new EnabledEvent(); PROPERTYID enabled = UIA_IsEnabledPropertyId;
-        auto subscribed = edit ? uia->AddPropertyChangedEventHandlerNativeArray(edit, TreeScope_Element, nullptr, events, &enabled, 1) : E_FAIL;
-        bool enabledEvent = SUCCEEDED(subscribed) && select(uia, root, L"T001") && WaitForSingleObject(events->received, 2000) == WAIT_OBJECT_0;
-        if (SUCCEEDED(subscribed)) uia->RemovePropertyChangedEventHandler(edit, events); events->Release(); if (edit) edit->Release();
+        auto enabledSubscription = edit ? uia->AddPropertyChangedEventHandlerNativeArray(edit, TreeScope_Element, nullptr, events, &enabled, 1) : E_FAIL;
+        bool enabledEvent = SUCCEEDED(enabledSubscription) && select(uia, root, L"T001") && WaitForSingleObject(events->received, 2000) == WAIT_OBJECT_0;
+        if (SUCCEEDED(enabledSubscription)) uia->RemovePropertyChangedEventHandler(edit, events); events->Release(); if (edit) edit->Release();
         std::cout << "enabled event=" << enabledEvent << '\n'; navigation &= enabledEvent;
         auto search = findId(uia, root, L"items.search"); auto textEvents = new TextEvent();
         auto valueEvents = new ValueEvent(); PROPERTYID valueProperty = UIA_ValueValuePropertyId;
@@ -413,9 +413,9 @@ int wmain(int argc, wchar_t** argv) {
         bool general = select(uia, nav, L"general"); BSTR beforeTitle = nullptr, afterTitle = nullptr;
         const std::wstring expectedTitle = std::wstring(argv[2]) == L"material" ? L"Isoduo Settings Demo — Material-inspired" : L"Isoduo Settings Demo — Minimal Web";
         bool title = general && SUCCEEDED(root->get_CurrentName(&beforeTitle)) && beforeTitle && std::wstring(beforeTitle) == expectedTitle;
-        auto notices = findId(uia, root, L"general.notices"); IUIAutomationTogglePattern* toggle = nullptr;
-        title = title && notices && SUCCEEDED(notices->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&toggle))) && toggle && SUCCEEDED(toggle->Toggle()) && SUCCEEDED(root->get_CurrentName(&afterTitle)) && beforeTitle && afterTitle && std::wstring(afterTitle) == L"*" + std::wstring(beforeTitle);
-        SysFreeString(beforeTitle); SysFreeString(afterTitle); if (toggle) toggle->Release(); if (notices) notices->Release();
+        auto notices = findId(uia, root, L"general.notices"); IUIAutomationTogglePattern* noticesToggle = nullptr;
+        title = title && notices && SUCCEEDED(notices->GetCurrentPatternAs(UIA_TogglePatternId, IID_PPV_ARGS(&noticesToggle))) && noticesToggle && SUCCEEDED(noticesToggle->Toggle()) && SUCCEEDED(root->get_CurrentName(&afterTitle)) && beforeTitle && afterTitle && std::wstring(afterTitle) == L"*" + std::wstring(beforeTitle);
+        SysFreeString(beforeTitle); SysFreeString(afterTitle); if (noticesToggle) noticesToggle->Release(); if (notices) notices->Release();
         std::cout << "UA06: " << (title ? "PASS" : "FAIL") << '\n'; ok &= title;
         {   // UA15 (#90): the focus ring controls on the appearance page work through UIA: a slider (RangeValue), a checkbox (Toggle)
             // and dropdown options (SelectionItem); the indicator off disables the thickness slider but keeps its value.

@@ -73,7 +73,8 @@ TextFieldHandle connectRich(Ui& ui, ComponentConfig control, std::shared_ptr<Ric
     auto query = ui.addTextField(std::move(control));
     check(bool(query), "Create the rich field");
     auto field = *query;
-    check(bool(field.connectRichSource({[model] { return model->value; }, [model](std::function<void()> cb) { model->notify = cb; return [] {}; }})), "Connect a rich source");
+    const auto connected = field.connectRichSource({[model] { return model->value; }, [model](std::function<void()> cb) { model->notify = cb; return [] {}; }});
+    check(bool(connected), "Connect a rich source");
     auto write = [model](const Change<TextFieldHandle, RichText>& change) { ++model->writes; model->lastWritten = change.value; model->lastOrigin = change.origin; return Result{}; };
     check(bool(immediate ? field.connectRichImmediate(write) : field.connectRichConfirmed(write)), "Connect a rich write");
     return field;
@@ -120,7 +121,7 @@ void stylesApplyToARangeAndAreOneUndoEntry() {
     check(bool(field.setStyle(1, 4, {.italic = true})) && spans() == Spans{bold(0, 1), {.start = 1, .length = 1, .bold = true, .italic = true}, italic(2, 2)},
           "Italic over a bold edge combines the styles");
     check(bool(field.setStyle(0, 6, {.bold = false, .italic = false})) && spans().empty(), "Removing bold and italic from the whole text leaves no spans");
-    check(bool(field.setStyle(2, 4, {.color = "red", .underline = true})) && spans() == Spans{{.start = 2, .length = 2, .underline = true, .color = "red"}},
+    check(bool(field.setStyle(2, 4, {.underline = true, .color = "red"})) && spans() == Spans{{.start = 2, .length = 2, .underline = true, .color = "red"}},
           "Color and underline set together");
     check(bool(field.setStyle(2, 3, {.color = ""})) && spans() == Spans{underline(2, 1), {.start = 3, .length = 1, .underline = true, .color = "red"}},
           "An empty color name returns text to the normal color");
@@ -824,7 +825,7 @@ void alignedRichLinesMoveTheirRunsWithTheLine() {
 void unknownColorNamesAndDisabledFieldsUseThePlainColors() {
     Ui ui;
     auto field = connectRich(ui, richControl("note", u"abc"));
-    field.setStyle(0, 3, {.color = "missing", .underline = true});
+    field.setStyle(0, 3, {.underline = true, .color = "missing"});
     Laid laid(ui, field);
     const auto palette = detail::access(ui).effectivePalette(webAppearance());
     auto recorded = paint(ui, *laid.field, "note");

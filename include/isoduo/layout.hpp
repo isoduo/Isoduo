@@ -195,7 +195,7 @@ struct Placement {
     float offset = 0;             // text fields: horizontal display offset in pixels
     float shift = 0;              // single-line text fields: where text shorter than the room starts, by its alignment (#80)
     int textTop = 0;             // single-line text fields: top of the glyphs inside the editor row (line spacing)
-    int caretX(unsigned offset) const;  // text fields: frame x of a caret, as painted and hit
+    int caretX(unsigned textOffset) const;  // text fields: frame x of a caret, as painted and hit
     // The open context menu, an overlay painted and hit above every other; id is menuNodeId(target).
     bool menu = false;
     Rect menuInner;              // rows' viewport inside the border
@@ -203,10 +203,10 @@ struct Placement {
     int menuMaximum = 0;         // scroll range in pixels; 0 when every row fits
     Rect menuTrack, menuThumb;  // scrollbar, empty when nothing scrolls
     int menuPad = 0;             // horizontal text inset inside a row
-    int caretY(unsigned offset) const;  // multi-line text fields: frame y of the top of the caret's line
+    int caretY(unsigned textOffset) const;  // multi-line text fields: frame y of the top of the caret's line
     // Frame rectangle of the caret: one line tall, one pixel wide. In a multi-line text field a caret scrolled
     // out of view is held on the nearest visible row, which is where an input method anchors its window.
-    Rect caretRect(unsigned offset) const;
+    Rect caretRect(unsigned textOffset) const;
     ComponentHandle component; // source instance; also retained by dropdown and context-menu overlays
 };
 struct ScrollRegion {
@@ -248,9 +248,9 @@ struct Frame {
     bool menuContains(int x, int y) const;          // inside the open menu's panel
     std::optional<std::string> menuItemAt(int x, int y) const;  // id of the row under the point (separators included)
     // Apply an input-driven scroll to a region in this frame. Returns true only when it moved.
-    bool scrollTo(Ui& ui, ScrollState& state, int offset) const;
+    bool scrollTo(Ui& ui, ScrollState& state, int requestedOffset) const;
     // Use a region from this frame without dereferencing its possibly retired component's state.
-    bool scrollTo(Ui& ui, const ScrollRegion& region, int offset) const;
+    bool scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) const;
     // Route a wheel step at window coordinates; delta is in physical pixels, positive upwards.
     // With sidewaysOnly (Shift held), only sideways-scrolling labels take the step; a vertical wheel step down
     // on a vertical-writing label moves toward the end of the text.

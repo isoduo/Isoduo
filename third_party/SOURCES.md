@@ -38,9 +38,13 @@ The generated [third-party notices](../THIRD_PARTY_NOTICES.txt) contain the ship
 - LICENSE-UNICODE-V3.txt (Unicode License v3), copied unchanged: https://www.unicode.org/license.txt
   SHA256 `e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96`
 
-`src/vertical_orientation_data.inc` is generated from the data file with `third_party/unicode/gen_vertical_orientation.py`
+`src/vertical_orientation_data.inc` is generated from the data file with `third_party/unicode/gen_vertical_orientation.cmake`
 (only the non-default values are written; every other code point is R). To move to a newer Unicode version, replace the
-two files, update `cmake/ThirdPartyManifest.cmake`, rerun the generator and regenerate the notices.
+two files, update `cmake/ThirdPartyManifest.cmake`, run the generator with the new input path, and regenerate the notices.
+
+```sh
+cmake -DSOURCE=third_party/unicode/VerticalOrientation-18.0.0.txt -DTARGET=src/vertical_orientation_data.inc -P third_party/unicode/gen_vertical_orientation.cmake
+```
 
 # CI-only tools
 

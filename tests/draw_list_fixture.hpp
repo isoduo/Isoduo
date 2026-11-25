@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render.hpp"
+#include <initializer_list>
 
 namespace test {
 using namespace isoduo;
@@ -18,7 +19,7 @@ inline detail::DrawList layeredDrawList() {
     canvas.glyph({4, 1, 2, 2}, {0, 0, 255}, page, {0, 0, 2, 2});
     canvas.overlay({5, 0, 3, 3}, 0, {0, 255, 0}, 128);
     // More distinct pages than the OpenGL renderer's upload slots.
-    for (unsigned char coverage : {255, 0, 0, 0, 128}) {
+    for (unsigned char coverage : std::initializer_list<unsigned char>{255, 0, 0, 0, 128}) {
         auto batch = std::make_shared<detail::AtlasPage>();
         batch->width = batch->height = 1;
         batch->pixels = {coverage};
