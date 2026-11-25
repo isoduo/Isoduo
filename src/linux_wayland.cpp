@@ -115,6 +115,11 @@ public:
         if (frameCallback_) wl_callback_destroy(std::exchange(frameCallback_, nullptr));
         geometryChanged_ |= std::exchange(frameChangesGeometry_, false);
     }
+    void deferFrame() override {
+        // No buffer was presented. Latch the outstanding pacing callback on
+        // the current surface so the compositor schedules the visible retry.
+        wl_surface_commit(surface_);
+    }
     bool poll(int timeoutMs) override {
         const bool waitingForFrame = frameCallback_ != nullptr;
         if (wl_display_dispatch_pending(display_) < 0) return false;
@@ -434,6 +439,7 @@ const xdg_surface_listener WaylandWindow::shellSurfaceListener_{
                 w.events.emplace_back(NativeEvent::Kind::visibility).visible = !w.suspended_;
             }
             w.updateGeometry();
+            if (w.suspended_) wl_surface_commit(w.surface_);
         }
 };
 
