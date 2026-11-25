@@ -44,6 +44,11 @@ struct DeviceCommands {
     PFN_vkCmdBindPipeline CmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
     PFN_vkCmdPushConstants CmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
+    PFN_vkCreateQueryPool CreateQueryPool = load<PFN_vkCreateQueryPool>("vkCreateQueryPool");
+    PFN_vkDestroyQueryPool DestroyQueryPool = load<PFN_vkDestroyQueryPool>("vkDestroyQueryPool");
+    PFN_vkCmdResetQueryPool CmdResetQueryPool = load<PFN_vkCmdResetQueryPool>("vkCmdResetQueryPool");
+    PFN_vkCmdWriteTimestamp2 CmdWriteTimestamp2 = load<PFN_vkCmdWriteTimestamp2>("vkCmdWriteTimestamp2");
+    PFN_vkGetQueryPoolResults GetQueryPoolResults = load<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
     PFN_vkCmdDraw CmdDraw = load<PFN_vkCmdDraw>("vkCmdDraw");
     PFN_vkCreateSampler CreateSampler = load<PFN_vkCreateSampler>("vkCreateSampler");
     PFN_vkDestroySampler DestroySampler = load<PFN_vkDestroySampler>("vkDestroySampler");
@@ -112,6 +117,9 @@ struct Drawing {
     RendererTestHooks *hooks;
     RendererCapabilities caps;
     bool running = false;
+    float timestampPeriod{};
+    PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
+    PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
     Resources resources;
     VkSampler sampler{};
     VkDescriptorSetLayout descriptors{};
@@ -127,6 +135,11 @@ struct Drawing {
         VkPhysicalDeviceProperties2 props{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &driver};
         session.function<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2")(selected.physical,
                                                                                                &props);
+        timestampPeriod = props.properties.limits.timestampPeriod;
+        if (session.debugUtils) {
+            beginLabel = api.load<PFN_vkCmdBeginDebugUtilsLabelEXT>("vkCmdBeginDebugUtilsLabelEXT");
+            endLabel = api.load<PFN_vkCmdEndDebugUtilsLabelEXT>("vkCmdEndDebugUtilsLabelEXT");
+        }
         auto version = props.properties.apiVersion;
         caps.version = utf16FromUtf8("Vulkan " + versionString(version) + "." +
                                      std::to_string(VK_API_VERSION_PATCH(version)) + " " + driver.driverInfo);
