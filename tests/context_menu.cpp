@@ -31,7 +31,7 @@ struct Field {
 Field addField(Ui& ui, std::string id, std::u16string value, bool readOnly = false) {
     auto model = std::make_shared<std::u16string>(value);
     auto handle = ui.addTextField({.id = id, .label = u"欄位", .value = value, .readOnly = readOnly}).value.value();
-    check(bool(handle.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect field source");
+    check(bool(handle.connectSource({[model] { return *model; }, test::ignoreNotifications})), "connect field source");
     check(bool(handle.connectImmediate([model](const Change<TextFieldHandle>& change) { *model = change.value; return Result{}; })), "connect field write");
     return {handle, model};
 }
@@ -161,7 +161,7 @@ struct RichField {
 RichField addRichField(Ui& ui, std::string id, std::u16string value, bool readOnly = false) {
     auto model = std::make_shared<RichText>(RichText{value, {}});
     auto handle = ui.addTextField({.id = id, .label = u"內容", .value = value, .readOnly = readOnly, .multiline = true, .rich = true}).value.value();
-    check(bool(handle.connectRichSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "connect rich source");
+    check(bool(handle.connectRichSource({[model] { return *model; }, test::ignoreNotifications})), "connect rich source");
     check(bool(handle.connectRichImmediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
     return {handle, model};
 }
@@ -494,7 +494,7 @@ void listMenuSelectsTheRowAndHandsItToTheApplication() {
     Ui ui;
     auto selected = std::make_shared<std::optional<OptionValue>>();
     auto list = ui.addList({.id = "items", .label = u"項目"}, {{{"a"}, u"甲"}, {{"b"}, u"乙"}, {{"c"}, u"丙", false}}).value.value();
-    check(bool(list.connectSource({[selected] { return *selected; }, [](std::function<void()>) { return [] {}; }})), "connect list source");
+    check(bool(list.connectSource({[selected] { return *selected; }, test::ignoreNotifications})), "connect list source");
     check(bool(list.connectImmediate([selected](const Change<ListHandle>& change) { *selected = change.value; return Result{}; })), "connect list write");
     std::optional<OptionValue> got; int runs = 0;
     auto menu = ui.addContextMenu(list, {
@@ -656,7 +656,7 @@ void multiLineFieldMenuHangsFromTheCaretLine() {
     Ui ui; MemoryClipboard clipboard; core(ui).setClipboard(&clipboard); clipboard.content = u"x\ny";
     auto model = std::make_shared<std::u16string>(u"first\nsecond\nthird");
     auto note = ui.addTextField({.id = "note", .label = u"說明", .value = *model, .multiline = true, .visibleLines = 3}).value.value();
-    check(bool(note.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})) &&
+    check(bool(note.connectSource({[model] { return *model; }, test::ignoreNotifications})) &&
           bool(note.connectImmediate([model](const Change<TextFieldHandle>& change) { *model = change.value; return Result{}; })), "connect the multi-line field");
     ScrollState scroll;
     note.select(8, 8); note.focus();

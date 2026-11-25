@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <stdexcept>
 #include <chrono>
-#include <cstdlib>
 #include <optional>
 #include <thread>
 using namespace isoduo;
@@ -166,7 +165,7 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     SendMessageW(host.window(),WM_KEYDOWN,VK_BACK,0);
     SendMessageW(host.window(),WM_KEYDOWN,VK_TAB,0);
     check(form.handles.name.draft().value==u"workstation A", "native input blocked");
-    if (handled && std::getenv("CI")) {
+    if (handled && GetEnvironmentVariableW(L"CI", nullptr, 0)) {
         ShowWindow(host.window(),SW_SHOW); SetForegroundWindow(host.window()); SetFocus(host.window());
         check(GetForegroundWindow()==host.window(), "RF03 foreground window");
         INPUT inputs[4]{};

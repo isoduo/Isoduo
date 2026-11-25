@@ -104,7 +104,11 @@ selected tests. Install with `cmake --install build/Release --prefix <path>`,
 using `build/Release-core`, `build/Debug` or `build/Debug-core` for the other variants.
 CMake writes the commit and working-tree dirty flag to `source-revision.txt` in the build directory at configure time. Both fields contain `unknown` when Git or the checkout metadata is unavailable.
 
-The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
+For MSVC (cl.exe), use the same commands with `windows-cl-debug`,
+`windows-cl-release`, `windows-cl-debug-core` or `windows-cl-release-core`.
+Each cl.exe preset builds in `build/<preset-name>`.
+
+The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, CMake and Ninja. The clang-cl presets also require clang-cl. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
 Applications retain the handles returned by `Ui::addTextField`, `addButton` and `addLabel`; the layout accepts those handles. Each `Ui::addX` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.addButton({.id = "profile.save"})`. A read source (`isoduo::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 

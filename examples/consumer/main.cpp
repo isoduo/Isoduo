@@ -351,9 +351,9 @@ int main() {
     Profile profile;
     std::function<void()> changed;
     Ui ui;
-    ui.addLabel({.id = "profile.alias.caption", .value = u"Alias", .target = "profile.alias", .labelKind = LabelKind::name}).value.value();
+    (void)ui.addLabel({.id = "profile.alias.caption", .value = u"Alias", .target = "profile.alias", .labelKind = LabelKind::name}).value.value();
     auto alias = ui.addTextField({.id = "profile.alias", .maxLength = 12}).value.value();
-    ui.addLabel({.id = "profile.alias.problem", .target = "profile.alias", .labelKind = LabelKind::error}).value.value();
+    (void)ui.addLabel({.id = "profile.alias.problem", .target = "profile.alias", .labelKind = LabelKind::error}).value.value();
     auto save = ui.addButton({.id = "profile.save", .label = u"Save alias"}).value.value();
     auto summary = ui.addLabel({.id = "profile.summary"}).value.value();
     alias.connectSource({[&] { return profile.alias; }, [&](std::function<void()> callback) {
