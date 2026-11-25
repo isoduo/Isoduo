@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.25)
+set(checker "${CMAKE_CURRENT_LIST_DIR}/script_guard.cmake")
+set(fixture "${CMAKE_CURRENT_BINARY_DIR}/script-guard-list.txt")
+file(WRITE "${fixture}" "src/main.cpp\nnotes.py.md\nscript.sh/data.txt\n")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DFILE_LIST=${fixture}" -P "${checker}"
+  COMMAND_ERROR_IS_FATAL ANY)
+
+set(forbidden "tools/build.ps1" "old scripts/run.sh" "test.PSM1" "demo.py" "go.bat" "go.cmd")
+foreach(path IN LISTS forbidden)
+  file(APPEND "${fixture}" "${path}\n")
+endforeach()
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DFILE_LIST=${fixture}" -P "${checker}"
+  RESULT_VARIABLE result ERROR_VARIABLE diagnostic)
+if(result EQUAL 0)
+  message(FATAL_ERROR "Accepted a list containing scripts")
+endif()
+foreach(path IN LISTS forbidden)
+  string(FIND "${diagnostic}" "${path}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "Expected ${path} in the diagnostic: ${diagnostic}")
+  endif()
+endforeach()
