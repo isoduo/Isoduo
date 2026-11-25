@@ -89,10 +89,12 @@ int failures(DesktopConfig config) {
     auto absent = create(loader);
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
 #ifndef _WIN32
+    config.backend = absent.backend;
     if (config.backend == DesktopBackendKind::x11) {
         auto base = create({});
         if (base.kind == StartupFailureKind::contextVersion ||
-            base.message.find(u"not connected") == base.message.npos) return 77;
+            (base.kind == StartupFailureKind::renderBackendUnavailable &&
+             base.message.find(u"not connected") == base.message.npos)) return 77;
         check(base.kind == StartupFailureKind::renderBackendUnavailable, "X11 backend handoff");
     } else
 #endif
@@ -143,10 +145,10 @@ int failures(DesktopConfig config) {
     if (config.backend == DesktopBackendKind::wayland)
 #endif
     {
-    inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+        inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
     }
 #ifdef _WIN32
     const char* surfaceCall = "vkCreateWin32SurfaceKHR";
