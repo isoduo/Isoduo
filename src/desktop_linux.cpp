@@ -140,6 +140,7 @@ struct Desktop::Impl {
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
     bool layoutDirty = true;
     bool leftPressed = false, rightPressed = false, hidden = false;
+    std::uint64_t retryAt = 0;
     bool animationScheduled = false;
     bool painting = false, arranging = false;
     struct WorkScope {
@@ -163,13 +164,17 @@ struct Desktop::Impl {
         : claim(std::move(ownerClaim)), ui(ui), appearance(appearance), page(std::move(page)), scroll(scroll), config(std::move(config)), hooks(hooks) {}
     ~Impl() { release(); }
     void createRenderer() {
-        renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
-            [this](auto event) { diagnostics.push(std::move(event)); });
+        if (config.renderBackend == RenderBackendKind::vulkan) {
+            const auto geometry = window->geometry();
+            renderer = createVulkanRenderer(window->reference(), hooks, geometry.width, geometry.height);
+        } else {
+            renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
+                [this](auto event) { diagnostics.push(std::move(event)); });
+        }
         caps = renderer->capabilities();
     }
     void attach() {
         window = openWindow(config);
-        if (config.renderBackend == RenderBackendKind::vulkan) startVulkan(window->reference(), hooks);
         createRenderer();
         text.setStyledLookup(systemStyledFontFile);
         auto& state = claim.state();
@@ -345,6 +350,7 @@ struct Desktop::Impl {
         invalidateFrame();
     }
     void paint() {
+        retryAt = 0;
         dirty = false;
         WorkScope work(painting);
         try {
@@ -371,6 +377,10 @@ struct Desktop::Impl {
                 renderer->draw(canvas.list, width, height);
             }
             if (observeFrame) observeFrame(frame, layoutGeometry);
+        } catch (const DeferredFrame&) {
+            window->discardFrame();
+            dirty = true;
+            retryAt = nowMs() + 16;
         } catch (const FrameError& error) {
             for (auto code : error.codes) diagnostics.push(frameDiagnostic(code));
             fail(error.failure);
@@ -596,10 +606,17 @@ struct Desktop::Impl {
             invalidateFrame();
         }
     }
+    bool frameReady() {
+        return dirty && !hidden && !failure && nowMs() >= retryAt && window->prepareFrame();
+    }
     int delay() {
         if (failure) return -1;
         int timeout = animationScheduled || access(ui).animationRunning() ? 16 : -1;
         const auto now = nowMs();
+        if (dirty && !hidden && retryAt) {
+            const auto wait = retryAt > now ? static_cast<int>(retryAt - now) : 0;
+            timeout = timeout < 0 ? wait : std::min(timeout, wait);
+        }
         for (auto deadline : {access(ui).tooltipDeadline(), textScrollDeadline}) if (deadline) {
             int wait = *deadline <= now ? 0 : static_cast<int>(std::min<std::uint64_t>(*deadline - now, INT_MAX));
             timeout = timeout < 0 ? wait : std::min(timeout, wait);
@@ -686,7 +703,7 @@ RunResult Desktop::run() {
     if (!host.closing && host.config.platformAccessibilityEnabled)
         host.accessibility.emplace(host.preferences->context(), host.ui, *host.window, host.frame, host.config.title, host.closing);
     while (!host.closing) {
-        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
+        if (host.frameReady()) {
             host.paint();
             if (host.failure && host.config.onRendererFailed) {
                 const auto error = *host.failure;
@@ -698,10 +715,13 @@ RunResult Desktop::run() {
         if (host.accessibility) host.accessibility->flushLayout();
         if (host.closing) break;
         host.syncIme();
-        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
+        if (host.frameReady()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
-        if (host.layoutGeometry != host.window->geometry()) host.invalidateFrame();
+        if (host.layoutGeometry != host.window->geometry()) {
+            if (host.renderer) host.renderer->resized();
+            host.invalidateFrame();
+        }
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);
