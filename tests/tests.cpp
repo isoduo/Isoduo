@@ -49,7 +49,7 @@ void coreBehavior(){
     check(bool(name.setValue(u"new")),"Normal callback must finish");
     run.bind([&]{return run.invoke();});
     check(run.invoke().status==Status::busy&&!detail::access(ui).stopped(),"Recursive commands must be rejected without stopping UI");
-    run.bind([]{throw std::runtime_error("extension");return Result{};});
+    run.bind([]() -> Result { throw std::runtime_error("extension"); });
     check(run.invoke().status==Status::failed&&detail::access(ui).stopped(),"Throwing extension stops the affected UI");
     check(name.setValue(u"unsafe").status==Status::failed,"Stopped UI rejects new work");
     Ui bad; bad.addButton({.id="x"}); bool duplicate = bad.addButton({.id="x"}).status == Status::invalidValue;

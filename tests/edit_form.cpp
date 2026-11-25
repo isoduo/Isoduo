@@ -462,7 +462,7 @@ void semanticWrongThreadDrivers() {
                         if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> ||
                                       std::is_same_v<T, ListHandle> || std::is_same_v<T, NavigationListHandle>) return h.select(*ref.item).status;
                         else if constexpr (std::is_same_v<T, TabsHandle>) return h.activate(*ref.item).status;
-                        return {};
+                        else return {};
                     }
                     if (verb == Verb::focus) { if constexpr (requires { h.focus(); }) return h.focus().status; }
                     if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
