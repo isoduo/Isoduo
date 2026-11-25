@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <string_view>
 #define lowercase_macro(x) \
     void macro_generated_name(x);
@@ -7,6 +8,7 @@
 /* struct comment_type { int bad_name; }; */
 namespace isoduo {
 using Counter = std::vector<std::pair<int, int>>::size_type;
+using Element = std::array<int, int{1}>::value_type;
 class Derived : public std::vector<int> {
     int inherited_;
 };
