@@ -27,7 +27,7 @@ AboutInfo desktopAboutInfo(const isoduo::Appearance& appearance) {
     }
 #endif
     about.licenses.push_back({{"isoduo"}, u"Isoduo Framework — MIT", std::u16string(frameworkLicense)});
-    const char* ids[] = {"freetype", "harfbuzz", "khronos", "unicode"};
+    const char* ids[] = {"freetype", "harfbuzz", "khronos", "unicode", "vulkan"};
     std::size_t i = 0;
     for (const auto& notice : isoduo::thirdPartyNotices()) {
         auto label = std::u16string(notice.name) + u" " + std::u16string(notice.version) + u" — " + std::u16string(notice.license);
