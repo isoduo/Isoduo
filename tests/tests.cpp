@@ -15,7 +15,7 @@ void coreBehavior(){
     auto name = ui.addTextField({.id = "name", .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
     auto locked = ui.addTextField({.id = "locked", .value = u"keep", .readOnly = true}).value.value();
     auto run = ui.addButton({.id = "run"}).value.value();
-    ui.addButton({.id = "cancel", .page = "dialog"}).value.value();
+    (void)ui.addButton({.id = "cancel", .page = "dialog"}).value.value();
     name.connectSource({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
     name.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     locked.connectSource({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});

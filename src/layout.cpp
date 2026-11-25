@@ -308,18 +308,18 @@ unsigned Frame::textOffset(const TextFieldHandle& handle, int x, int y) const {
     const auto* p = find(handle);
     return p ? detail::placementTextHit(*this, p->id, x, y).offset : 0;
 }
-int Placement::caretX(unsigned offset) const {
-    if (multiline) return view.text.x + static_cast<int>(std::lround(view.xInLine(view.lineOf(offset), offset)));
-    return bounds.x + textField.editor.x + static_cast<int>(std::lround(shift + run.x(offset) - this->offset));
+int Placement::caretX(unsigned textOffset) const {
+    if (multiline) return view.text.x + static_cast<int>(std::lround(view.xInLine(view.lineOf(textOffset), textOffset)));
+    return bounds.x + textField.editor.x + static_cast<int>(std::lround(shift + run.x(textOffset) - offset));
 }
-Rect Placement::caretRect(unsigned offset) const {
-    if (!multiline) return {caretX(offset), bounds.y + textField.editor.y, 1, textField.editor.h};
+Rect Placement::caretRect(unsigned textOffset) const {
+    if (!multiline) return {caretX(textOffset), bounds.y + textField.editor.y, 1, textField.editor.h};
     const unsigned last = static_cast<unsigned>(std::min<std::size_t>(view.first + std::max(1u, view.visible), view.lines.size())) - 1;
-    return {caretX(offset), view.rowY(std::clamp(view.lineOf(offset), std::min(view.first, last), last)), 1, view.rowHeight};
+    return {caretX(textOffset), view.rowY(std::clamp(view.lineOf(textOffset), std::min(view.first, last), last)), 1, view.rowHeight};
 }
-int Placement::caretY(unsigned offset) const {
+int Placement::caretY(unsigned textOffset) const {
     if (!multiline) return bounds.y + textField.editor.y;
-    return view.rowY(view.lineOf(offset));
+    return view.rowY(view.lineOf(textOffset));
 }
 int ScrollRegion::offsetForThumb(int thumbPosition) const {
     if (horizontal) {
@@ -332,11 +332,11 @@ int ScrollRegion::offsetForThumb(int thumbPosition) const {
     if (maximum <= 0 || travel <= 0) return 0;
     return std::clamp(static_cast<int>(std::lround(double(thumbPosition - track.y) * maximum / travel)), 0, maximum);
 }
-bool Frame::scrollTo(Ui& ui, ScrollState& state, int offset) const {
+bool Frame::scrollTo(Ui& ui, ScrollState& state, int requestedOffset) const {
     auto region = std::find_if(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return r.state == &state; });
-    return region != regions.end() && scrollTo(ui, *region, offset);
+    return region != regions.end() && scrollTo(ui, *region, requestedOffset);
 }
-bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int offset) const {
+bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) const {
     auto& owner = detail::access(ui);
     if (ownerState != &owner || !region.state || owner.retiredComponent(region.component)) return false;
     if (std::none_of(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return &r == &region; })) return false;
@@ -350,7 +350,7 @@ bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int offset) const {
     // An open dialog blocks the page behind it, but scrolls its own content.
     if ((modal || owner.modal()) && !popupScroll && !region.modalContent) return false;
     auto& state = *region.state;
-    int next = std::clamp(offset, 0, region.maximum);
+    int next = std::clamp(requestedOffset, 0, region.maximum);
     if (next == state.offset) return false;
     if (!region.textField.empty()) {  // a text field's scrollbar moves by whole lines, at least one per request
         int step = std::max(1, region.step), lines = (next + step / 2) / step, current = state.offset / step;
@@ -430,9 +430,9 @@ bool Frame::selectTo(Ui& ui, const TextFieldHandle& handle, int x, int y) const 
         if (y < top && first > 0) { if ((scrolled = owner.scrollLinesTo(p->id, first - 1))) --first; }
         else if (y >= bottom && first + view.visible < count) { if ((scrolled = owner.scrollLinesTo(p->id, first + 1))) ++first; }
         unsigned line = y < top ? first : y >= bottom ? std::min(first + view.visible, count) - 1 : view.lineAt(y);
-        auto [offset, upstream] = view.hitInLine(line, static_cast<float>(x - view.text.x));
+        auto [textOffset, upstream] = view.hitInLine(line, static_cast<float>(x - view.text.x));
         const unsigned cell = view.cellInLine(line, static_cast<float>(x - view.text.x));
-        owner.textPointerDrag(p->id, {offset, upstream}, cell);
+        owner.textPointerDrag(p->id, {textOffset, upstream}, cell);
     }
     if (scrolled) owner.scrolled();
     const auto after = session->selection;
