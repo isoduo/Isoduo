@@ -164,6 +164,7 @@ void showcase(DesktopConfig config, const Appearance& appearance, std::string_vi
             setup = handles.name.focus() && handles.name.setValue(u"");
             handles.apply.invoke();
             setup &= handles.name.describe()->invalid;
+            reveal = ids.name;
             break;
         case 4:
             setup = bool(handles.region.focus());
@@ -313,7 +314,8 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
         const auto name = std::string("SD-") + char('a' + scene) + "-" + std::string(appearanceName) +
             (dark ? "-dark" : "-light") + (scale == 1.f ? "-100" : "-150");
         const auto result = report.compare(name, width, height, scale, setup, [&] {
-            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
+            const auto reveal = scene == 0 || scene == 2 ? state.focused() : Id{};
+            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 0, reveal);
         });
         if (!result) continue;
         auto has = [&](std::string_view owner, PaintRole role) { return test::hasPaintRole(*result, owner, role); };
@@ -423,6 +425,10 @@ int main(int argc, char** argv) {
         check(backend == "wayland" || backend == "x11", "Specify a native desktop backend");
         DesktopConfig config;
         config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
+        if (argc == 5 && std::string_view(argv[4]) == "vulkan") {
+            config.renderBackend = RenderBackendKind::vulkan;
+            --argc;
+        }
         config.title = u"Isoduo render verification";
         config.width = width;
         config.height = height;
