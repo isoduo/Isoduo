@@ -85,66 +85,6 @@ session. Linux `nativeWindow()` returns a borrowed tagged reference:
 a `wl_display*` and `wl_surface*` on Wayland, or a `Display*` and XID on X11.
 It is valid while the native window lives, including across a renderer rebuild.
 
-Run the following probes in a GNOME Wayland session and an Xfce Xorg session,
-using the corresponding `wayland` or `x11` argument as `BACKEND`.
-
-- `isoduo_linux_desktop_native BACKEND close`: record context capabilities and
-  native window identity. Request a close, activate the button in the same
-  window, then request a second close and check the exit status.
-- `isoduo_linux_desktop_native BACKEND program`: follow the same steps to
-  exercise a programmatic close inside the second close callback.
-- `isoduo_linux_desktop_native BACKEND wrapper`: activate the button and close
-  the window created by `runDesktop`.
-- `isoduo_linux_desktop_native BACKEND faults`: exercise structured startup
-  failures, optional context capabilities, wrong-thread close and explicit
-  renderer rebuild. Use a Wayland client trace for the surface commit and
-  `xprop -id XID` for the X11 window.
-
-Run the following with `ISODUO_BUILD_TESTS=ON` from the repository root.
-Set `BACKEND=wayland` in GNOME Wayland or `BACKEND=x11` in Xfce Xorg.
-
-- **Clipboard.** Run `./build-linux/isoduo_linux_clipboard_native source` and
-  `./build-linux/isoduo_linux_clipboard_native target` in separate terminals.
-  Select all and copy in the source, then select all and paste in the target.
-  Compare the target's logged text and style span. Repeat with `plain` as the
-  target to check text-only paste, and with `large` as the source to check a
-  large transfer. Copy and paste in both directions with a desktop text editor
-  as the peer. The `richtext` CTest exercises delayed completion and stale
-  paste and cut admission.
-- **IME.** Run `./build-linux/isoduo_linux_text_geometry "$BACKEND" input`.
-  With the session's input method active, compose in the single-line field
-  and check candidate placement at the caret. Commit Traditional Chinese text
-  and use Ctrl+G to record the value and selection. Repeat with Escape during
-  composition and with a focus change before commit. Sample the original and
-  destination fields to check that cancellation preserves committed text and
-  that a commit applies once to the field that owns the composition. Repeat
-  in the multiline and styled fields.
-- **Scale and resize.** Run
-  `./build-linux/isoduo_linux_text_geometry "$BACKEND" input 640 720`.
-  At the session's original scale, click a character in the single-line field
-  and use Ctrl+G to record the caret. Use Ctrl+D to open the dropdown and
-  click an option. Repeat after resizing and at a different desktop scale,
-  moving the window between outputs if available. Compare the logged
-  `Frame` dimensions, effective scale, scroll bounds and hit positions with
-  the selection and dropdown reports. Use Ctrl+Q to close and restore the
-  original desktop scale.
-- **AT-SPI and renderer recovery.** With PyGObject and the AT-SPI typelib
-  installed and the GTK helper built, run the queued-event and recovery probes in
-  each native session. The queued-event probe includes replacement of a text field
-  before AT-SPI receives its pending edits.
-
-  ```sh
-  /usr/bin/python3 tests/linux_accessibility_client.py build-linux/isoduo_linux_accessibility_host --queued-events
-  /usr/bin/python3 tests/linux_failure_prompt_client.py build-linux/isoduo_linux_failure_prompt
-  ```
-
-After changes to system font layout or desktop preference acquisition, check
-both native sessions with an installed family that has real bold and italic
-faces and a regular-only font in the user's font directory. Check mixed-script
-fallback, missing-family and missing-glyph diagnostics, and the session's
-animation setting or its enabled default. The headless `linux_fonts` and
-`linux_preferences` tests cover the shared font and settings fixtures.
-
 ## S1 minimal edit form
 
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
@@ -156,7 +96,7 @@ animation setting or its enabled default. The headless `linux_fonts` and
 .\build.ps1 -Configuration Release -CoreOnly
 ```
 
-`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
+`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure.
 
 The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
@@ -456,68 +396,10 @@ is converted to physical pixels at the requested scale. Both use the same
 component inventory and drivers. Native comparison uses the CPU reference and
 GPU backend; failures save CPU, GPU and difference images.
 
-On an idle author desktop, run `./verify-idle.ps1 -Only presentation`. PR01
-requires Microsoft Bopomofo, Microsoft JhengHei and MingLiU; PR02 requires 100%
-and 150% monitors. PR03 reads the family names of registered per-user fonts
-under `%LOCALAPPDATA%\Microsoft\Windows\Fonts` with DirectWrite and checks that
-each is in the system catalog and resolves as the primary family. With no
-per-user font, PR03 reports BLOCKED and asks the operator to install one.
-The settings demo's **Appearance and Text** page uses that catalog. The edit form's V04
-page shows a fixed list of four fonts.
-
-PR04 records font-switch timing in `presentation/trial/font-switch-timing.tsv`
-as a report-only measurement. The same run writes 16 V01 trial images and their
-manifest under `presentation/trial`. To generate just the trial artifacts, run
-
-```powershell
-./build/Release/isoduo_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
-```
-
-For the one-time author sign-off, review both appearances in the trial images,
-try switching fonts on the settings demo's **Appearance and Text** page, and record feedback
-alongside the evidence. Use `-PresentationSignedOff` after recording that sign-off.
-PS10 runs automatically in the `presentation_recovery` CTest.
-
-`verify-idle.ps1` exits with `0` when the selected checks pass, `1` for a failed
-case or run, `2` when only author sign-off remains, and `3` for a blocked case
-with no failures. `-DryRun` lists the real-input and presentation cases without
-starting their executables.
-
-## Real-platform runs per change
-
 The Windows CTest `clipboard_contract` exercises native clipboard formats in a
 private window station. It requires Windows Secondary Logon to start the local
 worker and fails if it cannot establish isolation. The `serialized_contract`
 test checks the same rich-text wire round trip without Windows.
-
-Production changes to layout or to the desktop host need runs that only a real, idle desktop can give (real clipboard,
-input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
-lists, per change, which idle-desktop runs the author still has to do before the next release; the rows are removed
-after each release (see "Releasing"). Commands are
-`./verify-idle.ps1 -Only <name>` unless the row says otherwise; `isoduo_host_verify` is `build/Release/isoduo_host_verify.exe`.
-
-Run `./verify-idle.ps1 -Only real-input` on an idle Windows desktop after a
-Release build. It takes over the mouse and keyboard while driving both web and
-material with temporary settings. Each case writes a result to
-`real-input/real-input.tsv` and saves screenshots under its appearance folder.
-
-- **RI01** Right-click the second line of the multi-line note and verify where a typed marker lands.
-- **RI02** Commit a wrapped Microsoft Bopomofo composition with no newline. The case is blocked if the current user profile lacks Bopomofo.
-- **RI03** Drag the items page scrollbar thumb and verify steady motion and the stop at the end of travel.
-- **RI04** Open the note color dropdown at a 660 px window width and confirm that the modal blocks a page thumb drag. The modal's 20 DIP margin prevents the dropdown from covering the page scrollbar in this demo. The CTest `pointer_routing` case `anOpenDialogBlocksThePageScrollbarUnderItsComponents` exercises the overlap.
-
-`build.ps1` records the built commit and working-tree dirty flag in
-`build/<Configuration>/source-revision.txt`; in a source archive without `.git`
-it builds without this file. The real-input and presentation
-runs copy the Release file into their evidence directories and warn when the
-recorded commit differs from current HEAD.
-
-| Change | Idle-desktop runs |
-| --- | --- |
-| PR #121 English UI text | `-Only real-input,demo-uia`: English labels change the width of every demo page, and the demo UIA names, the built-in menu labels and the menu node name (`Context menu`) change. Access keys are unchanged; CTest `context_menu` and `uia_demo_*` check them. Right-click a text field and an Items row once with real input to see the English menus. `src/desktop_host.cpp` changes only the text of clipboard results, not their `Status`, so no clipboard run is needed |
-
-The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
-author has run them.
 
 ## Releasing
 
@@ -532,13 +414,9 @@ A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `
    Otherwise it builds GitHub's source archive of the commit, which has no `.git`: on Windows, the Release core with
    its tests and then the full build; on Ubuntu, `tools/test-linux-core.sh`. When both pass, it creates a draft
    release, which only people with write access can see.
-3. On the author machine, check out the full SHA at the top of the draft and do the real-platform runs this
-   release needs: the table above per change, or `verify-v1-final.ps1` for the full pass. The author decides
-   which; the workflow does not check them. If one fails, delete the draft; nothing was published.
-4. Replace the reminder paragraph at the top of the draft with a summary: what changed, and which real-platform runs
-   you did, or that CTest was enough. Keep the `Commit:` line and the merged PRs GitHub listed below it. Press
-   **Publish release**; GitHub creates the tag on that commit at this moment.
-5. Open a PR that removes the rows of the table above that existed at the release commit and bumps the patch of
+3. Complete real-machine verification on the draft commit before publishing. If a check fails, delete the draft.
+4. Update the draft summary, keep the commit and merged PRs, and press **Publish release**.
+5. Open a PR that bumps the patch of
    `project(Isoduo VERSION ...)`, for example 0.4.0 to 0.4.1, so that the framework version on `main` no longer matches
    a published release.
 
