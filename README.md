@@ -521,6 +521,7 @@ recorded commit differs from current HEAD.
 
 | Change | Idle-desktop runs |
 | --- | --- |
+| PR #121 English UI text | `-Only real-input,demo-uia`: English labels change the width of every demo page, and the demo UIA names, the built-in menu labels and the menu node name (`Context menu`) change. Access keys are unchanged; CTest `context_menu` and `uia_demo_*` check them. Right-click a text field and an Items row once with real input to see the English menus. `src/desktop_host.cpp` changes only the text of clipboard results, not their `Status`, so no clipboard run is needed |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
