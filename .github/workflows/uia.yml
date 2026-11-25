@@ -6,25 +6,23 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      ISODUO_MSVC_TOOLSET: '14.44'
       MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
       MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
       GALLIUM_DRIVER: llvmpipe
     steps:
       - uses: actions/checkout@v4
-      - name: Build full Release configuration
-        shell: pwsh
-        run: ./build.ps1 -Configuration Release -SkipTests
-      - name: Download and verify Mesa
-        shell: pwsh
-        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\isoduo-mesa"
-      - name: Install application-local OpenGL DLLs
-        shell: pwsh
-        run: |
-          $source = "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64"
-          Copy-Item -LiteralPath "$source\opengl32.dll", "$source\libgallium_wgl.dll" -Destination build\Release
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: '14.44'
+      - name: Configure Release
+        run: cmake --preset windows-clang-cl-release
+      - name: Build Release
+        run: cmake --build --preset windows-clang-cl-release
+      - name: Download, verify and install application-local Mesa DLLs
+        run: cmake -DDESTINATION=build/Release -P cmake/InstallMesa.cmake
       - name: Run UI Automation tests
-        run: ctest --test-dir build/Release --output-on-failure --no-tests=error --timeout 900 -R '^uia_'
+        run: ctest --preset windows-clang-cl-release --timeout 900 -R '^uia_'
       - name: Upload CTest diagnostics
         if: always()
         uses: actions/upload-artifact@v4

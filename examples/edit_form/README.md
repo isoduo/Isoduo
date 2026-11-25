@@ -64,13 +64,13 @@ The S1-specific descriptions below are historical where they list only the origi
 
 ## Building and running
 
-You need Visual Studio C++ Build Tools and the Windows SDK, clang-cl, CMake, and Ninja. The build uses the HarfBuzz and FreeType sources bundled in the repository, with no downloads or package manager. Run these commands in PowerShell from the repository root.
+You need Visual Studio C++ Build Tools and the Windows SDK, clang-cl, CMake, and Ninja. The build uses the HarfBuzz and FreeType sources bundled in the repository, with no downloads or package manager. Run these commands from the repository root in an x64 Visual Studio developer PowerShell.
 
 ~~~powershell
-.\build.ps1 -Configuration Release          # Build and run all CTests, including native verification with a real window
+cmake --workflow --preset windows-clang-cl-release          # Build and run all CTests, including native verification with a real window
 .\build\Release\isoduo_edit_form_web.exe       # Minimal Web
 .\build\Release\isoduo_edit_form_material.exe  # Material-inspired
-.\build.ps1 -Configuration Release -CoreOnly  # Build only Core, with no window creation or linking against OpenGL or font libraries
+cmake --workflow --preset windows-clang-cl-release-core  # Build only Core, with no window creation or linking against OpenGL or font libraries
 ~~~
 
 Both executables use the same `main.cpp` and link different appearance libraries when assembled. They require an OpenGL 3.3 core driver and the Windows fonts Segoe UI and Microsoft JhengHei.
