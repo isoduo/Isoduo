@@ -146,9 +146,6 @@ if(ISODUO_BUILD_TESTS)
   add_test(NAME list_page COMMAND isoduo_list_page_tests)
   if(ISODUO_INSTALL AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     get_property(package_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-    if(package_multi_config)
-      set(package_consumer_configs "-DCMAKE_CONFIGURATION_TYPES=$<CONFIG>")
-    endif()
     add_test(NAME package_install COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
       "-DCONFIG=$<CONFIG>" "-DDESKTOP=${ISODUO_BUILD_DESKTOP}"
       "-DSTATIC_PREFIX=${CMAKE_STATIC_LIBRARY_PREFIX}" "-DSTATIC_SUFFIX=${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -156,17 +153,18 @@ if(ISODUO_BUILD_TESTS)
     set_tests_properties(package_install PROPERTIES FIXTURES_SETUP package)
     add_test(NAME about_package_no_json COMMAND "${CMAKE_COMMAND}" "-DPREFIX=${CMAKE_BINARY_DIR}/package-prefix" -P "${PROJECT_SOURCE_DIR}/tests/package/no-json-notices.cmake")
     set_tests_properties(about_package_no_json PROPERTIES FIXTURES_REQUIRED package)
-    add_test(NAME consumer_example COMMAND "${CMAKE_CTEST_COMMAND}"
-      --build-and-test "${PROJECT_SOURCE_DIR}/examples/consumer" "${CMAKE_BINARY_DIR}/consumer"
-      --build-generator "${CMAKE_GENERATOR}" -C "$<CONFIG>"
-      --build-options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/package-prefix" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF" "-DCMAKE_BUILD_TYPE=$<CONFIG>"
-        "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" ${package_consumer_configs}
-      --test-command "${CMAKE_CTEST_COMMAND}" -C "$<CONFIG>" --output-on-failure --no-tests=error)
-    set_tests_properties(consumer_example PROPERTIES FIXTURES_REQUIRED package)
-    add_test(NAME package_contract COMMAND "${CMAKE_COMMAND}"
+    set(package_test_options
       "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
       "-DGENERATOR=${CMAKE_GENERATOR}" "-DCOMPILER=${CMAKE_CXX_COMPILER}"
       "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DBUILD_TYPE=$<CONFIG>" "-DMULTI_CONFIG=${package_multi_config}"
+      "-DDESKTOP=${ISODUO_BUILD_DESKTOP}" "-DTOOLSET=$ENV{VCToolsVersion}")
+    add_test(NAME consumer_example COMMAND "${CMAKE_COMMAND}" ${package_test_options}
+      -P "${PROJECT_SOURCE_DIR}/tests/package/consumer.cmake")
+    add_test(NAME package_cross_compiler COMMAND "${CMAKE_COMMAND}" ${package_test_options}
+      "-DPRODUCER=${CMAKE_CXX_COMPILER_ID}" -DCROSS_COMPILER=ON -P "${PROJECT_SOURCE_DIR}/tests/package/consumer.cmake")
+    set_tests_properties(package_cross_compiler PROPERTIES SKIP_REGULAR_EXPRESSION "^.*SKIP: cross-compiler")
+    set_tests_properties(consumer_example package_cross_compiler PROPERTIES FIXTURES_REQUIRED package)
+    add_test(NAME package_contract COMMAND "${CMAKE_COMMAND}" ${package_test_options}
       -P "${PROJECT_SOURCE_DIR}/tests/package/contract.cmake")
     set_tests_properties(package_contract PROPERTIES FIXTURES_REQUIRED package)
   endif()
