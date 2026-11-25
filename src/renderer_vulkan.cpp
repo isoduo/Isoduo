@@ -148,8 +148,6 @@ struct Session {
         if (!lookup) unavailable("Missing vkGetInstanceProcAddr");
     }
     void loadInstanceFunctions() {
-        destroyInstance = function<PFN_vkDestroyInstance>("vkDestroyInstance");
-        enumeratePhysicalDevices = function<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
         getPhysicalDeviceProperties = function<PFN_vkGetPhysicalDeviceProperties>("vkGetPhysicalDeviceProperties");
         getPhysicalDeviceFeatures2 = function<PFN_vkGetPhysicalDeviceFeatures2>("vkGetPhysicalDeviceFeatures2");
         enumerateDeviceExtensionProperties = function<PFN_vkEnumerateDeviceExtensionProperties>("vkEnumerateDeviceExtensionProperties");
@@ -178,7 +176,7 @@ const char* platformExtension(VulkanWindow window) {
     return window.backend == DesktopBackendKind::wayland ? VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME : VK_KHR_XCB_SURFACE_EXTENSION_NAME;
 #endif
 }
-void createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks) {
+std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks) {
     auto getVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(s.lookup(nullptr, "vkEnumerateInstanceVersion"));
     uint32_t version = VK_API_VERSION_1_0;
     if (getVersion) check("vkEnumerateInstanceVersion", getVersion(&version));
@@ -187,16 +185,31 @@ void createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks) {
     auto extensions = enumerate<VkExtensionProperties>("vkEnumerateInstanceExtensionProperties",
         [&](uint32_t* count, VkExtensionProperties* out){ return query(nullptr, count, out); });
     const char* required[] = {VK_KHR_SURFACE_EXTENSION_NAME, platformExtension(window)};
-    for (auto name : required) if (!hasExtension(extensions, name) || (hooks && hooks->hideInstanceExtension)) throw StartupError{missing(name)};
+    const char* missingExtension = nullptr;
+    for (auto name : required) {
+        if (!hasExtension(extensions, name) || (hooks && hooks->hideInstanceExtension)) {
+            missingExtension = name;
+            break;
+        }
+    }
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.apiVersion = VK_API_VERSION_1_3;
     VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     info.pApplicationInfo = &app;
-    info.enabledExtensionCount = 2;
+    // An installed loader with no ICD may advertise no surface extensions.
+    // Probe without WSI in that case so absence of a driver remains distinguishable.
+    info.enabledExtensionCount = missingExtension ? 0 : 2;
     info.ppEnabledExtensionNames = required;
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
+    s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
+    s.enumeratePhysicalDevices = s.function<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
+    auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices",
+        [&](uint32_t* n, VkPhysicalDevice* out){ return s.enumeratePhysicalDevices(s.instance, n, out); });
+    if (devices.empty() || (hooks && hooks->hidePhysicalDevices)) unavailable("No Vulkan physical devices");
+    if (missingExtension) throw StartupError{missing(missingExtension)};
     s.loadInstanceFunctions();
+    return devices;
 }
 template<class F, class Info> void surfaceCall(Session& s, const char* name, Info& info, RendererTestHooks* hooks) {
     auto create = s.function<F>(name);
@@ -295,11 +308,8 @@ void startVulkan(VulkanWindow window, RendererTestHooks* hooks) {
     if (hooks && hooks->hideVulkanLoader) unavailable("Vulkan loader unavailable");
     Session session;
     session.load();
-    createInstance(session, window, hooks);
+    auto devices = createInstance(session, window, hooks);
     createSurface(session, window, hooks);
-    auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices",
-        [&](uint32_t* n, VkPhysicalDevice* out){ return session.enumeratePhysicalDevices(session.instance, n, out); });
-    if (devices.empty() || (hooks && hooks->hidePhysicalDevices)) unavailable("No Vulkan physical devices");
     std::optional<StartupFailure> firstFailure;
     for (auto device : devices) {
         Selection selection{device};
