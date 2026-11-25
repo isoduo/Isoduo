@@ -525,7 +525,7 @@ void replacingFocusOrAccentRecolorsTheRingAsTheTicketSays() {
 
 void neverDrawsNoFocusIndicatorOnAnyComponent() {
     for (const auto& r : runs)
-        forEachFocused(r, [](PresentationSettings& s) { s.focusIndicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement& item, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
+        forEachFocused(r, [](PresentationSettings& s) { s.focusIndicator = FocusIndicatorMode::never; }, [&](Page& page, const Frame&, const Placement&, const ComponentSnapshot& s, Probe& probe, const std::string& label) {
             check(probe.count(PaintRole::focusIndicator) == 0, (label + ": never draws no focus indicator").c_str());
             check(!findRing(probe.cmds), (label + ": no ring").c_str());
             check(s.focused && page.state().focused() == s.id, (label + ": focus itself is untouched").c_str());

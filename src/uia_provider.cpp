@@ -216,8 +216,8 @@ public:
                 if (!array) return E_OUTOFMEMORY;
                 for (LONG i = 0; i < static_cast<LONG>(n->describedBy.size()); ++i) {
                     auto provider = static_cast<IRawElementProviderSimple*>(ctx->provider(n->describedBy[i]));
-                    auto result = SafeArrayPutElement(array, &i, provider);
-                    if (FAILED(result)) { SafeArrayDestroy(array); return result; }
+                    auto inserted = SafeArrayPutElement(array, &i, provider);
+                    if (FAILED(inserted)) { SafeArrayDestroy(array); return inserted; }
                 }
                 v.vt = VT_ARRAY | VT_UNKNOWN; v.parray = array;
             }

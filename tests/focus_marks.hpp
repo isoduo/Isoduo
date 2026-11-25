@@ -15,6 +15,6 @@ inline bool isOneRing(int markedFills) { return rings(markedFills) == 1; }
 inline bool isThumb(isoduo::Rect fill) { return fill.w == fill.h && fill.w > 8; }
 // The thumb's width in pixels: the appearance's body spacing while the focus indicator shows, its row padding otherwise.
 inline int scaled(float scale, int dip) { return std::max(1, static_cast<int>(std::lround(dip * scale))); }
-inline int enlargedThumb(const isoduo::Appearance& appearance, float scale = 1.f) { return scaled(scale, appearance.componentPresentation().bodySpacing); }
-inline int plainThumb(const isoduo::Appearance& appearance, float scale = 1.f) { return scaled(scale, appearance.componentPresentation().rowPadding); }
+inline int enlargedThumb(const isoduo::Appearance& skin, float scale = 1.f) { return scaled(scale, skin.componentPresentation().bodySpacing); }
+inline int plainThumb(const isoduo::Appearance& skin, float scale = 1.f) { return scaled(scale, skin.componentPresentation().rowPadding); }
 }

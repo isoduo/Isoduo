@@ -140,7 +140,7 @@ void aScrollableLabelStepsOneActualRow() {
 TextFieldHandle fieldOf(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
     auto field = *ui.addTextField(std::move(control));
-    check(bool(field.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
+    check(bool(field.connectSource({[model] { return *model; }, test::ignoreNotifications})), "Connect a source");
     check(bool(field.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
