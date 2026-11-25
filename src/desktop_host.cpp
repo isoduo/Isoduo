@@ -25,6 +25,7 @@ bool systemKeyboardCues() {
     return SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &on, 0) && on;
 }
 const wchar_t* windowClass = L"Isoduo.DesktopHost";
+constexpr UINT_PTR presentRetryTimer = 4;
 constexpr UINT_PTR tooltipTimer = 1;
 constexpr UINT_PTR dragScrollTimer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
 constexpr UINT_PTR animationTimer = 3;    // distinct from the other timer ids: they run side by side
@@ -259,7 +260,7 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         throw StartupError{{StartupFailureKind::window, {}, {}, u"Window creation failed"}};
     }
     try {
-        if (options.renderBackend == RenderBackendKind::vulkan) startVulkan(window_, hooks_);
+        renderBackend_ = options.renderBackend;
         if (hooks_ && !hooks_->startupResourceError.empty()) throw std::runtime_error(hooks_->startupResourceError);
         if (options.platformAccessibilityEnabled) uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
             RECT client{}; GetClientRect(window_, &client);
@@ -301,7 +302,7 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
             syncIme();
         });
         claim_.state().beforeFocus([this] { finishComposition(); });
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        renderer_ = createRenderer();
         capabilities_ = renderer_->capabilities();
         clientSize(options.width, options.height);
         PostMessageW(window_,WM_APP+43,0,0);
@@ -311,6 +312,10 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         release();  // the destructor will not run for a half-built host
         throw;
     }
+}
+std::unique_ptr<Renderer> DesktopHost::createRenderer() {
+    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_);
+    return std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
 }
 Result DesktopHost::rebuildRenderer() {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
@@ -328,7 +333,7 @@ Result DesktopHost::rebuildRenderer() {
         ~ShaderOverride() { if (hooks) hooks->fragmentShaderOverride=std::move(previous); }
     } shaderOverride(hooks_);
     try {
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        renderer_ = createRenderer();
         renderer_->restoreAtlas(text_.atlasPages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
@@ -445,6 +450,7 @@ void DesktopHost::refreshVisibility() {
     const bool hidden = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || coveredByAnotherWindow(window_);
     if (hidden == hidden_) return;
     hidden_ = hidden;
+    if (hidden && window_) KillTimer(window_, presentRetryTimer);
     claim_.state().setWindowHidden(hidden);  // hiding lands every running transition at once
 }
 void DesktopHost::scheduleAnimation() {
@@ -480,7 +486,7 @@ Frame DesktopHost::arrange(int width, int height, float scale) {
     return isoduo::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
-    if (rendererFailure_ || painting_) return;
+    if (rendererFailure_ || painting_ || (renderBackend_==RenderBackendKind::vulkan && IsIconic(window_))) return;
     struct Guard { bool& flag; explicit Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard(painting_);
     auto start=std::chrono::steady_clock::now();
     RECT r{};
@@ -507,6 +513,14 @@ void DesktopHost::paint() {
     double submission=0; std::chrono::steady_clock::time_point presented;
     double gpu=0;
     try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perfEnabled_, perfOffscreen_, &submission, &presented); }
+    catch (const DeferredFrame&) {
+        refreshVisibility();
+        if (!hidden_) {
+            SetTimer(window_, presentRetryTimer, 16, nullptr);
+            if (hooks_) ++hooks_->retryTimers;
+        }
+        return;
+    }
     catch (const FrameError& e) {
         for (auto code : e.codes) diagnostics_.push(frameDiagnostic(code));
         PostMessageW(window_,WM_APP+43,0,0);
@@ -544,7 +558,8 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
     reveal_.clear();
     RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
-    auto image = renderCpu(recording.list, width, height);
+    auto image = renderBackend_ == RenderBackendKind::vulkan ? renderer_->readBack(recording.list, width, height) :
+        renderCpu(recording.list, width, height);
     if (copy) *copy = image;
     std::vector<unsigned char> pixels(image.pixels);
     for (std::size_t i = 0; i < pixels.size(); i += 4) std::swap(pixels[i], pixels[i + 2]);
@@ -733,7 +748,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_SIZE: refreshVisibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SIZE: if (renderer_) renderer_->resized(); refreshVisibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
     case WM_SHOWWINDOW: case WM_WINDOWPOSCHANGED: refreshVisibility(); break;
     case WM_DPICHANGED: {
         auto r = reinterpret_cast<RECT*>(l);
@@ -762,6 +777,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         syncIme(); InvalidateRect(window_, nullptr, FALSE); return 0;
     }
     case WM_TIMER:
+        if (w == presentRetryTimer) {
+            KillTimer(window_, presentRetryTimer);
+            refreshVisibility();
+            if (!hidden_) InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
         if (w == animationTimer) {
             KillTimer(window_, animationTimer);
             refreshVisibility();  // covered windows are only noticed by looking

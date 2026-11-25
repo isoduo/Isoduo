@@ -18,6 +18,9 @@ struct RendererTestHooks {
     bool hideDynamicRendering = false, hideSynchronization2 = false;
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
+    int lastAcquire=0, lastPresent=0, retryTimers=0;
+    unsigned compositeAlphaMask=0;
+    double presentMs=0;
     std::string fragmentShaderOverride;
     std::string startupResourceError;
     int errorAtFrame = 0, resetAtFrame = 0;
@@ -27,6 +30,7 @@ struct RendererTestHooks {
     unsigned injectedError = 0x0505;
 };
 struct StartupError { StartupFailure failure; };
+struct DeferredFrame {};
 struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
 RenderDiagnostic frameDiagnostic(unsigned code);
 struct GpuRegion {
@@ -51,12 +55,15 @@ public:
     using Window = EglWindow&;
 #endif
     explicit Renderer(Window window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
-    ~Renderer();
-    double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
-    Image readBack(const DrawList& list, int width, int height);
-    std::string name() const;
-    RendererCapabilities capabilities() const;
-    void restoreAtlas(const std::vector<const AtlasPage*>& pages);
+    virtual ~Renderer();
+    virtual double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
+    virtual Image readBack(const DrawList& list, int width, int height);
+    virtual std::string name() const;
+    virtual RendererCapabilities capabilities() const;
+    virtual void restoreAtlas(const std::vector<const AtlasPage*>& pages);
+    virtual void resized() {}
+protected:
+    Renderer();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
