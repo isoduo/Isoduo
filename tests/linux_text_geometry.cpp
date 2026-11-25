@@ -48,15 +48,15 @@ struct Fixture {
             ++saves;
             return ConfirmationResult{};
         }) && ui.addShortcut({.letter = u'S', .ctrl = true}, save), "Connect styled confirmation");
-        bind("report", u"Report (Ctrl+G)", {.ctrl = true, .letter = u'G'}, [&] { report(); });
+        bind("report", u"Report (Ctrl+G)", {.letter = u'G', .ctrl = true}, [&] { report(); });
         bind("shortcut", u"Ctrl+Enter", {.key = Key::enter, .ctrl = true}, [&] { ++shortcuts; });
-        bind("words", u"Word mode (Ctrl+W)", {.ctrl = true, .letter = u'W'}, [&] {
+        bind("words", u"Word mode (Ctrl+W)", {.letter = u'W', .ctrl = true}, [&] {
             constexpr std::array modes{WordSegmentation::dictionary, WordSegmentation::perCharacter, WordSegmentation::scriptRun};
             auto current = std::find(modes.begin(), modes.end(), *multi.wordSegmentation());
             check(bool(multi.setWordSegmentation(modes[(current - modes.begin() + 1) % modes.size()])), "Change word mode");
         });
-        bind("flow", u"Flow (Ctrl+P)", {.ctrl = true, .letter = u'P'}, [&] { flow((phase + 1) % 7); });
-        bind("rows", u"Visible lines (Ctrl+L)", {.ctrl = true, .letter = u'L'}, [&] {
+        bind("flow", u"Flow (Ctrl+P)", {.letter = u'P', .ctrl = true}, [&] { flow((phase + 1) % 7); });
+        bind("rows", u"Visible lines (Ctrl+L)", {.letter = u'L', .ctrl = true}, [&] {
             check(bool(multi.setVisibleLines(*multi.visibleLines() == 3 ? 2 : 3)), "Change the viewport size");
         });
     }

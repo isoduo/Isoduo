@@ -120,7 +120,7 @@ void stylesApplyToARangeAndAreOneUndoEntry() {
     check(bool(field.setStyle(1, 4, {.italic = true})) && spans() == Spans{bold(0, 1), {.start = 1, .length = 1, .bold = true, .italic = true}, italic(2, 2)},
           "Italic over a bold edge combines the styles");
     check(bool(field.setStyle(0, 6, {.bold = false, .italic = false})) && spans().empty(), "Removing bold and italic from the whole text leaves no spans");
-    check(bool(field.setStyle(2, 4, {.color = "red", .underline = true})) && spans() == Spans{{.start = 2, .length = 2, .underline = true, .color = "red"}},
+    check(bool(field.setStyle(2, 4, {.underline = true, .color = "red"})) && spans() == Spans{{.start = 2, .length = 2, .underline = true, .color = "red"}},
           "Color and underline set together");
     check(bool(field.setStyle(2, 3, {.color = ""})) && spans() == Spans{underline(2, 1), {.start = 3, .length = 1, .underline = true, .color = "red"}},
           "An empty color name returns text to the normal color");
@@ -824,7 +824,7 @@ void alignedRichLinesMoveTheirRunsWithTheLine() {
 void unknownColorNamesAndDisabledFieldsUseThePlainColors() {
     Ui ui;
     auto field = connectRich(ui, richControl("note", u"abc"));
-    field.setStyle(0, 3, {.color = "missing", .underline = true});
+    field.setStyle(0, 3, {.underline = true, .color = "missing"});
     Laid laid(ui, field);
     const auto palette = detail::access(ui).effectivePalette(webAppearance());
     auto recorded = paint(ui, *laid.field, "note");
