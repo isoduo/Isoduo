@@ -90,13 +90,18 @@ It is valid while the native window lives, including across a renderer rebuild.
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
 
 ```powershell
-.\build.ps1 -Configuration Release
+cmake --workflow --preset windows-clang-cl-release
 .\build\Release\isoduo_edit_form_web.exe
 .\build\Release\isoduo_edit_form_material.exe
-.\build.ps1 -Configuration Release -CoreOnly
+cmake --workflow --preset windows-clang-cl-release-core
 ```
 
-`build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure.
+Run these commands in an x64 Visual Studio Developer Command Prompt. Replace
+`release` with `debug` for a Debug build. Each workflow configures, builds and
+runs CTest. For a build only, run `cmake --preset <name>` followed by
+`cmake --build --preset <name>`. Use `ctest --preset <name> -R <regex>` to run
+selected tests. Install with `cmake --install build/Release --prefix <path>`,
+using `build/Release-core`, `build/Debug` or `build/Debug-core` for the other variants.
 
 The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
