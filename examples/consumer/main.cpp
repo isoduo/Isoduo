@@ -6,8 +6,8 @@
 #include "handle_kinds.hpp"
 #include "camelcase_names.hpp"
 static_assert(isoduo::frameworkVersion == ISODUO_PACKAGE_VERSION);
-static_assert(ISODUO_VERSION_MAJOR == 0 && ISODUO_VERSION_MINOR == 4 && ISODUO_VERSION_PATCH == 0);
-static_assert(isoduo::frameworkVersionMajor == 0 && isoduo::frameworkVersionMinor == 4 && isoduo::frameworkVersionPatch == 0);
+static_assert(ISODUO_VERSION_MAJOR == 0 && ISODUO_VERSION_MINOR == 4 && ISODUO_VERSION_PATCH == 1);
+static_assert(isoduo::frameworkVersionMajor == 0 && isoduo::frameworkVersionMinor == 4 && isoduo::frameworkVersionPatch == 1);
 static_assert(!std::is_constructible_v<isoduo::SemanticTree, isoduo::detail::UiState&>);
 #include <concepts>
 #include <cstdio>
