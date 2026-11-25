@@ -2,15 +2,13 @@ name: Release
 on:
   # Drafts a release of main. README "Releasing" lists the steps around it.
   workflow_dispatch:
-  # Runs archive builds when this workflow, build.ps1, the source-revision script, the Linux presets or
-  # .gitattributes changes. git archive applies .gitattributes for line endings and export-ignore.
+  # Exercise the source archive when the build entry points or archive rules change.
   pull_request:
     paths:
       - .github/workflows/release.yml
       - .gitattributes
-      - build.ps1
-      - cmake/SourceRevision.ps1
       - CMakePresets.json
+      - cmake/SourceRevision.cmake
       - cmake/LinuxPresets.json
 
 permissions:
@@ -46,9 +44,11 @@ jobs:
     if: ${{ !cancelled() && (needs.decide.result == 'success' || needs.decide.result == 'skipped') }}
     runs-on: windows-latest
     timeout-minutes: 90
-    env:
-      ISODUO_MSVC_TOOLSET: '14.44'
     steps:
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: '14.44'
       - name: Download and unpack the source archive
         shell: pwsh
         run: |
@@ -63,13 +63,14 @@ jobs:
           Move-Item -LiteralPath $top[0].FullName -Destination $source
           if (Test-Path -LiteralPath (Join-Path $source '.git')) { throw 'The source archive contains .git' }
       - name: Build and test Release core
-        shell: pwsh
         working-directory: ${{ runner.temp }}/Isoduo
-        run: ./build.ps1 -Configuration Release -CoreOnly
+        run: cmake --workflow --preset windows-clang-cl-release-core
+      - name: Configure full Release
+        working-directory: ${{ runner.temp }}/Isoduo
+        run: cmake --preset windows-clang-cl-release
       - name: Build full Release configuration
-        shell: pwsh
         working-directory: ${{ runner.temp }}/Isoduo
-        run: ./build.ps1 -Configuration Release -SkipTests
+        run: cmake --build --preset windows-clang-cl-release
       - name: Upload CTest logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -110,14 +111,17 @@ jobs:
           if [ -e "$RUNNER_TEMP/Isoduo/.git" ]; then echo 'The source archive contains .git'; exit 1; fi
       - name: Build and test Linux core
         shell: bash
-        working-directory: ${{ runner.temp }}/Isoduo
-        run: cmake --workflow --preset linux-clang-release-core
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: sh "$RUNNER_TEMP/Isoduo/tools/test-linux-core.sh"
       - name: Upload CTest results on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: release-archive-linux-ctest
-          path: ${{ runner.temp }}/Isoduo/build/linux-clang-release-core/Testing/Temporary/
+          path: |
+            ${{ runner.temp }}/isoduo-core.*/ctest-results.xml
+            ${{ runner.temp }}/isoduo-core.*/Testing/Temporary/
           if-no-files-found: warn
 
   draft:
