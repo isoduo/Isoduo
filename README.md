@@ -62,6 +62,14 @@ for the same XID. On Wayland the prompt opens unparented: an external prompt
 process cannot reliably be made a child of another client's surface. This is a
 known platform limit.
 
+When opening an X11 input method, Isoduo preserves an application's configured
+`LC_CTYPE`. If it is still `"C"`, Isoduo temporarily selects the session locale
+under a lock shared by X11 hosts and restores `"C"` before releasing the lock.
+Other application threads can observe this change. Applications that use
+locale-sensitive operations on other threads should call `setlocale(LC_CTYPE, "")`
+at startup, before creating threads or desktops. If the input method cannot
+open, the X11 window continues without it.
+
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the
 optional `Gtk/EnableAnimations` setting through Xfconf. When the preference is

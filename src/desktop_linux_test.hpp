@@ -21,6 +21,7 @@ class LinuxDesktopTest {
 public:
     static CreateResult create(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&,
                                DesktopConfig, RendererTestHooks*);
+    static bool x11InputMethodOpen(const Desktop&);
     static GpuComparison compareDrawList(Desktop&, const DrawList&, int width, int height);
     static Frame layoutFrame(Desktop&, int width, int height, float scale, std::string_view reveal = {});
     static GpuComparison compareFrame(Desktop&, int width, int height, float scale, Frame&,
