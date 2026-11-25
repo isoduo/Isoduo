@@ -27,5 +27,6 @@ if(NOT actual STREQUAL "$ENV{MESA_SHA256}")
 endif()
 
 file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${work}"
-     PATTERNS "x64/opengl32.dll" "x64/libgallium_wgl.dll")
-file(COPY "${work}/x64/opengl32.dll" "${work}/x64/libgallium_wgl.dll" DESTINATION "${DESTINATION}")
+     PATTERNS "x64/opengl32.dll" "x64/libgallium_wgl.dll" "x64/vulkan_lvp.dll" "x64/lvp_icd.x86_64.json")
+file(COPY "${work}/x64/opengl32.dll" "${work}/x64/libgallium_wgl.dll"
+     "${work}/x64/vulkan_lvp.dll" "${work}/x64/lvp_icd.x86_64.json" DESTINATION "${DESTINATION}")

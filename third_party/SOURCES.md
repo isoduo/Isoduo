@@ -65,3 +65,9 @@ Source: https://github.com/KhronosGroup/Vulkan-Headers/tree/6802bb4733b63ed5efd3
     SHA256 `82bf434e69b9bb4829de7e2b4bc2c5e7a7861e53d66cf75e5cc70f5f694a8d9b`
   - https://github.com/KhronosGroup/glslang/releases/download/16.6.0/glslang-16.6.0-linux-x86_64-release.tar.gz
     SHA256 `2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce`
+
+- Windows Vulkan tests use mesa-dist-win's lavapipe ICD with the runner image's
+  System32 Vulkan loader. The SDK installer runs in copy-only mode.
+- LunarG Windows x64 SDK 1.4.363.0 supplies spirv-val and the Khronos validation layer:
+  https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/vulkansdk-windows-X64-1.4.363.0.exe
+  SHA256 `94a82d378f7a5e3e54c9db7d2fb7016af136e14ac0a18dbf0f2f67a36352d141`
