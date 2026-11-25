@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.25)
+set(checker "${CMAKE_CURRENT_LIST_DIR}/public_names.cmake")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DHEADER=${CMAKE_CURRENT_LIST_DIR}/public_names/bad.hpp.txt" -P "${checker}"
+  RESULT_VARIABLE result ERROR_VARIABLE diagnostics)
+if(result EQUAL 0)
+  message(FATAL_ERROR "Accepted snake_case public declarations")
+endif()
+foreach(name IN ITEMS deliberately_bad component_id default_limit BAD_CONSTANT radio_group publicTrailing_ still_snake_ collision_)
+  string(FIND "${diagnostics}" "'${name}'" found)
+  if(found EQUAL -1)
+    message(FATAL_ERROR "Missing diagnostic for ${name}: ${diagnostics}")
+  endif()
+endforeach()
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DHEADER=${CMAKE_CURRENT_LIST_DIR}/public_names/allowed.hpp.txt" -P "${checker}"
+  COMMAND_ERROR_IS_FATAL ANY)
+include("${checker}")
