@@ -2686,10 +2686,10 @@ void popupAndScrollMatrix() {
         if (beforeModal.maximum > 0) {
             int current = form.scroll.offset;
             int next = current < beforeModal.maximum ? current + 1 : current - 1;
-            auto viewport = beforeModal.regions.front().clip;
+            auto pageClip = beforeModal.regions.front().clip;
             int delta = next > current ? -1 : 1;
             check(!beforeModal.scrollTo(form.ui, form.scroll, next) &&
-                  !beforeModal.wheel(form.ui, viewport.x + 1, viewport.y + 1, delta) && form.scroll.offset == current,
+                  !beforeModal.wheel(form.ui, pageClip.x + 1, pageClip.y + 1, delta) && form.scroll.offset == current,
                   "X02 a newly opened modal blocks scrolling through the preceding frame");
         }
         auto dialog = draw();
