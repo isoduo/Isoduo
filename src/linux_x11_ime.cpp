@@ -4,11 +4,25 @@
 #include <bit>
 #include <climits>
 #include <clocale>
+#include <cstring>
+#include <mutex>
 #include <vector>
 
 namespace isoduo::detail {
 namespace {
 using Utf32 = std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t>;
+XIM openInputMethod(Display* display) {
+    // Xlib binds the IM to the process LC_CTYPE even if the thread uses uselocale.
+    static std::mutex localeMutex;
+    std::lock_guard lock(localeMutex);
+    const char* locale = std::setlocale(LC_CTYPE, nullptr);
+    const bool useSession = locale && std::strcmp(locale, "C") == 0;
+    if (useSession) std::setlocale(LC_CTYPE, "");
+    XIM method = nullptr;
+    if (XSupportsLocale() && XSetLocaleModifiers("")) method = XOpenIM(display, nullptr, nullptr, nullptr);
+    if (useSession) std::setlocale(LC_CTYPE, "C");
+    return method;
+}
 XPoint spot(Rect rect) {
     return {static_cast<short>(std::clamp(rect.x, int(SHRT_MIN), int(SHRT_MAX))),
             static_cast<short>(std::clamp(rect.y + rect.h, int(SHRT_MIN), int(SHRT_MAX)))};
@@ -16,12 +30,7 @@ XPoint spot(Rect rect) {
 }
 X11Ime::X11Ime(Display* display, Window window, long eventMask, std::function<void(LinuxImeEdit)> deliver)
     : display_(display), window_(window), eventMask_(eventMask), deliver_(std::move(deliver)) {
-    // XOpenIM binds the context to the current Xlib locale. Honor the application's
-    // locale when configured, or load the session locale just for opening XIM.
-    const std::string locale = std::setlocale(LC_CTYPE, nullptr);
-    if (locale == "C") std::setlocale(LC_CTYPE, "");
-    if (XSupportsLocale() && XSetLocaleModifiers("")) method_ = XOpenIM(display_, nullptr, nullptr, nullptr);
-    if (locale == "C") std::setlocale(LC_CTYPE, locale.c_str());
+    method_ = openInputMethod(display_);
     if (!method_) return;
     XIMCallback destroy{reinterpret_cast<XPointer>(this), &disconnected};
     XSetIMValues(method_, XNDestroyCallback, &destroy, nullptr);
