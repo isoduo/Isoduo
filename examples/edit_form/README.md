@@ -102,15 +102,10 @@ The V01 behavior cases drive the assembled form through public handles; native k
 | Entry point | Coverage |
 | --- | --- |
 | CTest `components`, `layout`, `edit_form` | Core public operations, layout, and form acceptance. These tests create no windows and require no fonts or GPU. The form cases run once for each combination of two appearances and two distinct sets of logical IDs. |
-| Clipboard stress | `isoduo_host_verify --clipboard-only --repeat 100 --evidence DIR` repeats the native copy/paste case and a short forced-contention case for both appearances. |
 | CTest `consumer_example` | An independent CMake project ([examples/consumer](../consumer)) builds and runs another form using only the public targets and `include/`. |
 | CTest `host_native` | `isoduo_host_verify --evidence DIR` uses a real Win32 window, with keyboard and mouse messages dispatched through the host's own `TranslateMessage` and `DispatchMessage`. It checks both appearances with offscreen layout and screenshots at 960 x 720 and 640 x 480 DIP, each at 100% and 150%. It does not take the foreground. |
-| Manual run | `isoduo_host_verify --ime --evidence DIR` drives **real Microsoft Bopomofo** and real keyboard input with `SendInput`. It takes over the keyboard and mouse for up to about three minutes and stops sending keys immediately if the test window loses the foreground. The Traditional Chinese (Bopomofo) input method must be installed. |
-| Real DPI | `isoduo_host_verify --dpi --evidence DIR` uses the first two displays sorted by horizontal position. It moves the foreground window and checks real `WM_DPICHANGED` messages, selection, physical clicks, preedit, caret queries, candidate window positioning requests, and the dropdown popup. It requires displays with different scaling and Microsoft Bopomofo, moves the window, and briefly operates the keyboard and pointer. The candidate window's actual screen position still requires visual verification. |
 
 See [the rework verification record](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md) for the acceptance record, toolchain, and representative screenshots.
-
-Performance reports: on an idle desktop, run `./verify-idle.ps1 -Only perf`. It runs both appearances, startup and idle at 1080p, list and typing at 1080p and 4K (or a 200% offscreen FBO when no 4K display is available), and the 20 ms delay self-check. Reports and source revision are under `build/Release/evidence/idle/perf`; offscreen results exclude compositor cost. `-PerfDurationMs 1500` is for smoke testing only and labels its reports accordingly; it is not acceptance evidence.
 
 ## Justified text comparison (#84)
 

@@ -1,6 +1,6 @@
 # Settings demo
 
-The web and material executables share navigation, settings persistence, undo and redo, About information and semantic access. Windows also provides UIA access and the native renderer recovery prompts. Clipboard, IME and DPI checks require an idle desktop.
+The web and material executables share navigation, settings persistence, undo and redo, About information and semantic access. Windows also provides UIA access and the native renderer recovery prompts.
 
 ## Running on Linux
 
@@ -14,12 +14,4 @@ The **Appearance and Text** page also has five components for the focus ring (#9
 
 The **Appearance and Text** page also has the **Align Justified Text to the Left** checkbox (`appearance.justify_left`). It is `PresentationSettings::justifyAsLeft` (WCAG 1.4.8, see "Justified text" in the top-level README): while it is on, every justified or distributed text is drawn left-aligned. It is saved as `presentation.justifyAsLeft` in `settings.json` (files without it load as off) and the **Reset Appearance Defaults** button turns it off. The About page's license text is left-aligned.
 
-Right-clicking a row on the Items page selects it and opens a menu with **Edit** and **Delete**. Their access keys are E and D, and their shortcut hints are Enter and Del. They run the same actions as the corresponding buttons. Every text field has the built-in edit menu. Opening a menu with the real mouse, keyboard and Narrator is part of the author trial.
-## Vertical label author trial
-
-The About page shows a vertical-writing label (`about.vertical`, the sample sentence `Isoduo 設定管理示範（第 12 版），謹此致謝。`). Automated checks cover the geometry, the pixels of every piece in three JhengHei weights, the CPU/OpenGL agreement and the UIA name and box; looking at it on the author's machine is the author's confirmation. In both executables (`isoduo_settings_demo_web`, `isoduo_settings_demo_material`), light and dark theme, open **About** and check:
-
-1. Punctuation: the comma and the period sit in the middle of their cells; the parentheses face up and down.
-2. Latin and digits: `Isoduo` is turned clockwise and reads downward; `12` sits side by side in one cell, no wider than a character.
-3. Columns run from right to left; the first column starts with `Isoduo`.
-4. Change the text size and the display scale (move the window between monitors, or change the scale in Windows settings): the columns reflow and nothing is cut off; when the window is narrow the label scrolls sideways (wheel, Shift+wheel, thumb, Left/Right after Tab focus).
+Right-clicking a row on the Items page selects it and opens a menu with **Edit** and **Delete**. Their access keys are E and D, and their shortcut hints are Enter and Del. They run the same actions as the corresponding buttons. Every text field has the built-in edit menu.
