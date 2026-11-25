@@ -2,6 +2,7 @@
 // Internal host type shared by runDesktop and the native verification driver.
 #include "isoduo/desktop.hpp"
 #include "renderer.hpp"
+#include "core_internal.hpp"
 #include "desktop_paint.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
@@ -98,6 +99,9 @@ public:
     LRESULT message(UINT msg, WPARAM w, LPARAM l);
 
 private:
+    DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,
+                ScrollState& scroll, const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks);
+    HostClaim claim_;
     Ui& ui_;
     std::unique_ptr<UiaBridge> uia_;
     const Appearance& appearance_;
