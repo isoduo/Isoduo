@@ -21,9 +21,21 @@ void postedWorkRunsOnTheDesktopThread() {
     ScrollState scroll;
     auto label = ui.addLabel({.id = "status", .value = u"Waiting for posted work"}).value.value();
     DesktopConfig config{.title = u"Isoduo post verification", .width = 320, .height = 200};
-    auto created = Desktop::create(ui, webAppearance(), [&] { return layout::column({layout::component(label)}); }, scroll, config);
+    auto tabs = ui.addTabs({.id = "pages"}, {{{"first"}, u"First", true, {}},
+        {{"second"}, u"Second", true, {}}}).value.value();
+    auto field = ui.addTextField({.id = "field"}).value.value();
+    field.connectSource({[] { return std::u16string{}; }, test::ignoreNotifications});
+    field.connectConfirmed([](const auto&) { return Result{}; });
+    auto page = [&] { return layout::column({layout::component(label), layout::component(tabs), layout::component(field)}); };
+    auto created = Desktop::create(ui, webAppearance(), page, scroll, config);
     check(created.desktop != nullptr, "Open the native window");
+    auto refused = Desktop::create(ui, webAppearance(), page, scroll, config);
+    check(refused.status == Status::busy && !refused.failure && !refused.desktop, "Second desktop is busy");
+    auto run = runDesktop(ui, webAppearance(), page, scroll, config);
+    check(run.status == Status::busy && !run.startup && !run.failure, "Second run is busy");
     auto& desktop = *created.desktop;
+    check(bool(tabs.activate({"second"})) && bool(field.setValue(u"keep")) && bool(field.focus()),
+          "Prepare page, value and focus before switching hosts");
     const auto owner = std::this_thread::get_id();
     std::vector<int> order;
     bool ranOnOwner = true;
@@ -59,6 +71,9 @@ void postedWorkRunsOnTheDesktopThread() {
     check(accepted, "Work posted from another thread is accepted");
     check(result.status == Status::ok, "Posted close ends run");
     check(order == std::vector<int>{0, 1, 2, 3}, "Posted work runs once each, in the order posted");
+    auto replacement = Desktop::create(ui, webAppearance(), page, scroll, config);
+    check(replacement.desktop && field.draft().value == u"keep" && field.describe()->focused &&
+          tabs.active().value == OptionValue{"second"}, "Replacement preserves the value, focus and active page");
     check(ranOnOwner, "Posted work runs on the desktop thread");
     auto token = std::make_shared<int>(0);
     std::weak_ptr<int> watch = token;
@@ -79,6 +94,8 @@ void unrunWorkIsDiscardedWithTheHost() {
     bool ran = false;
     check(bool(created.desktop->post([&ran, token = std::move(token)] { ran = true; })), "Queue work that never runs");
     created.desktop.reset();
+    auto next = Desktop::create(ui, webAppearance(), [] { return layout::column({}); }, scroll, config);
+    check(bool(next.desktop), "Destroying an unrun host releases the Ui");
     check(watch.expired() && !ran, "Destroying the host destroys queued work without running it");
 }
 }
