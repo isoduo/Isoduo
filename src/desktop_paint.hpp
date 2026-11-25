@@ -37,7 +37,7 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
         }
         std::size_t cursor() const {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-            return 0;
+            else return 0;
         }
         void fill(Rect rect, Color color) override {
             auto begin=cursor(); canvas.fill(rect, color);
@@ -101,9 +101,9 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id, true, false);
             auto cursor = [&]() -> std::size_t {
                 if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-                return 0;
+                else return 0;
             };
-            auto observeMenu = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+            auto observeMenu = [&]([[maybe_unused]] DrawObservation::Type type, [[maybe_unused]] std::u16string text, [[maybe_unused]] Rect bounds, [[maybe_unused]] Color color, [[maybe_unused]] std::size_t begin) {
                 if constexpr (std::is_same_v<Target, RecordingCanvas>) {
                     if (observations) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
                         canvas.clip, color, true, false, begin, canvas.list.commands.size()});
@@ -155,7 +155,7 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
         }
         if (item.tooltip) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id,true,true);
-            auto observeTooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
+            auto observeTooltip = [&]([[maybe_unused]] DrawObservation::Type type, [[maybe_unused]] std::u16string text, [[maybe_unused]] Rect bounds, [[maybe_unused]] Color color, [[maybe_unused]] std::size_t begin) {
                 if constexpr (std::is_same_v<Target, RecordingCanvas>) {
                     if (observations) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
                         canvas.clip, color, true, true, begin, canvas.list.commands.size()});
@@ -163,7 +163,7 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
             };
             auto cursor = [&]() -> std::size_t {
                 if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-                return 0;
+                else return 0;
             };
             auto begin = cursor();
             canvas.rounded(item.bounds, static_cast<int>(appearance.radius() * s), p.border);

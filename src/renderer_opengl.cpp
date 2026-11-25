@@ -221,7 +221,7 @@ struct Renderer::Impl {
             attributes.push_back(0);
             context=create(dc,nullptr,attributes.data());
             if (!context) {
-                int major=0, minor=0; if (version) std::sscanf(version,"%d.%d",&major,&minor);
+                int major=0, minor=0; if (version) sscanf_s(version,"%d.%d",&major,&minor);
                 auto kind=(major<3 || (major==3 && minor<3)) ? StartupFailureKind::contextVersion : StartupFailureKind::contextCreation;
                 throw StartupError{{kind,u"OpenGL 3.3 core",to16(actual),u"Unable to create OpenGL 3.3 core context"}};
             }
