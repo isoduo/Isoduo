@@ -299,14 +299,13 @@ const std::vector<HandleKind>& kinds() {
     };
     return list;
 }
-std::string narrow(std::u16string_view text) { return isoduo::detail::utf8FromUtf16(text); }
 // The generic lifetime driver: each operation answers notFound with its text of today.
 void expectGone(const HandleKind& kind, const std::vector<Op>& operations) {
     for (const auto& op : operations) {
         const auto [status, message] = op.run();
         const std::u16string want = op.gone ? op.gone : kind.gone;
-        const auto what = std::string(kind.name) + "::" + op.name + " answers not_found \"" + narrow(want) + "\", got status " +
-                          std::to_string(static_cast<int>(status)) + " \"" + narrow(message) + "\"";
+        const auto what = std::string(kind.name) + "::" + op.name + " answers not_found \"" + isoduo::detail::utf8FromUtf16(want) + "\", got status " +
+                          std::to_string(static_cast<int>(status)) + " \"" + isoduo::detail::utf8FromUtf16(message) + "\"";
         check(status == Status::notFound && message == want, what.c_str());
     }
 }
@@ -321,7 +320,7 @@ void expectLive(const HandleKind& kind) {
         const auto op = kind.operations(world)[i];
         const auto [status, message] = op.run();
         const auto what = std::string(kind.name) + "::" + op.name + " works while its component lives, got status " +
-                          std::to_string(static_cast<int>(status)) + " \"" + narrow(message) + "\"";
+                          std::to_string(static_cast<int>(status)) + " \"" + isoduo::detail::utf8FromUtf16(message) + "\"";
         check(status != Status::notFound, what.c_str());
     }
 }

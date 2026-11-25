@@ -4739,7 +4739,7 @@ int wmain(int argc, wchar_t** argv) {
         if (demoPerf) return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,demoPerfFont);
         // #73: this scenario drives the demo's Appearance page, so --perf routes it to the demo runner.
         // Report-only (code review 2026-11-12, item 14): a setup problem (no real mouse, window not in front, ...) is printed and
-        // leaves no report; it never fails the run, so it can never fail an idle verification. verify-idle shows the missing report.
+        // leaves no report; it never fails the run, so it can never fail an idle verification.
         if (perf==L"slider-drag-text-size") {
             try { return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv"); }
             catch (const std::exception& e) { std::cerr << "slider-drag-text-size is report-only and could not run: " << e.what() << '\n'; return 0; }
