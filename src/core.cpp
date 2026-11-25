@@ -1210,31 +1210,40 @@ detail::HostClaim::HostClaim(Ui& ui) : state_(&access(ui)) {
 }
 void detail::HostClaim::release() {
     if (!state_) return;
-    state_->onInvalidate({});
-    state_->onRelayout({});
-    state_->onSemanticPending({});
-    state_->onReveal({});
-    state_->onPresentation({});
-    state_->beforeFocus({});
-    state_->setClipboard(nullptr);
-    state_->setAsyncClipboard(nullptr);
-    state_->bindAppearance(nullptr);
-    state_->animationTime({});
-    state_->tooltipClock({});
-    state_->setClickClock({});
-    state_->rendererFailed(false);
-    state_->compositionCancel();
-    state_->cancelInput();
-    state_->clickRun_ = {};
-    state_->tooltipPausedAt_.reset();
-    state_->keyboardCues_ = false;
-    state_->hoverClear();
-    state_->windowActive(false);
-    state_->setWindowHidden(false);
-    state_->setSystemKeyboardCues(false);
-    state_->setSystemAnimations(true);
+    state_->resetHost();
     state_->hostClaimed_.clear(std::memory_order_release);
     state_ = nullptr;
+}
+void detail::UiState::resetHost() {
+    onInvalidate({});
+    onRelayout({});
+    onSemanticPending({});
+    onReveal({});
+    onPresentation({});
+    beforeFocus({});
+    setClipboard(nullptr);
+    setAsyncClipboard(nullptr);
+    bindAppearance(nullptr);
+    animationTime({});
+    tooltipClock({});
+    setClickClock({});
+    rendererFailed(false);
+    compositionCancel();
+    cancelInput();
+    clickRun_ = {};
+    clickSettings_ = {};
+    textScrolls_.clear();
+    visibility_.clear();
+    hasFrameVisibility_ = false;
+    tooltipNow_ = 0;
+    tooltipHover_.clear();
+    tooltipPausedAt_.reset();
+    keyboardCues_ = false;
+    hoverClear();
+    windowActive(false);
+    setWindowHidden(false);
+    setSystemKeyboardCues(false);
+    setSystemAnimations(true);
 }
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;

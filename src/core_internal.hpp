@@ -32,6 +32,7 @@ bool validTextControl(const Component& control);
 class UiState {
     friend class HostClaim;
     std::atomic_flag hostClaimed_{};
+    void resetHost();
     friend class isoduo::SemanticTree;
 public:
     using Action = std::function<Result()>;
