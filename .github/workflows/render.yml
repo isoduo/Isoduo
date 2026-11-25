@@ -29,7 +29,7 @@ jobs:
       - name: Download, verify and install application-local Mesa DLLs
         run: cmake -DDESTINATION=build/Release -P cmake/InstallMesa.cmake
       - name: Register lavapipe ICD
-        run: cmake -DKIND=Drivers -DMANIFEST=build/Release/lvp_icd.x86_64.json -P cmake/RegisterVulkanManifest.cmake
+        run: cmake -DKIND=Drivers "-DMANIFEST=build/Release/lvp_icd.x86_64.json" -P cmake/RegisterVulkanManifest.cmake
       - name: Verify llvmpipe backend
         run: cmake -E env -- build/Release/isoduo_host_verify.exe --backend-check
       - name: Verify Vulkan uses lavapipe
@@ -67,7 +67,7 @@ jobs:
       - name: Install Mesa drivers
         run: cmake -DDESTINATION=build/Debug -P cmake/InstallMesa.cmake
       - name: Register lavapipe ICD
-        run: cmake -DKIND=Drivers -DMANIFEST=build/Debug/lvp_icd.x86_64.json -P cmake/RegisterVulkanManifest.cmake
+        run: cmake -DKIND=Drivers "-DMANIFEST=build/Debug/lvp_icd.x86_64.json" -P cmake/RegisterVulkanManifest.cmake
       - name: Test Debug diagnostics
         run: ctest --preset windows-clang-cl-debug --timeout 900 -R '^(renderer_failure|diagnostic_queue|diagnostics)$'
       - name: Test Vulkan with Khronos validation
