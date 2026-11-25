@@ -1,0 +1,20 @@
+# Keep the two fields readable by the verification tools, including in source archives.
+set(revision "unknown")
+set(dirty "unknown")
+if(EXISTS "${PROJECT_SOURCE_DIR}/.git")
+  execute_process(COMMAND git rev-parse --verify HEAD WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    OUTPUT_VARIABLE commit OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE result)
+  if(result STREQUAL "0")
+    execute_process(COMMAND git status --porcelain WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      OUTPUT_VARIABLE changes OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE result)
+    if(result STREQUAL "0")
+      set(revision "${commit}")
+      if(changes STREQUAL "")
+        set(dirty "false")
+      else()
+        set(dirty "true")
+      endif()
+    endif()
+  endif()
+endif()
+file(WRITE "${PROJECT_BINARY_DIR}/source-revision.txt" "commit=${revision}\ndirty=${dirty}\n")
