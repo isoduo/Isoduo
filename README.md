@@ -335,18 +335,18 @@ Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::d
 - **Caret, selection and pointer.** All of them use the stretched, drawn positions: `TextFieldLine::run` stops include the added width, `TextFieldLine::segments` / `Line::segments` list the drawn pieces (each starts at its own x). Typing re-spreads the line being typed in, which is expected. A caret at a gap is drawn at the start of the next character.
 - **Rich text.** A justified line of a rich field is also cut at every style boundary (no width is added there), so each drawn piece lies inside one run and keeps its face and color; a run's underline spans the gaps added inside it. Caret, selection, hits and drawn glyphs read the same positions as in plain text.
 - **Vertical labels.** Justify and distribute read as top alignment there; the justification method is ignored.
-- **User setting (WCAG 1.4.8).** `PresentationSettings::justifyAsLeft` (default off, applied by `Ui::setPresentation`) draws every justified and distributed text left-aligned. The property values do not change; UI Automation then reports `HorizontalTextAlignment_Left`, otherwise both values report `HorizontalTextAlignment_Justified`. The settings demo's Appearance page has the checkbox and saves the setting.
+- **User setting (WCAG 1.4.8).** `PresentationSettings::justifyAsLeft` (default off, applied by `Ui::setPresentation`) draws every justified and distributed text left-aligned. The property values do not change; UI Automation then reports `HorizontalTextAlignment_Left`, otherwise both values report `HorizontalTextAlignment_Justified`. The settings demo's **Appearance and Text** page saves this setting through the **Align Justified Text to the Left** checkbox.
 - **Not included:** punctuation compression or squeeze-before-stretch (Mainland style), hyphenation, a separate last-line alignment property, soft line breaks, justified vertical text and per-run alignment in rich text.
 
 ## Context menus
 
 A context menu is a short list of commands opened beside a component by the right mouse button (on release), the menu key or Shift+F10. One menu is open per window; it is drawn inside the window like a dropdown's list (flipped left and up near the window's edges, scrollable when the window is too small) and never changes which component has focus.
 
-- **Built-in items.** Every text field has Undo(U), Redo(R), Cut(T), Copy(C), Paste(P), Delete(D) and Select All(A), which run exactly the operations of Ctrl+Z / Ctrl+Y / Ctrl+X / Ctrl+C / Ctrl+V / Delete / Ctrl+A. They disable themselves when they cannot act (nothing selected, empty clipboard, nothing to undo, read-only field).
+- **Built-in items.** Every text field has **Undo**, **Redo**, **Cut**, **Copy**, **Paste**, **Delete** and **Select All**, with access keys U, R, T, C, P, D and A. These run the same operations as Ctrl+Z, Ctrl+Y, Ctrl+X, Ctrl+C, Ctrl+V, Delete and Ctrl+A. Rich text fields also have **Bold**, **Italic** and **Underline**, with access keys B, I and U. The menu displays command names and shortcut hints. Access keys are available through the keyboard and accessibility APIs. Items are disabled when they cannot act (nothing selected, empty clipboard, nothing to undo, read-only field).
 - **Attaching a menu.** `ui.addContextMenu(component, items, mode)` works on any component. `MenuItem` has an id (not starting with `isoduo.`), a label, enabled, an optional quick-key letter, a shortcut hint (display only: it registers no shortcut) and the code to run, which receives the component and, for a list, the clicked row. `MenuItem::divider()` is a separator. `MenuMode::append` (default) puts the items after the built-in ones, `replace` shows only yours, `off` disables the field's menu. The returned `ContextMenuHandle` adds, removes, updates and enables items at any time, also while the menu is open.
 - **From code.** `ui.openContextMenu(component, position, row)`, `closeContextMenu()`, `contextMenu()` (items with their availability), `invokeMenuItem(id)`. A disabled component returns `disabled`; a background component behind a modal dialog returns `blockedByModal`.
 - **Keyboard.** Up/Down (skipping separators, wrapping), Home/End, Enter and Space run the highlighted item; a quick-key letter runs its item, or when several share it moves to the next one. Esc, Alt, F10, a click outside or the window losing activation close the menu; the click that closes it reaches nothing underneath. Disabled items can be highlighted but not run.
-- **Semantic layer and UIA.** While open, the component has a `Role::menu` child (`menuNodeId(id)`, `"<id>/menu"`) with `menuItem` and `menuSeparator` children; `Verb::contextMenu` opens it, `invoke` on an item runs it, `cancel` on the menu closes it. UIA sees Menu / MenuItem / Separator, `AccessKey`, `AcceleratorKey`, `IsEnabled`, the Invoke pattern, and `MenuOpened` / `MenuClosed` events.
+- **Semantic layer and UIA.** While open, the component has a `Role::menu` child (`menuNodeId(id)`, `"<id>/menu"`) named **Context menu**, with `menuItem` and `menuSeparator` children; `Verb::contextMenu` opens it, `invoke` on an item runs it, `cancel` on the menu closes it. UIA sees Menu / MenuItem / Separator, `AccessKey`, `AcceleratorKey`, `IsEnabled`, the Invoke pattern, and `MenuOpened` / `MenuClosed` events.
 
 Out of scope here: submenus, check marks and icons, menus outside the application window, an application menu bar and touch long-press.
 ## Vertical labels (display only)
@@ -469,7 +469,7 @@ and 150% monitors. PR03 reads the family names of registered per-user fonts
 under `%LOCALAPPDATA%\Microsoft\Windows\Fonts` with DirectWrite and checks that
 each is in the system catalog and resolves as the primary family. With no
 per-user font, PR03 reports BLOCKED and asks the operator to install one.
-The settings demo's Appearance page uses that catalog. The edit form's V04
+The settings demo's **Appearance and Text** page uses that catalog. The edit form's V04
 page shows a fixed list of four fonts.
 
 PR04 records font-switch timing in `presentation/trial/font-switch-timing.tsv`
@@ -481,7 +481,7 @@ manifest under `presentation/trial`. To generate just the trial artifacts, run
 ```
 
 For the one-time author sign-off, review both appearances in the trial images,
-try switching fonts on the settings demo's Appearance page, and record feedback
+try switching fonts on the settings demo's **Appearance and Text** page, and record feedback
 alongside the evidence. Use `-PresentationSignedOff` after recording that sign-off.
 PS10 runs automatically in the `presentation_recovery` CTest.
 
@@ -521,6 +521,7 @@ recorded commit differs from current HEAD.
 
 | Change | Idle-desktop runs |
 | --- | --- |
+| PR #121 English UI text | `-Only real-input,demo-uia`: English labels change the width of every demo page, and the demo UIA names, the built-in menu labels and the menu node name (`Context menu`) change. Access keys are unchanged; CTest `context_menu` and `uia_demo_*` check them. Right-click a text field and an Items row once with real input to see the English menus. `src/desktop_host.cpp` changes only the text of clipboard results, not their `Status`, so no clipboard run is needed |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.

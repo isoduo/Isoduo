@@ -16,6 +16,7 @@ void roundTrip() {
     document.name=u"工作站 A"; document.notices=false; document.mode=isoduo::OptionValue{"focus"}; document.region=isoduo::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.nextItemId=22;
     document.items[0].noteSpans = {{.start = 0, .length = 4, .bold = true, .color = "red"}};
+    document.items[4].name = u"共用範本"; // A seeded item name saved by the earlier Chinese UI.
     document.presentation.fontFamily=u"NoSuchFont"; document.presentation.textSize=23; document.presentation.variant=isoduo::ThemeVariant::dark(); document.presentation.density=isoduo::Density::compact; document.accent="green";
     auto bytes = settingsDemo::writeSettings(document);
     test::check(bytes.starts_with("{\n  \"format\"") && bytes.back()=='\n' && bytes.find('\r')==std::string::npos && !bytes.starts_with("\xef\xbb\xbf"), "UTF-8 without BOM uses LF and fixed first key");
@@ -143,7 +144,7 @@ void appearancePersistence() {
     settingsDemo::Demo reopened; reopened.loadDocument(*loaded.document); reopened.nav.select({"appearance"});
     test::check(reopened.ui.presentation().textSize==20, "reopen retains saved size");
     auto font=reopened.ui.semantics().get({"appearance.font",isoduo::OptionValue{"family:NoSuchFont"}});
-    test::check(font && font->selected && font->name==u"NoSuchFont\uff08\u672a\u5b89\u88dd\uff09", "saved missing font stays selected");
+    test::check(font && font->selected && font->name==u"NoSuchFont (not installed)", "saved missing font stays selected");
     std::filesystem::remove_all(path);
 }
 void accentPersistence() {
@@ -283,7 +284,7 @@ void loadFailures() {
     settingsDemo::SettingsStore denied(path,[](std::string_view step) { return step=="read" ? 5u : 0u; });
     test::check(denied.load().kind==settingsDemo::LoadKind::unreadable && std::filesystem::exists(path/"settings.json"),"unreadable stays in place");
     settingsDemo::SettingsStore renameDenied(path,[](std::string_view step) { return step=="rename" ? 5u : 0u; });
-    auto failed=renameDenied.load(); test::check(failed.kind==settingsDemo::LoadKind::corrupt && !failed.renamed && failed.reason.find(u"格式或欄位不合法") != std::u16string::npos && failed.reason.find(u"原檔無法改名") != std::u16string::npos && failed.reason.back() != u'\n' && failed.reason.back() != u'\r',"corruption and rename failure reported without trailing newline");
+    auto failed=renameDenied.load(); test::check(failed.kind==settingsDemo::LoadKind::corrupt && !failed.renamed && failed.reason.find(u"Invalid settings format or fields") != std::u16string::npos && failed.reason.find(u"Cannot rename the original file") != std::u16string::npos && failed.reason.back() != u'\n' && failed.reason.back() != u'\r',"corruption and rename failure reported without trailing newline");
     { std::ofstream old(path/"settings.json.bad",std::ios::binary); old << "old"; }
     settingsDemo::SettingsStore normal(path); auto result=normal.load();
     std::ifstream f(path/"settings.json.bad",std::ios::binary); std::string bytes((std::istreambuf_iterator<char>(f)),{});

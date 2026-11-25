@@ -6,13 +6,13 @@
 namespace editForm {
 using namespace isoduo;
 namespace {
-const std::u16string requiredName = u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31";
+const std::u16string requiredName = u"Enter a display name";
 const std::u16string initialName = u"測試使用者";
-const std::u16string shortIntro = u"改名稱只改草稿；按「套用」且名稱有效，才更新上次套用結果並計數一次。資料只在記憶體。";
+const std::u16string shortIntro = u"Editing the name changes the draft. Press Apply with a valid name to update the last applied result and increment the count. Data is stored in memory.";
 const std::u16string longIntro = shortIntro +
-    u"\n這是長說明，用來確認長文字換行後不會覆蓋相鄰欄位，並在小視窗中造成溢出，讓你檢查捲動、焦點揭露與指標命中。"
-    u"\n名稱欄按 Enter 不會套用；中文組字確認也不會套用。Ctrl+Z、Ctrl+Y 與 Ctrl+Shift+Z 只作用於名稱欄本身的編輯歷史。"
-    u"\n「名稱唯讀」仍可選取與複製；「資料區停用」時名稱與套用都不能操作，但測試入口與重設仍可使用。";
+    u"\nIn a narrow window, this description wraps without covering neighboring fields. Use the extra height to check scrolling, whether focused fields come into view, and pointer hit testing."
+    u"\nPressing Enter or committing Chinese text in the name field leaves the draft unapplied. Ctrl+Z, Ctrl+Y, and Ctrl+Shift+Z act on the name field's own edit history."
+    u"\nName Read-Only still allows selecting and copying text. Disable Data Area prevents editing the name or applying the form. The test buttons and Reset remain available.";
 
 // #84: Chinese, English words, digits and punctuation in one paragraph, long enough to wrap in a normal window.
 const std::u16string justifySampleText =
@@ -20,12 +20,12 @@ const std::u16string justifySampleText =
     u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字，都可以在不同視窗寬度下，觀察每一行的兩端是否切齊。";
 
 bool blank(std::u16string_view text) {
-    return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t' || c == u'　'; });
+    return std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == u'\t' || c == u'\u3000'; });
 }
 std::vector<OptionItem> regions() {
-    return {{{"north"}, u"\u5317\u5340"}, {{"central"}, u"\u4e2d\u5340"}, {{"south"}, u"\u5357\u5340"}};
+    return {{{"north"}, u"North"}, {{"central"}, u"Central"}, {{"south"}, u"South"}};
 }
-constexpr auto requiredRegion = u"\u8acb\u9078\u64c7\u5730\u5340";
+constexpr auto requiredRegion = u"Select a region";
 }
 
 Ids defaultIds() {
@@ -44,35 +44,35 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
            std::optional<std::vector<FontFamily>> fontFamilies)
     : ids_(std::move(ids)), applied_(initialName), resolveFont_(std::move(resolveFont)), pages_(pages), ui() {
     const auto& i = ids_;
-    handles.title = ui.addLabel({.id = i.title, .value = u"編輯表單"}).value.value();
+    handles.title = ui.addLabel({.id = i.title, .value = u"Edit Form"}).value.value();
     handles.intro = ui.addLabel({.id = i.intro}).value.value();
-    handles.normal = ui.addButton({.id = i.normal, .label = u"正常"}).value.value();
-    handles.readOnly = ui.addButton({.id = i.readOnly, .label = u"名稱唯讀"}).value.value();
-    handles.disabled = ui.addButton({.id = i.disabled, .label = u"資料區停用"}).value.value();
-    handles.error = ui.addButton({.id = i.error, .label = u"名稱錯誤"}).value.value();
-    handles.longText = ui.addButton({.id = i.longText, .label = u"長說明"}).value.value();
-    handles.reset = ui.addButton({.id = i.reset, .label = u"重設"}).value.value();
-    handles.nameLabel = ui.addLabel({.id = i.nameLabel, .value = u"顯示名稱", .target = i.name, .labelKind = LabelKind::name}).value.value();
+    handles.normal = ui.addButton({.id = i.normal, .label = u"Normal"}).value.value();
+    handles.readOnly = ui.addButton({.id = i.readOnly, .label = u"Name Read-Only"}).value.value();
+    handles.disabled = ui.addButton({.id = i.disabled, .label = u"Disable Data Area"}).value.value();
+    handles.error = ui.addButton({.id = i.error, .label = u"Name Error"}).value.value();
+    handles.longText = ui.addButton({.id = i.longText, .label = u"Long Description"}).value.value();
+    handles.reset = ui.addButton({.id = i.reset, .label = u"Reset"}).value.value();
+    handles.nameLabel = ui.addLabel({.id = i.nameLabel, .value = u"Display Name", .target = i.name, .labelKind = LabelKind::name}).value.value();
     handles.name = ui.addTextField({.id = i.name, .value = initialName}).value.value();
-    handles.nameHelp = ui.addLabel({.id = i.nameHelp, .value = u"單行文字，可輸入繁體中文或英文。", .target = i.name, .labelKind = LabelKind::description}).value.value();
+    handles.nameHelp = ui.addLabel({.id = i.nameHelp, .value = u"Single-line text in Traditional Chinese or English.", .target = i.name, .labelKind = LabelKind::description}).value.value();
     handles.nameError = ui.addLabel({.id = i.nameError, .target = i.name, .labelKind = LabelKind::error}).value.value();
-    handles.notices = ui.addCheckbox({.id = i.notices, .label = u"\u555f\u7528\u63d0\u793a"}).value.value();
-    handles.mode = ui.addRadioGroup({.id = i.mode, .label = u"\u6a21\u5f0f"},
-        {{{"normal"}, u"\u4e00\u822c"}, {{"focus"}, u"\u5c08\u6ce8"}, {{"offline"}, u"\u96e2\u7dda"}}).value.value();
-    handles.region = ui.addDropdown({.id = i.region, .label = u"\u5730\u5340"}, regions()).value.value();
-    handles.volume = ui.addSlider({.id = i.volume, .label = u"\u97f3\u91cf"}, {0, 100, 5}).value.value();
-    handles.volumeLatest = ui.addButton({.id = i.volumeLatest, .label = u"\u97f3\u91cf\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.noticesLatest = ui.addButton({.id = i.notices + ".latest", .label = u"\u63d0\u793a\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.modeLatest = ui.addButton({.id = i.mode + ".latest", .label = u"\u6a21\u5f0f\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.regionLatest = ui.addButton({.id = i.region + ".latest", .label = u"\u5730\u5340\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
-    handles.offlineDisabled = ui.addButton({.id = i.offlineDisabled, .label = u"\u505c\u7528\u96e2\u7dda"}).value.value();
-    handles.regionEmpty = ui.addButton({.id = i.regionEmpty, .label = u"\u6e05\u7a7a\uff0f\u9084\u539f\u5730\u5340"}).value.value();
-    handles.apply = ui.addButton({.id = i.apply, .label = u"套用"}).value.value();
+    handles.notices = ui.addCheckbox({.id = i.notices, .label = u"Enable Notices"}).value.value();
+    handles.mode = ui.addRadioGroup({.id = i.mode, .label = u"Mode"},
+        {{{"normal"}, u"Normal"}, {{"focus"}, u"Focus"}, {{"offline"}, u"Offline"}}).value.value();
+    handles.region = ui.addDropdown({.id = i.region, .label = u"Region"}, regions()).value.value();
+    handles.volume = ui.addSlider({.id = i.volume, .label = u"Volume"}, {0, 100, 5}).value.value();
+    handles.volumeLatest = ui.addButton({.id = i.volumeLatest, .label = u"Use Latest Volume", .enabled = false}).value.value();
+    handles.noticesLatest = ui.addButton({.id = i.notices + ".latest", .label = u"Use Latest Notices", .enabled = false}).value.value();
+    handles.modeLatest = ui.addButton({.id = i.mode + ".latest", .label = u"Use Latest Mode", .enabled = false}).value.value();
+    handles.regionLatest = ui.addButton({.id = i.region + ".latest", .label = u"Use Latest Region", .enabled = false}).value.value();
+    handles.offlineDisabled = ui.addButton({.id = i.offlineDisabled, .label = u"Disable Offline"}).value.value();
+    handles.regionEmpty = ui.addButton({.id = i.regionEmpty, .label = u"Clear / Restore Regions"}).value.value();
+    handles.apply = ui.addButton({.id = i.apply, .label = u"Apply"}).value.value();
     handles.state = ui.addLabel({.id = i.state}).value.value();
     handles.draft = ui.addLabel({.id = i.draft}).value.value();
     handles.result = ui.addLabel({.id = i.result}).value.value();
     handles.count = ui.addLabel({.id = i.count}).value.value();
-    handles.latest = ui.addButton({.id = i.latest, .label = u"\u6539\u7528\u6700\u65b0\u503c", .enabled = false}).value.value();
+    handles.latest = ui.addButton({.id = i.latest, .label = u"Use Latest", .enabled = false}).value.value();
 
     handles.name.connectSource({[this] { return applied_; }, [this](std::function<void()> changed) {
         sourceChanged_ = std::move(changed);
@@ -102,31 +102,31 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         return [this] { introChanged_ = {}; };
     }});
     handles.state.connectSource([this] {
-        std::u16string state = mode_ == Mode::readOnly ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
-        if (handles.name.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
-        if (handles.name.sourceConflict().value.value_or(false)) state += u"\u30fb\u4f86\u6e90\u5df2\u66f4\u65b0";
-        return u"\u72c0\u614b\uff1a" + state;
+        std::u16string state = mode_ == Mode::readOnly ? u"Name Read-Only" : mode_ == Mode::disabled ? u"Data area disabled" : u"Normal";
+        if (handles.name.describe()->invalid) state += u" · Invalid name";
+        if (handles.name.sourceConflict().value.value_or(false)) state += u" · Source updated";
+        return u"State: " + state;
     });
     auto modeName = [](const std::optional<OptionValue>& value) -> std::u16string {
-        if (!value) return u"\u672a\u9078\u53d6";
-        if (value->id == "normal") return u"\u4e00\u822c";
-        if (value->id == "focus") return u"\u5c08\u6ce8";
-        if (value->id == "offline") return u"\u96e2\u7dda";
-        return u"\u672a\u77e5";
+        if (!value) return u"No selection";
+        if (value->id == "normal") return u"Normal";
+        if (value->id == "focus") return u"Focus";
+        if (value->id == "offline") return u"Offline";
+        return u"Unknown";
     };
     auto number = [](int value) { auto n = std::to_string(value); return std::u16string(n.begin(), n.end()); };
     auto regionName = [](const std::optional<OptionValue>& value) -> std::u16string {
-        if (!value) return u"\u672a\u9078\u53d6";
-        if (value->id == "north") return u"\u5317\u5340";
-        if (value->id == "central") return u"\u4e2d\u5340";
-        if (value->id == "south") return u"\u5357\u5340";
-        return u"\u672a\u77e5";
+        if (!value) return u"No selection";
+        if (value->id == "north") return u"North";
+        if (value->id == "central") return u"Central";
+        if (value->id == "south") return u"South";
+        return u"Unknown";
     };
-    handles.draft.connectSource([this, modeName, regionName, number] { return u"\u76ee\u524d\u7de8\u8f2f\u503c\uff1a" + *handles.name.draft() +
-        u" / \u63d0\u793a\uff1a" + (*handles.notices.draft() ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + modeName(*handles.mode.draft()) + u" / \u5730\u5340\uff1a" + regionName(*handles.region.draft()) + u" / \u97f3\u91cf\uff1a" + number(*handles.volume.draft()); });
-    handles.result.connectSource([this, modeName, regionName, number] { return u"\u4e0a\u6b21\u5957\u7528\u7d50\u679c\uff1a" + applied_ +
-        u" / \u63d0\u793a\uff1a" + (noticesApplied_ ? u"\u555f\u7528" : u"\u505c\u7528") + u" / \u6a21\u5f0f\uff1a" + modeName(modeApplied_) + u" / \u5730\u5340\uff1a" + regionName(regionApplied_) + u" / \u97f3\u91cf\uff1a" + number(volumeApplied_); });
-    handles.count.connectSource([this] { auto n = std::to_string(applies_); return u"\u5957\u7528\u6b21\u6578\uff1a" + std::u16string(n.begin(), n.end()); });
+    handles.draft.connectSource([this, modeName, regionName, number] { return u"Current draft: " + *handles.name.draft() +
+        u" / Notices: " + (*handles.notices.draft() ? u"On" : u"Off") + u" / Mode: " + modeName(*handles.mode.draft()) + u" / Region: " + regionName(*handles.region.draft()) + u" / Volume: " + number(*handles.volume.draft()); });
+    handles.result.connectSource([this, modeName, regionName, number] { return u"Last applied: " + applied_ +
+        u" / Notices: " + (noticesApplied_ ? u"On" : u"Off") + u" / Mode: " + modeName(modeApplied_) + u" / Region: " + regionName(regionApplied_) + u" / Volume: " + number(volumeApplied_); });
+    handles.count.connectSource([this] { auto n = std::to_string(applies_); return u"Apply count: " + std::u16string(n.begin(), n.end()); });
     handles.name.onBlur([this] { validate(); });
     ui.onChange([this] { if (handles.name.describe()->invalid) validate(); refreshConflict(); });
     ui.connectConfirmation(handles.apply, {handles.name, handles.notices, handles.mode, handles.region, handles.volume}, [this](const auto& changes) { return apply(changes); });
@@ -162,17 +162,17 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     if (pages_) {
         const auto prefix = i.title + ".pages.";
         list = std::make_unique<listPage::Page>(&ui, &scroll, prefix + "v02.");
-        handles.v03Title = ui.addLabel({.id = prefix + "v03.title", .value = u"確認與說明"}).value.value();
+        handles.v03Title = ui.addLabel({.id = prefix + "v03.title", .value = u"Confirmation and Help"}).value.value();
         auto v03TitleId = handles.v03Title.describe()->id;
         auto v03TitleText = handles.v03Title.describe()->value;
         handles.v03Title.connectSource([this, v03TitleId, v03TitleText] {
             return clipPaddingId_ == v03TitleId ? clipPaddingText_ : v03TitleText;
         });
-        handles.progress = ui.addProgress({.id = prefix + "v03.progress", .label = u"示範進度"}).value.value();
+        handles.progress = ui.addProgress({.id = prefix + "v03.progress", .label = u"Demo Progress"}).value.value();
         handles.progressSource = ui.addLabel({.id = prefix + "v03.source"}).value.value();
         handles.progressZero = ui.addButton({.id = prefix + "v03.zero", .label = u"0%"}).value.value();
         handles.progressHalf = ui.addButton({.id = prefix + "v03.half", .label = u"50%"}).value.value();
-        handles.progressTip = ui.addTooltip(prefix + "v03.half.tip", handles.progressHalf, u"\u53ea\u8abf\u6574\u793a\u7bc4\u9032\u5ea6\uff0c\u4e0d\u6703\u555f\u52d5\u80cc\u666f\u5de5\u4f5c\u3002").value.value();
+        handles.progressTip = ui.addTooltip(prefix + "v03.half.tip", handles.progressHalf, u"Adjusts demo progress without starting any background work.").value.value();
         handles.progressFull = ui.addButton({.id = prefix + "v03.full", .label = u"100%"}).value.value();
         handles.progressBelow = ui.addButton({.id = prefix + "v03.below", .label = u"-10"}).value.value();
         handles.progressAbove = ui.addButton({.id = prefix + "v03.above", .label = u"110"}).value.value();
@@ -181,7 +181,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         }});
         handles.progressSource.connectSource([this] {
             auto number = std::to_string(progress_);
-            return u"來源值：" + std::u16string(number.begin(), number.end());
+            return u"Source value: " + std::u16string(number.begin(), number.end());
         });
         bindAction(handles.progressZero, [this] { updateProgress(0); return Result{}; });
         bindAction(handles.progressHalf, [this] { updateProgress(50); return Result{}; });
@@ -208,17 +208,17 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             auto count = std::to_string(dialogConfirmations_);
             return u"Result: " + dialogResult_ + u"; confirmations: " + std::u16string(count.begin(), count.end());
         });
-        handles.dialogTitle = ui.addLabel({.id = prefix + "dialog.title", .value = u"\u91cd\u8a2d\u793a\u7bc4\u9032\u5ea6"}).value.value();
-        handles.dialogBody = ui.addLabel({.id = prefix + "dialog.body", .value = u"\u5c07\u9032\u5ea6\u6539\u70ba 0%\u3002\u5176\u4ed6\u9801\u9762\u8cc7\u6599\u6703\u4fdd\u7559\u3002"}).value.value();
-        handles.dialogCancel = ui.addButton({.id = prefix + "dialog.cancel", .label = u"\u53d6\u6d88"}).value.value();
-        handles.dialogConfirm = ui.addButton({.id = prefix + "dialog.confirm", .label = u"\u91cd\u8a2d\u9032\u5ea6"}).value.value();
+        handles.dialogTitle = ui.addLabel({.id = prefix + "dialog.title", .value = u"Reset Demo Progress"}).value.value();
+        handles.dialogBody = ui.addLabel({.id = prefix + "dialog.body", .value = u"Reset the demo progress to 0%? Data on other pages is kept."}).value.value();
+        handles.dialogCancel = ui.addButton({.id = prefix + "dialog.cancel", .label = u"Cancel"}).value.value();
+        handles.dialogConfirm = ui.addButton({.id = prefix + "dialog.confirm", .label = u"Reset Progress"}).value.value();
         handles.dialog = ui.addDialog(prefix + "dialog", {handles.dialogTitle, handles.dialogBody, handles.dialogCancel, handles.dialogConfirm}, handles.dialogCancel, handles.dialogOpen,
             [this](bool confirmed) { dialogResult_ = confirmed ? u"Confirmed" : u"Cancelled"; if (confirmed) { updateProgress(0); ++dialogConfirmations_; } }, handles.dialogTitle).value.value();
         bindAction(handles.dialogOpen, [this] { return handles.dialog.open(handles.dialogOpen); });
         bindAction(handles.dialogTemporary, [this] { return handles.dialog.open(handles.dialogTemporary); });
         bindAction(handles.dialogCancel, [this] { return handles.dialog.settle(false); });
         bindAction(handles.dialogConfirm, [this] { return handles.dialog.settle(true); });
-        handles.v04Title = ui.addLabel({.id = prefix + "v04.title", .value = u"\u5448\u73fe\u8a2d\u5b9a"}).value.value();
+        handles.v04Title = ui.addLabel({.id = prefix + "v04.title", .value = u"Presentation Settings"}).value.value();
         auto resolve = [this](std::u16string_view family) {
             if (resolveFont_) return resolveFont_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
@@ -229,18 +229,18 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             fonts.push_back({value, std::move(label), available});
             fontChoices_.emplace_back(std::move(value), std::move(family));
         };
-        addFont("default", {}, u"\u9810\u8a2d");
+        addFont("default", {}, u"Default");
         if (fontFamilies) {
             for (const auto& family : *fontFamilies)
                 addFont("family:" + std::to_string(fontChoices_.size()), family.key, family.displayName);
         } else {
             for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
                 bool available = resolve(family).requestedAvailable;
-                addFont(id, family, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available);
+                addFont(id, family, std::u16string(family) + (available ? u"" : u" (not installed)"), available);
             }
         }
-        addFont("missing", u"Missing test font", u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09");
-        handles.font = ui.addDropdown({.id = prefix + "v04.font", .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
+        addFont("missing", u"Missing test font", u"Missing Font (Test)");
+        handles.font = ui.addDropdown({.id = prefix + "v04.font", .label = u"Font"}, std::move(fonts)).value.value();
         handles.font.connectSource({[this] {
             const auto family = ui.presentation().fontFamily;
             auto choice = std::find_if(fontChoices_.begin(), fontChoices_.end(),
@@ -260,25 +260,25 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.fontStatus.connectSource([this, resolve] {
             auto result = resolve(ui.presentation().fontFamily);
             auto size = std::to_string(ui.presentation().textSize);
-            return u"\u76ee\u524d\u72c0\u614b\uff1a" + result.primary + (result.requestedAvailable ? u"" : u"\uff08\u5df2\u6539\u7528\u9810\u8a2d\uff09") + u"\uff0c\u6587\u5b57\u5927\u5c0f " + std::u16string(size.begin(), size.end()) +
-                (ui.presentation().variant == ThemeVariant::dark() ? u"\uff0c\u6df1\u8272" : u"\uff0c\u6dfa\u8272") +
-                (ui.presentation().density == Density::compact ? u"\uff0c\u7dca\u6e4a" : u"\uff0c\u6a19\u6e96");
+            return u"Current settings: " + result.primary + (result.requestedAvailable ? u"" : u" (using default)") + u", text size " + std::u16string(size.begin(), size.end()) +
+                (ui.presentation().variant == ThemeVariant::dark() ? u", dark" : u", light") +
+                (ui.presentation().density == Density::compact ? u", compact" : u", standard");
         });
-        handles.resetV04 = ui.addButton({.id = prefix + "v04.reset", .label = u"\u91cd\u8a2d V04"}).value.value();
+        handles.resetV04 = ui.addButton({.id = prefix + "v04.reset", .label = u"Reset V04"}).value.value();
         bindAction(handles.resetV04, [this] {
             auto result = ui.setPresentation({}); if (!result) return result;
             if (fontChanged_) fontChanged_(); if (textSizeChanged_) textSizeChanged_(); if (darkChanged_) darkChanged_();
             if (compactChanged_) compactChanged_();
             handles.font.useLatest(); handles.textSize.useLatest(); handles.dark.useLatest(); handles.compact.useLatest(); return Result{};
         });
-        handles.textSize = ui.addSlider({.id = prefix + "v04.text_size", .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
-        handles.dark = ui.addCheckbox({.id = prefix + "v04.dark", .label = u"\u6df1\u8272"}).value.value();
+        handles.textSize = ui.addSlider({.id = prefix + "v04.text_size", .label = u"Text Size"}, {12, 28, 1}).value.value();
+        handles.dark = ui.addCheckbox({.id = prefix + "v04.dark", .label = u"Dark"}).value.value();
         handles.dark.connectSource({[this] { return ui.presentation().variant == ThemeVariant::dark(); }, [this](std::function<void()> changed) { darkChanged_ = std::move(changed); return [this] { darkChanged_ = {}; }; }});
         handles.dark.connectImmediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.variant = change.value ? ThemeVariant::dark() : ThemeVariant::light();
             auto result = ui.setPresentation(settings); if (result && darkChanged_) darkChanged_(); return result;
         });
-        handles.compact = ui.addCheckbox({.id = prefix + "v04.compact", .label = u"\u7dfb\u6e4a"}).value.value();
+        handles.compact = ui.addCheckbox({.id = prefix + "v04.compact", .label = u"Compact"}).value.value();
         handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; },
             [this](std::function<void()> changed) { compactChanged_ = std::move(changed); return [this] { compactChanged_ = {}; }; }});
         handles.compact.connectImmediate([this](const Change<CheckboxHandle>& change) {
@@ -287,7 +287,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             if (result && compactChanged_) compactChanged_();
             return result;
         });
-        handles.preview = ui.addTextField({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
+        handles.preview = ui.addTextField({.id = prefix + "v04.preview", .label = u"Preview", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connectSource({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
         handles.preview.connectImmediate([this](const Change<TextFieldHandle>& change) { preview_ = change.value; return Result{}; });
         // #84: one mixed-script paragraph (Chinese, English and digits) whose alignment and justification method
@@ -295,10 +295,10 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.justifySample = ui.addLabel({.id = prefix + "v04.justify.sample", .value = justifySampleText, .textAlign = TextAlign::justify}).value.value();
         handles.distributeName = ui.addLabel({.id = prefix + "v04.justify.name", .value = u"姓　名", .textAlign = TextAlign::distribute}).value.value();
         handles.distributePlain = ui.addLabel({.id = prefix + "v04.justify.plain", .value = u"姓　名"}).value.value();
-        handles.justifyAlign = ui.addDropdown({.id = prefix + "v04.justify.align", .label = u"對齊"},
-            {{{"left"}, u"靠左"}, {{"center"}, u"置中"}, {{"right"}, u"靠右"}, {{"justify"}, u"左右對齊"}, {{"distribute"}, u"分散對齊"}}).value.value();
-        handles.justifyMethod = ui.addDropdown({.id = prefix + "v04.justify.method", .label = u"對齊方法"},
-            {{{"automatic"}, u"自動"}, {{"spaces"}, u"只拉空格"}, {{"per_character"}, u"每字元"}}).value.value();
+        handles.justifyAlign = ui.addDropdown({.id = prefix + "v04.justify.align", .label = u"Alignment"},
+            {{{"left"}, u"Left"}, {{"center"}, u"Center"}, {{"right"}, u"Right"}, {{"justify"}, u"Justify"}, {{"distribute"}, u"Distribute"}}).value.value();
+        handles.justifyMethod = ui.addDropdown({.id = prefix + "v04.justify.method", .label = u"Justification Method"},
+            {{{"automatic"}, u"Automatic"}, {{"spaces"}, u"Spaces Only"}, {{"per_character"}, u"Per Character"}}).value.value();
         handles.justifyAlign.connectSource({[this] {
             const auto align = handles.justifySample.textAlign().value.value_or(TextAlign::left);
             return std::optional<OptionValue>{{align == TextAlign::center ? "center" : align == TextAlign::right ? "right" : align == TextAlign::justify ? "justify" : align == TextAlign::distribute ? "distribute" : "left"}};
@@ -337,7 +337,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
             {{"v03"}, u"Confirm", true, {handles.v03Title, handles.progress, handles.progressSource, handles.dialogResult,
                 handles.progressZero, handles.progressHalf, handles.progressFull, handles.progressBelow, handles.progressAbove, handles.resetV03, handles.dialogOpen, handles.dialogTemporary}},
-            {{"v04"}, u"\u5448\u73fe\u8a2d\u5b9a", true, {handles.v04Title, handles.font, handles.textSize, handles.dark, handles.compact, handles.preview, handles.fontStatus, handles.resetV04,
+            {{"v04"}, u"Presentation Settings", true, {handles.v04Title, handles.font, handles.textSize, handles.dark, handles.compact, handles.preview, handles.fontStatus, handles.resetV04,
                 handles.justifySample, handles.justifyAlign, handles.justifyMethod, handles.distributeName, handles.distributePlain}}
         }).value.value();
         handles.tabs.onPageChange([this](OptionValue from, OptionValue to) {
@@ -399,7 +399,7 @@ ConfirmationResult Form::apply(const std::vector<ConfirmFieldChange>& changes) {
     std::vector<ConfirmFieldError> errors;
     if (blank(name.value)) errors.push_back({name.field, requiredName});
     if (!region.value || (region.value->id != "north" && region.value->id != "central" && region.value->id != "south")) errors.push_back({region.field, requiredRegion});
-    if (!errors.empty()) return {{Status::invalidValue, u"\u8acb\u4fee\u6b63\u6b04\u4f4d"}, std::move(errors)};
+    if (!errors.empty()) return {{Status::invalidValue, u"Correct the highlighted fields"}, std::move(errors)};
     if (nextFieldError_) {
         auto error = std::move(*nextFieldError_); nextFieldError_.reset();
         return {{Status::invalidValue, u"Fixture rejected apply"}, {std::move(error)}};
@@ -517,7 +517,7 @@ layout::Node Form::page() const {
         items.push_back(component(handles.preview));
         items.push_back(component(handles.fontStatus));
         items.push_back(component(handles.resetV04));
-        // The alignment comparison: the paragraph with its two dropdowns, then "姓　名" distributed next to the same label left-aligned.
+        // The alignment comparison: the paragraph with its two dropdowns, then the name label distributed next to the same label left-aligned.
         items.push_back(component(handles.justifySample));
         items.push_back(grid({component(handles.justifyAlign), component(handles.justifyMethod)}, 200, 16));
         items.push_back(grid({component(handles.distributeName), component(handles.distributePlain)}, 120, 16));

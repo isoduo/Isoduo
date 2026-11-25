@@ -353,10 +353,10 @@ void dropdownStatesAreReadableWithoutColor() {
     field.open();
     auto frame = arrange(layout::component(field), ui, webAppearance(), measure, 200, 160, 1.f, scroll);
     check(frame.find(field) && frame.find(field)->lines.size() >= 2 && !frame.overlays.empty() && !frame.overlays[0].lines.empty() &&
-          frame.find(field)->lines[1].text == u"\u672a\u9078\u53d6" && frame.overlays[0].lines[0].text == u"\u6c92\u6709\u53ef\u7528\u9078\u9805", "Empty dropdown explains its state in text");
+          frame.find(field)->lines[1].text == u"No selection" && frame.overlays[0].lines[0].text == u"No options available", "Empty dropdown explains its state in text");
     field.enable(false);
     frame = arrange(layout::component(field), ui, webAppearance(), measure, 200, 160, 1.f, scroll);
-    check(frame.find(field)->lines[0].text.find(u"\u505c\u7528") != std::u16string::npos, "Disabled dropdown is labeled in text");
+    check(frame.find(field)->lines[0].text.find(u"(disabled)") != std::u16string::npos, "Disabled dropdown is labeled in text");
 }
 
 void stackAndPopupEdgesFollowPaintOrder() {

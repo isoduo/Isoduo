@@ -22,7 +22,7 @@ int wmain(int argc, wchar_t** argv) {
         if (nav) nav->Release();
         auto label = ok ? findId(uia, root, L"about.diagnostics") : nullptr;
         BSTR name = nullptr;
-        ok = label && SUCCEEDED(label->get_CurrentName(&name)) && name && std::wstring(name) == std::wstring(L"診斷：") + argv[2];
+        ok = label && SUCCEEDED(label->get_CurrentName(&name)) && name && std::wstring(name) == std::wstring(L"Diagnostics: ") + argv[2];
         if (label) label->Release(); SysFreeString(name);
     }
     if (root) root->Release(); if (uia) uia->Release();

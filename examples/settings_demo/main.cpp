@@ -26,15 +26,15 @@ class WindowsPrompt : public settingsDemo::NativePrompt {
 public:
     explicit WindowsPrompt(void* owner) : owner_(static_cast<HWND>(owner)) {}
     bool retry(std::u16string_view reason) override {
-        auto message = L"\u756b\u9762\u7121\u6cd5\u7e6a\u88fd\uff08" + wide(reason) + L"\uff09\u3002\u6309\u300c\u91cd\u8a66\u300d\u91cd\u65b0\u5efa\u7acb\u756b\u9762\uff1b\u6309\u300c\u53d6\u6d88\u300d\u7d50\u675f\u7a0b\u5f0f\uff08\u6709\u672a\u5132\u5b58\u7684\u4fee\u6539\u6642\u6703\u5148\u8a62\u554f\uff09\u3002";
-        return MessageBoxW(owner_, message.c_str(), L"\u756b\u9762\u7121\u6cd5\u7e6a\u88fd", MB_RETRYCANCEL | MB_ICONERROR) == IDRETRY;
+        auto message = L"Rendering failed (" + wide(reason) + L"). Choose Retry to rebuild the renderer or Cancel to quit. If you have unsaved changes, you will be asked whether to save them.";
+        return MessageBoxW(owner_, message.c_str(), L"Rendering Failed", MB_RETRYCANCEL | MB_ICONERROR) == IDRETRY;
     }
     settingsDemo::SaveChoice save(bool blank) override {
-        auto message = blank ? L"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f\u986f\u793a\u540d\u7a31\u7a7a\u767d\uff0c\u672a\u5132\u5b58\u6b64\u6b04\u3002" : L"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f";
-        int result = MessageBoxW(owner_, message, L"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f", MB_YESNOCANCEL | MB_ICONWARNING);
+        auto message = blank ? L"The display name is blank. Save the other changes and keep the last confirmed name?" : L"Save changes?";
+        int result = MessageBoxW(owner_, message, L"Save changes?", MB_YESNOCANCEL | MB_ICONWARNING);
         return result == IDYES ? settingsDemo::SaveChoice::save : result == IDNO ? settingsDemo::SaveChoice::discard : settingsDemo::SaveChoice::cancel;
     }
-    void error(std::u16string_view message) override { auto text=wide(message); MessageBoxW(owner_, text.c_str(), L"\u7121\u6cd5\u5132\u5b58", MB_OK | MB_ICONERROR); }
+    void error(std::u16string_view message) override { auto text=wide(message); MessageBoxW(owner_, text.c_str(), L"Cannot Save", MB_OK | MB_ICONERROR); }
 };
 settingsDemo::Demo* pendingDemo = nullptr;
 std::u16string pendingTitle, pendingMessage;
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
             if (!out || !diagnostics.save(out)) std::cerr << "Cannot write diagnostics export\n";
         };
 #endif
-        options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
+        options.title = u"Isoduo Settings Demo — " + std::u16string(name.begin(), name.end());
 #ifdef _WIN32
         settingsDemo::CloseController closeController(demo);
         options.onCloseRequested = [&](isoduo::Desktop& desktop) {
@@ -158,11 +158,10 @@ int main(int argc, char** argv) {
         demo.onDirtyChanged([&](bool dirty) { creation.desktop->setTitle((dirty ? u"*" : u"") + options.title); });
         if (loaded.kind == settingsDemo::LoadKind::corrupt || loaded.kind == settingsDemo::LoadKind::unreadable) {
             bool corrupt = loaded.kind == settingsDemo::LoadKind::corrupt;
-            std::u16string title = corrupt ? u"設定檔已損毀" : u"無法讀取設定檔";
-            auto message = u"無法讀取 " + pathText + u"（" + loaded.reason + u"）。已改用預設值啟動";
+            std::u16string title = corrupt ? u"Settings File Is Corrupt" : u"Cannot Read Settings File";
+            auto message = u"Cannot read " + pathText + u" (" + loaded.reason + u"). Started with default settings.";
             if (corrupt)
-                message += loaded.renamed ? u"，原檔已改名為 settings.json.bad。" : u"，原檔無法改名，下次儲存會覆蓋它。";
-            else message += u"。";
+                message += loaded.renamed ? u" The original file was renamed to settings.json.bad." : u" The original file could not be renamed and will be overwritten the next time you save.";
 #ifdef _WIN32
             pendingDemo = &demo;
             pendingTitle = std::move(title);

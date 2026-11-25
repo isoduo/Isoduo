@@ -78,7 +78,7 @@ int wmain(int argc, wchar_t** argv) {
         settingsDemo::Demo demo(std::move(info));
         int saves = 0; demo.onSave([&](const auto&) { ++saves; return std::u16string{}; });
         const auto& appearance = argc > 1 && std::wstring_view(argv[1]) == L"material" ? isoduo::materialAppearance() : isoduo::webAppearance();
-        isoduo::DesktopConfig options; options.title = argc > 1 && std::wstring_view(argv[1]) == L"material" ? u"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Material-inspired" : u"\u8a2d\u5b9a\u7ba1\u7406\u793a\u7bc4 \u2014 Minimal Web";
+        isoduo::DesktopConfig options; options.title = argc > 1 && std::wstring_view(argv[1]) == L"material" ? u"Isoduo Settings Demo — Material-inspired" : u"Isoduo Settings Demo — Minimal Web";
         isoduo::detail::DesktopHost host(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options, false, true);
         host.onCloseRequest([&] { return demo.requestClose() ? isoduo::CloseDecision::close : isoduo::CloseDecision::keepOpen; });
         demo.onClose([&] { host.onCloseRequest({}); PostMessageW(host.window(), WM_CLOSE, 0, 0); });
