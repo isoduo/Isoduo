@@ -50,16 +50,14 @@ void runDemo(IUIAutomation* uia, const wchar_t* executable, const fs::path& dire
             "name value pattern unavailable");
     if (reopen) {
         BSTR actual = nullptr;
-        bool matches = SUCCEEDED(value->get_CurrentValue(&actual)) && actual && expected == actual;
+        const HRESULT read = value->get_CurrentValue(&actual);
+        const bool matches = actual && expected == actual;
         SysFreeString(actual);
+        require(SUCCEEDED(read), "could not read the reopened name");
         require(matches, "reopened name differs from saved name");
     } else {
         require(SUCCEEDED(field->SetFocus()), "could not focus the name field");
-        BSTR name = SysAllocString(expected.c_str());
-        require(name, "could not allocate the new name");
-        HRESULT renamed = value->SetValue(name);
-        SysFreeString(name);
-        require(SUCCEEDED(renamed), "rename failed");
+        require(SUCCEEDED(setTextValue(value.Get(), expected.c_str())), "rename failed");
         ComPtr<IUIAutomationElement> nav;
         nav.Attach(findId(uia, root.Get(), L"app.nav"));
         require(nav && SUCCEEDED(nav->SetFocus()), "could not leave the name field");
