@@ -76,7 +76,13 @@ int main(int argc, char** argv) {
 #else
         constexpr std::string_view settingsFlag = "--settings-dir", diagnosticsFlag = "--diagnostics-out";
 #endif
+#ifdef _WIN32
+        bool smoke = false;
+#endif
         for (int i = 1; i < argc; i += 2) {
+#ifdef _WIN32
+            if (std::wstring_view(argv[i]) == L"--smoke") { smoke = true; --i; continue; }
+#endif
             std::basic_string_view flag(argv[i]);
             bool hasValue = i + 1 < argc;
 #ifndef _WIN32
@@ -145,6 +151,9 @@ int main(int argc, char** argv) {
             prompt.show(desktop, failure.message);
         };
 #endif
+#ifdef _WIN32
+        if (smoke) options.onRendererFailed = [](auto& desktop, const auto&) { desktop.close(); };
+#endif
         auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
 #ifndef _WIN32
@@ -176,6 +185,12 @@ int main(int argc, char** argv) {
 #endif
         auto caps = creation.desktop->capabilities();
         demo.setRenderer(caps.version + u" — " + caps.renderer);
+#ifdef _WIN32
+        if (smoke) {
+            // run() shows and updates the window before it dispatches posted work.
+            if (!creation.desktop->post([&] { creation.desktop->close(); })) return 1;
+        }
+#endif
         auto result=creation.desktop->run();
 #ifdef _WIN32
         if (noticeTimer) KillTimer(nullptr, noticeTimer);
