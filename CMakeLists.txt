@@ -268,6 +268,11 @@ if(ISODUO_BUILD_DESKTOP AND WIN32)
     target_link_libraries(isoduo_about_executable_tests PRIVATE uiautomationcore ole32 oleaut32 user32)
     add_test(NAME about_executable_diagnostics COMMAND isoduo_about_executable_tests $<TARGET_FILE:isoduo_settings_demo_web> "Basic (in memory)")
     add_test(NAME about_executable_nodiag COMMAND isoduo_about_executable_tests $<TARGET_FILE:isoduo_settings_demo_web_nodiag> Off)
+    add_executable(isoduo_demo_settings_smoke tests/demo_settings_smoke.cpp)
+    isoduo_target(isoduo_demo_settings_smoke)
+    target_link_libraries(isoduo_demo_settings_smoke PRIVATE uiautomationcore ole32 oleaut32 user32)
+    add_test(NAME demo_settings_smoke COMMAND isoduo_demo_settings_smoke
+      $<TARGET_FILE:isoduo_settings_demo_web> $<TARGET_FILE:isoduo_settings_demo_material>)
   endif()
   # Native verification: real window, real message translation/dispatch, offscreen evidence.
   add_executable(isoduo_host_verify tests/host_verify.cpp)
@@ -452,11 +457,4 @@ endif()
 
 if(ISODUO_BUILD_TESTS AND WIN32)
   add_test(NAME source_text COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/source_text.ps1")
-endif()
-
-if(WIN32 AND ISODUO_BUILD_DESKTOP)
-  # The idle APPDATA smoke without the real %APPDATA% folder: launch, wait for the window, save over UIA, reload.
-  add_test(NAME demo_settings_smoke COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/v1-final/appdata-smoke.ps1"
-    -OutDir "${CMAKE_BINARY_DIR}/evidence/demo-settings-smoke" -SettingsDir "${CMAKE_BINARY_DIR}/evidence/demo-settings-smoke/settings"
-    -BinDir "$<TARGET_FILE_DIR:isoduo_settings_demo_web>")
 endif()
