@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 set(configs "${BUILD_TYPE}")
 set(work "${BUILD_DIR}/consumer")
-set(options -G "${GENERATOR}" "-DCMAKE_CXX_COMPILER=${COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}")
+include("${CMAKE_CURRENT_LIST_DIR}/generator.cmake")
 if(CROSS_COMPILER)
   if(NOT WIN32 OR NOT PRODUCER STREQUAL "Clang")
     message("SKIP: cross-compiler check requires a Windows clang-cl package")

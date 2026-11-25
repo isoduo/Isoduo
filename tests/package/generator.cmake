@@ -1,0 +1,12 @@
+# Reproduce the package producer's generator selection for native consumers.
+set(options -G "${GENERATOR}" "-DCMAKE_CXX_COMPILER=${COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}")
+load_cache("${BUILD_DIR}" READ_WITH_PREFIX producer_ CMAKE_GENERATOR_TOOLSET CMAKE_GENERATOR_INSTANCE CMAKE_GENERATOR_PLATFORM)
+if(producer_CMAKE_GENERATOR_TOOLSET)
+  list(APPEND options -T "${producer_CMAKE_GENERATOR_TOOLSET}")
+endif()
+if(producer_CMAKE_GENERATOR_INSTANCE)
+  list(APPEND options "-DCMAKE_GENERATOR_INSTANCE=${producer_CMAKE_GENERATOR_INSTANCE}")
+endif()
+if(producer_CMAKE_GENERATOR_PLATFORM)
+  list(APPEND options -A "${producer_CMAKE_GENERATOR_PLATFORM}")
+endif()
