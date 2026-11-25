@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.25)
+if(DEFINED FILE_LIST)
+  file(READ "${FILE_LIST}" paths)
+else()
+  set(root "${CMAKE_CURRENT_LIST_DIR}/..")
+  if(NOT EXISTS "${root}/.git")
+    message(STATUS "Skipping tracked script check: source archive has no Git index")
+    return()
+  endif()
+  find_package(Git REQUIRED)
+  execute_process(COMMAND "${GIT_EXECUTABLE}" -c core.quotePath=false ls-files
+    WORKING_DIRECTORY "${root}" OUTPUT_VARIABLE paths COMMAND_ERROR_IS_FATAL ANY)
+endif()
+
+# Git quotes paths with control characters. Keep its printable representation
+# intact, including semicolons and brackets which have meaning in CMake lists.
+set(extension "[Ss][Hh]|[Pp][Ss]1|[Pp][Ss][Mm]1|[Pp][Yy]|[Bb][Aa][Tt]|[Cc][Mm][Dd]")
+set(offenders "")
+while(paths MATCHES "(^|\n)([^\n]*[.](${extension})\"?)(\n|$)")
+  string(APPEND offenders "\n  ${CMAKE_MATCH_2}")
+  string(FIND "${paths}" "${CMAKE_MATCH_0}" offset)
+  string(LENGTH "${CMAKE_MATCH_0}" length)
+  math(EXPR next "${offset} + ${length}")
+  string(SUBSTRING "${paths}" ${next} -1 paths)
+endwhile()
+if(NOT offenders STREQUAL "")
+  message(FATAL_ERROR "Forbidden tracked script files:${offenders}")
+endif()
