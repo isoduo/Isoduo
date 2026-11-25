@@ -4735,7 +4735,7 @@ int wmain(int argc, wchar_t** argv) {
             Fixture fixture(webAppearance(), true);
             const auto renderer = fixture.host.rendererName();
             std::cout << (Fixture::renderBackend == RenderBackendKind::vulkan ? "Vulkan" : "OpenGL") << " renderer: " << renderer << '\n';
-            if (renderer.find("llvmpipe") == std::string::npos) {
+            if (fixture.host.capabilities().renderBackend != Fixture::renderBackend || renderer.find("llvmpipe") == std::string::npos) {
                 std::cerr << "Expected Mesa llvmpipe\n";
                 return 1;
             }
