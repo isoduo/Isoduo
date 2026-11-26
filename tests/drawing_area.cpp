@@ -445,7 +445,9 @@ void frameMutations() {
     b.requestFrame();
     ui.simulateFrame(0ms);
     test::check(calls == 2, "cancel withdraws a later callback in the same batch");
+    int attempts = 0;
     a.onFrame([&](const FrameInfo&) {
+        if (++attempts > 1) return Result{};
         a.requestRedraw();
         a.requestFrame();
         return Result{Status::failed, {}};
@@ -463,6 +465,10 @@ void frameMutations() {
     place();
     test::check(draws == before + 1 && ui.diagnostics().size() == diagnostics + 1 && !*ui.animating(),
                 "resume, redraw and local failure with no automatic retry");
+    a.requestFrame();
+    ui.simulateFrame(0ms);
+    test::check(attempts == 2 && !*ui.animating() && ui.diagnostics().size() == diagnostics + 1,
+                "explicit request reuses the callback after a failure");
     a.onFrame([&](const FrameInfo&) { return b.remove(); });
     a.requestFrame();
     b.requestFrame();
@@ -502,6 +508,8 @@ void applicationFrames() {
         order.push_back(2);
         return b.requestFrame();
     });
+    ui.simulateFrame(0ms);
+    test::check(order.empty(), "registration does not replay an invalid request");
     b.requestFrame();
     a.requestFrame();
     b.requestFrame();
@@ -510,6 +518,10 @@ void applicationFrames() {
     ui.simulateFrame(6ms);
     test::check(order == std::vector<int>{2, 1, 2} && times[0] == times[1] && times[2]-times[1] == 6ms,
                 "one timestamp and one invocation per accepted request in order");
+    ui.simulateFrame(0ms);
+    test::check(times.size() == 4 && times[3] == times[2], "zero advance dispatches at the previous timestamp");
+    b.onFrame({});
+    test::check(!*ui.animating() && b.requestFrame().status == Status::invalidValue, "clearing a callback cancels its request");
     b.cancelFrame();
     test::check(!*ui.animating() && ui.simulateFrame(-1ms).status == Status::invalidValue, "cancel and negative advance");
 }
