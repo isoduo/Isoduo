@@ -197,10 +197,11 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         throw;
     }
 }
-std::unique_ptr<Renderer> DesktopHost::createRenderer() {
+std::unique_ptr<Renderer> DesktopHost::createRenderer(bool rebuilding) {
     if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession, debugContext_,
         [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
-    return std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+    return std::make_unique<Renderer>(window_, hooks_, debugContext_,
+        [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); }, rebuilding);
 }
 Result DesktopHost::rebuildRenderer() {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
@@ -209,16 +210,8 @@ Result DesktopHost::rebuildRenderer() {
     if (!rendererFailure_) return {Status::invalidValue, u"Renderer is not failed"};
     if (hooks_) ++hooks_->rebuildAttempts;
     renderer_.reset();
-    struct ShaderOverride {
-        RendererTestHooks* hooks;
-        std::string previous;
-        explicit ShaderOverride(RendererTestHooks* value): hooks(value) {
-            if (hooks) { previous=hooks->fragmentShaderOverride; if (hooks->failRebuildOnce) { hooks->failRebuildOnce=false; hooks->fragmentShaderOverride="invalid shader"; } }
-        }
-        ~ShaderOverride() { if (hooks) hooks->fragmentShaderOverride=std::move(previous); }
-    } shaderOverride(renderBackend_ == RenderBackendKind::openGL ? hooks_ : nullptr);
     try {
-        renderer_ = createRenderer();
+        renderer_ = createRenderer(true);
         renderer_->restoreAtlas(text_.atlasPages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }

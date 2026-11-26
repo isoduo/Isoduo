@@ -12,6 +12,8 @@
 using namespace isoduo;
 using namespace isoduo::detail;
 
+#include "renderer_fault_sweep.hpp"
+
 namespace {
 void check(bool condition, const char* expectation) { test::check(condition, expectation); }
 void printCapabilities(const RendererCapabilities& caps) {
@@ -217,8 +219,11 @@ void interactive(DesktopConfig config, std::string_view mode) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: isoduo_linux_desktop_native <wayland|x11|auto> <faults|close|program|wrapper|low-version|locale|configured-locale>\n";
+    const bool faultSweep = argc == 5 && std::string_view(argv[2]) == "fault-sweep" &&
+                           std::string_view(argv[3]) == "--render-backend";
+    if (argc != 3 && !faultSweep) {
+        std::cerr << "Usage: isoduo_linux_desktop_native <wayland|x11|auto> "
+                     "<faults|close|program|wrapper|low-version|locale|configured-locale|fault-sweep --render-backend opengl|vulkan>\n";
         return 2;
     }
     try {
@@ -231,6 +236,11 @@ int main(int argc, char** argv) {
         config.height = 320;
         config.title = u"Isoduo native verification";
         config.debugContext = mode == "program" ? DebugContext::on : DebugContext::off;
+        if (faultSweep) {
+            config.debugContext = DebugContext::buildDefault;
+            config.renderBackend = test::rendererFaultSweep::renderBackend(argv[4]);
+            return test::rendererFaultSweep::run(config);
+        }
         if (mode == "locale") concurrentX11Locale(config);
         else if (mode == "configured-locale") configuredX11Locale(config);
         else if (mode == "faults") checkFaults(config);
