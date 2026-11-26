@@ -23,8 +23,10 @@ foreach(mode regenerate validate)
     add_test(NAME vulkan_shaders_${mode} COMMAND "${CMAKE_COMMAND}" "-DSOURCE=${shader_dir}"
       "-DOUT=${PROJECT_BINARY_DIR}/vulkan-shaders-${mode}" "-DDATA=$<TARGET_FILE:isoduo_vulkan_shader_data>"
       "-DMODE=${mode}" "-DTOOL=${tool}" -P "${PROJECT_SOURCE_DIR}/tests/vulkan_shaders.cmake")
+  elseif(ISODUO_REQUIRE_VULKAN_TESTS)
+    message(FATAL_ERROR "Missing ${required}")
   else()
     add_test(NAME vulkan_shaders_${mode} COMMAND isoduo_vulkan_shader_data --skip "Missing ${required}")
+    set_tests_properties(vulkan_shaders_${mode} PROPERTIES SKIP_RETURN_CODE 77)
   endif()
-  set_tests_properties(vulkan_shaders_${mode} PROPERTIES SKIP_RETURN_CODE 77)
 endforeach()

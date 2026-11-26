@@ -11,6 +11,10 @@
 #endif
 #include <vulkan/vulkan.h>
 #include <cstring>
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+#include <cstdio>
+#include <cstdlib>
+#endif
 #include <limits>
 #include <algorithm>
 #include <string_view>
@@ -103,6 +107,14 @@ template<class T, class Query> std::vector<T> enumerate(const char* name, Query 
         return entries;
     }
 }
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+VKAPI_ATTR VkBool32 VKAPI_CALL failValidation(VkDebugUtilsMessageSeverityFlagBitsEXT,
+        VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
+    std::fprintf(stderr, "Vulkan validation error: %s\n", data->pMessage);
+    std::fflush(stderr);
+    std::_Exit(EXIT_FAILURE);
+}
+#endif
 struct Session {
 #ifdef _WIN32
     HMODULE library = LoadLibraryExW(L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -112,6 +124,10 @@ struct Session {
     bool debugUtils = false;
     PFN_vkGetInstanceProcAddr lookup{};
     VkInstance instance{};
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+    VkDebugUtilsMessengerEXT validationMessenger{};
+    PFN_vkDestroyDebugUtilsMessengerEXT destroyMessenger{};
+#endif
     VkSurfaceKHR surface{};
     VkDevice device{};
     PFN_vkDestroyDevice destroyDevice{};
@@ -129,6 +145,9 @@ struct Session {
     ~Session() {
         if (device) destroyDevice(device, nullptr);
         if (surface) destroySurfaceKHR(instance, surface, nullptr);
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+        if (validationMessenger) destroyMessenger(instance, validationMessenger, nullptr);
+#endif
         if (instance && destroyInstance) destroyInstance(instance, nullptr);
 #ifdef _WIN32
         if (library) FreeLibrary(library);
@@ -209,9 +228,24 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     if (s.debugUtils) enabled.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     info.enabledExtensionCount = static_cast<uint32_t>(enabled.size());
     info.ppEnabledExtensionNames = enabled.data();
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+    const char* layer = "VK_LAYER_KHRONOS_validation";
+    info.enabledLayerCount = 1;
+    info.ppEnabledLayerNames = &layer;
+    VkDebugUtilsMessengerCreateInfoEXT validation{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    validation.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    validation.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    validation.pfnUserCallback = failValidation;
+    info.pNext = &validation;
+#endif
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
     s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+    s.destroyMessenger = s.function<PFN_vkDestroyDebugUtilsMessengerEXT>("vkDestroyDebugUtilsMessengerEXT");
+    auto createMessenger = s.function<PFN_vkCreateDebugUtilsMessengerEXT>("vkCreateDebugUtilsMessengerEXT");
+    check("vkCreateDebugUtilsMessengerEXT", createMessenger(s.instance, &validation, nullptr, &s.validationMessenger));
+#endif
     s.enumeratePhysicalDevices = s.function<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
     auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices",
         [&](uint32_t* n, VkPhysicalDevice* out){ return s.enumeratePhysicalDevices(s.instance, n, out); });
