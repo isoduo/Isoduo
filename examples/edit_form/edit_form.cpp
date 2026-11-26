@@ -169,8 +169,6 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             return clipPaddingId_ == v03TitleId ? clipPaddingText_ : v03TitleText;
         });
         handles.swatch = ui.addDrawingArea({.id = prefix + "v03.swatch", .label = u"Accent color"}).value.value();
-        ui.addLabel({.id = prefix + "v03.swatch.description", .value = u"Current accent",
-                     .target = prefix + "v03.swatch", .labelKind = LabelKind::description});
         handles.swatch.onDraw([](const DrawingEnvironment& env) {
             return env.fillRect({0, 0, env.size().w, env.size().h}, env.palette().accent);
         });
