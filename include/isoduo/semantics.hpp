@@ -72,7 +72,7 @@ public:
     Query<NodeSnapshot> get(const NodeRef& ref) const;
     Query<std::vector<NodeRef>> children(const NodeRef& parent) const;
     Query<std::u16string> text(std::string_view id) const;
-    // Same answer and admission as Ui::animating: is any on-screen transition still running?
+    // Reports running transitions and runnable frame requests, with the same admission as Ui::animating.
     Query<bool> animating() const;
     // Text fields: the range of the word or paragraph holding the character at a UTF-16 offset, and the next or
     // previous word stop (where Ctrl+Right / Ctrl+Left go). The same answers as the typed TextFieldHandle.

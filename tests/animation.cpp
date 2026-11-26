@@ -35,7 +35,7 @@ struct Volume {
     SliderHandle slider;
     int model = 45;
     std::function<void()> changed;  // the data source's change notification
-    std::uint64_t now = 0;
+    std::int64_t now = 0;
     const Appearance& appearance;
     Rect track{};
     int width = 400;  // the window the slider is arranged in; a test narrows it to move the track under the pointer
@@ -43,7 +43,7 @@ struct Volume {
         slider = ui.addSlider({.id = "volume", .label = u"Volume"}, {0, 100, 5}).value.value();
         slider.connectSource({[this] { return model; }, [this](std::function<void()> notify) { changed = std::move(notify); return [] {}; }});
         slider.connectImmediate([this](const Change<SliderHandle>& change) { model = change.value; if (changed) changed(); return Result{}; });
-        detail::access(ui).animationTime([this] { return now; });
+        detail::access(ui).animationTime([this] { return std::chrono::steady_clock::time_point{std::chrono::milliseconds(now)}; });
         slider.focus();
         paint();
     }
@@ -66,6 +66,7 @@ bool nearPx(int a, int b) { return std::abs(a - b) <= 1; }
 
 void keyboardStepSlidesTheThumb() {
     Volume v;
+    v.ui.simulateFrame(std::chrono::milliseconds(0));
     check(bool(v.press(Key::right)), "right arrow accepted");
     auto start = v.paint();
     check(*v.slider.draft() == 50 && v.model == 50, "value is 50 at once");
@@ -73,12 +74,12 @@ void keyboardStepSlidesTheThumb() {
     check(start.titled(u"Volume: 50"), "title shows 50 at t=0");
     check(nearPx(start.center(), v.tick(45)), "thumb is still on the 45 tick at t=0");
     check(v.ui.animating().value.value(), "animating at t=0");
-    v.now = 75;
+    v.ui.simulateFrame(std::chrono::milliseconds(75));
     int middle = v.paint().center();
     // Ease-out is past half way at half the time: 45 + 5 * 0.875 for a cubic curve.
     check(middle > (v.tick(45) + v.tick(50)) / 2 && middle < v.tick(50), "t=75ms is between the ticks and past half way");
     check(v.ui.animating().value.value(), "still animating at t=75");
-    v.now = 150;
+    v.ui.simulateFrame(std::chrono::milliseconds(75));
     check(nearPx(v.paint().center(), v.tick(50)), "t=150ms is on the 50 tick");
     check(!v.ui.animating().value.value(), "not animating at t=150");
 }
@@ -376,8 +377,8 @@ void animatingQueryAgreesBetweenEntries() {
     check(typed == Status::wrongThread && semantic == Status::wrongThread, "the same wrong_thread admission from both");
 }
 void clockEaseOutAndRetarget() {
-    detail::AnimationClock clock; std::uint64_t now = 0;
-    clock.timeSource([&] { return now; });
+    detail::AnimationClock clock; std::int64_t now = 0;
+    clock.timeSource([&] { return std::chrono::steady_clock::time_point{std::chrono::milliseconds(now)}; });
     clock.start("a", 10, 20);
     check(clock.value("a").value() == 10, "starts at the from value");
     now = 75; double half = *clock.value("a");

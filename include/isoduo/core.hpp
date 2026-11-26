@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "isoduo/appearance.hpp"
 #include "isoduo/presentation.hpp"
 #include <algorithm>
@@ -628,11 +629,19 @@ private:
     bool enabled_ = true;
     std::weak_ptr<std::vector<DrawingCommand>> commands_;
 };
+struct FrameInfo {
+    std::chrono::steady_clock::time_point time;
+    MotionPreference motionPreference;
+};
 class DrawingAreaHandle : private detail::HandleBase<DrawingAreaHandle> {
 public:
     DrawingAreaHandle() = default;
     Result remove() const;
     Result enable(bool enabled) const;
+    // Each request schedules one callback. Requests made during a frame run on a later frame.
+    Result onFrame(std::function<Result(const FrameInfo&)> callback) const;
+    Result requestFrame() const;
+    Result cancelFrame() const;
     Result requestRedraw() const;
     Result onDraw(std::function<Result(const DrawingEnvironment&)> draw) const;
     Query<DrawingContent> content() const;
@@ -882,12 +891,13 @@ public:
     Result onChange(std::function<void()> callback);
     MotionPreference motionPreference() const;
     Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    // Advance the core-only timeline and run visible requests from the latest layout.
+    Result simulateFrame(std::chrono::steady_clock::duration advance);
     Result simulateSystemMotion(MotionPreference preference);
     Result setPresentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
-    // True while any on-screen transition (for example a slider thumb sliding to its new value) is
-    // still running. Values and semantics never wait for it, so this only says the picture has not
-    // settled; wait until it is false before comparing screenshots.
+    // True while a transition runs or a visible drawing area has a runnable frame request.
+    // Cancel continuous requests or use simulateFrame before comparing screenshots.
     Query<bool> animating() const;
     // Overrides individual palette colors of the built-in appearances for the whole Ui. The list
     // replaces the previous one and applies on the next frame; an empty list restores built-in

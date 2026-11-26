@@ -12,6 +12,7 @@
 #include "edit_form.hpp"
 #include "x04_drivers.hpp"
 #include "geometry.hpp"
+#include "focus_marks.hpp"
 #include "list_page.hpp"
 #include <imm.h>
 #include <psapi.h>
@@ -387,6 +388,118 @@ int drawingAreaPixels() {
     return 0;
 }
 
+void terminalSliderFrame() {
+    using namespace std::chrono_literals;
+    Fixture f(webAppearance());
+    auto& ui = f.form.ui;
+    auto& state = detail::access(ui);
+    auto now = std::chrono::steady_clock::now();
+    state.animationTime([&] { return now; });
+    f.host.hiddenSource([] { return false; });
+    f.host.systemAnimationSource([] { return true; });
+    f.form.handles.volume.focus();
+    f.settle();
+    f.host.observePaint(true);
+    f.key(VK_RIGHT);
+    f.keyUp(VK_RIGHT);
+    f.host.paint();
+    if (!*ui.animating()) throw std::runtime_error("Expected an active slider transition");
+    const auto before = f.host.frames();
+    now += 200ms;
+    f.host.deliverFrameTimerForTest();
+    UpdateWindow(f.host.window());
+    const auto track = f.host.frame().find(f.form.handles.volume)->sliderTrack;
+    const int endpoint = track.x + static_cast<int>(std::lround(track.w * 0.45));
+    const auto& marks = f.host.paintObservations();
+    if (!std::any_of(marks.begin(), marks.end(), [&](const auto& mark) {
+        return mark.owner == f.ids.volume && focusMarks::isThumb(mark.bounds) &&
+               mark.bounds.x + mark.bounds.w / 2 == endpoint;
+    })) throw std::runtime_error("Terminal paint must place the thumb at the 45 tick");
+    if (f.host.frames() != before + 1 || *ui.animating() || f.host.scheduledFrameInterval())
+        throw std::runtime_error("Delayed timer must present the terminal slider frame once");
+}
+int drawingFrames() {
+    terminalSliderFrame();
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "indicator", .label = u"Indicator"});
+    auto spacer = *ui.addDrawingArea({.id = "space", .label = u"Spacer"});
+    ScrollState scroll;
+    auto page = [&] { return layout::scroll(layout::column({
+        layout::drawingArea(area, 20), layout::drawingArea(spacer, 1600)}, 0, 0)); };
+    DesktopHost host(ui, webAppearance(), page, scroll, Fixture::options(), false, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    bool hidden = false, covered = false;
+    host.hiddenSource([&] { return hidden || IsIconic(host.window()); });
+    host.coveredSource([&] { return covered; });
+    auto now = std::chrono::steady_clock::now();
+    detail::access(ui).animationTime([&] { return now; });
+    host.pump();
+    host.paint();
+    std::vector<std::chrono::steady_clock::time_point> calls;
+    area.onFrame([&](const FrameInfo& info) {
+        calls.push_back(info.time);
+        return area.requestFrame();
+    });
+    area.requestFrame();
+    int baseline = host.frames();
+    for (int i = 0; i < 3; ++i) {
+        now += 16ms;
+        host.deliverFrameTimerForTest();
+    }
+    if (calls.size() != 3 || baseline != host.frames()) throw std::runtime_error("Callback-only frames submitted");
+    covered = true;
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 3 || host.scheduledFrameInterval() != 250) throw std::runtime_error("Occluded pacing");
+    area.cancelFrame();
+    if (host.scheduledFrameInterval()) throw std::runtime_error("Idle occlusion timer");
+    area.requestFrame();
+    covered = false;
+    now += 250ms;
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 4 || calls.back() - calls[2] != 250ms) throw std::runtime_error("Occlusion resume");
+    hidden = true;
+    host.deliverFrameTimerForTest();
+    now += 2s;
+    if (*ui.animating() || host.scheduledFrameInterval()) throw std::runtime_error("Hidden pacing");
+    hidden = false;
+    host.hiddenSource([&] { return hidden || IsIconic(host.window()); });
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 5 || calls.back() - calls[3] != 2s) throw std::runtime_error("Hidden resume");
+    scroll.offset = 100;
+    host.paint();
+    if (*ui.animating() || calls.size() != 5) throw std::runtime_error("Clipped frame request");
+    scroll.offset = 0;
+    host.paint();
+    if (calls.size() != 6) throw std::runtime_error("Scroll resume");
+    ShowWindow(host.window(), SW_MINIMIZE);
+    host.pump();
+    if (*ui.animating()) throw std::runtime_error("Minimized frame request");
+    now += 1s;
+    ShowWindow(host.window(), SW_RESTORE);
+    host.pump();
+    if (calls.back() != now) throw std::runtime_error("Restore frame time");
+    area.cancelFrame();
+    host.pump();
+    const int paints = host.paintMessages(), presents = host.frames();
+    auto cpu = [] {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+        auto ticks = [](FILETIME t) { return (std::uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+        return ticks(kernel) + ticks(user);
+    };
+    const auto before = cpu();
+    const auto end = std::chrono::steady_clock::now() + 10s;
+    while (auto remaining = std::chrono::ceil<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count()) {
+        if (remaining < 0) break;
+        MsgWaitForMultipleObjectsEx(0, nullptr, static_cast<DWORD>(remaining), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        host.pump();
+    }
+    if (!detail::idlePass(host.frames() - presents, host.paintMessages() - paints, double(cpu() - before) / 10000.))
+        throw std::runtime_error("Idle after final frame request");
+    return 0;
+}
+
 int drawingRecovery() {
     Ui ui;
     auto pending = *ui.addDrawingArea({.id = "pending", .label = u"Pending"});
@@ -431,14 +544,21 @@ int drawingRecovery() {
 
     if (config.renderBackend == RenderBackendKind::vulkan) hooks.submitResultAtFrame = {1, -2};
     else hooks.errorAtFrame = 1;
+    int frameCalls = 0;
+    pending.onFrame([&](const FrameInfo&) { ++frameCalls; return pending.requestFrame(); });
+    pending.requestFrame();
     host.paint();
-    if (!host.rendererFailed()) throw std::runtime_error("expected renderer failure");
+    if (frameCalls != 1 || !host.rendererFailed()) throw std::runtime_error("frame before failed presentation");
+    if (!pending.cancelFrame() || !pending.requestFrame()) throw std::runtime_error("requests during failure");
     ink = {20,180,40};
     if (!pending.requestRedraw() || retained.onDraw({}).status != Status::rendererFailed)
         throw std::runtime_error("failed renderer admission");
     place();
     if (pendingCalls != 1 || retainedCalls != 1 || !host.rebuildRenderer())
         throw std::runtime_error("drawing ran before recovery or rebuild failed");
+    host.paint();
+    if (frameCalls != 2) throw std::runtime_error("pending frame after renderer rebuild");
+    pending.cancelFrame();
     auto result = host.compareGpu(client.right, client.bottom, 1);
     if (!result || pendingCalls != 2 || retainedCalls != 1) throw std::runtime_error("rebuild redraw count or comparison");
     const auto& image = result.actual;
@@ -4826,6 +4946,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(reportCrash);
     try {
         std::filesystem::path evidence = "host-evidence";
+        bool drawingFramesOnly = false;
         bool drawingRecoveryOnly = false, drawingPixels = false, dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
         bool multilineOnly = false, verticalOnly = false, richtextOnly = false, wordSelectOnly = false, justifyOnly = false;
                 bool uiaIme = false, demoComparison = false, demoPerf = false, demoPerfFont = false;
@@ -4846,6 +4967,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--paint-delay-ms" && i+1<argc) perfDelay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perfDuration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            else if (arg == L"--drawing-frames") drawingFramesOnly = true;
             else if (arg == L"--drawing-recovery") drawingRecoveryOnly = true;
             else if (arg == L"--drawing-area") drawingPixels = true;
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01Only = true;
@@ -4980,6 +5102,7 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
+        if (drawingFramesOnly) return drawingFrames();
         if (drawingRecoveryOnly) return drawingRecovery();
         if (drawingPixels) return drawingAreaPixels() || drawingTextPixels();
         if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }

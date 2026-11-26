@@ -146,12 +146,13 @@ public:
     Result sliderPointer(const Id& id, int x);
     void sliderTrackRefresh(const Frame& frame);  // end of every arrange: where the held thumb is drawn now
     std::optional<int> sliderDragX(std::string_view id) const;
-    // #75 shared animation clock. The host (or a test) supplies the time source in milliseconds; with
+    // #75 shared animation clock. The host (or a test) supplies the steady time source; with
     // none installed every change is instant. Motion plays only when the source exists, presentation
     // motion is automatic, the system animation preference is on and the window is visible.
-    void animationTime(std::function<std::uint64_t()> source) { animations_.timeSource(std::move(source)); }
+    void animationTime(std::function<std::chrono::steady_clock::time_point()> source) { animations_.timeSource(std::move(source)); }
     MotionPreference motionPreference() const;
     Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    Result simulateFrame(std::chrono::steady_clock::duration advance);
     Result simulateSystemMotion(MotionPreference preference);
     Result setSystemMotion(MotionPreference preference);
     void setWindowHidden(bool hidden);       // minimized / fully covered; true ends running ones
@@ -159,6 +160,24 @@ public:
     void finishAnimations();                  // every running animation jumps to its end
     // The one query behind Ui::animating and SemanticTree::animating (same admission and statuses).
     Query<bool> animating() const;
+    using FrameClock = std::chrono::steady_clock;
+    class HostFrame {
+    public:
+        explicit HostFrame(UiState& state, std::optional<FrameClock::time_point> time = {}) : state_(state) {
+            state_.frameTime_ = std::max(state_.frameTime_, time ? *time : state_.animations_.now());
+            state_.animations_.sample(state_.frameTime_);
+        }
+        ~HostFrame() { state_.animations_.sample({}); }
+        FrameClock::time_point time() const { return state_.frameTime_; }
+        HostFrame(const HostFrame&) = delete;
+        HostFrame& operator=(const HostFrame&) = delete;
+    private:
+        UiState& state_;
+    };
+    Result dispatchFrames();
+    bool framesReady() const;
+    bool hasFrameRequests() const;
+    std::function<void()> scheduleFrames;
     bool animationRunning() const;            // host: schedule the next frame only while true
     // Thumb position as a 0..1 share of the track while a transition runs; nothing otherwise.
     std::optional<double> sliderAnimatedRatio(std::string_view id) const;
@@ -662,11 +681,16 @@ private:
     };
     struct DrawingField {
         std::function<Result(const DrawingEnvironment&)> draw;
+        std::shared_ptr<std::function<Result(const FrameInfo&)>> frame;
+        std::uint64_t request = 0, admitted = 0;
         DrawingContent content;
         std::vector<DrawingPixel> pixels;
         float scale = 0;
         bool diagnosedHeight = false;
     };
+    std::uint64_t nextRequest_ = 0;
+    FrameClock::time_point frameTime_{};
+    bool dispatchingFrames_ = false;
     std::map<Id, DrawingField, std::less<>> drawings_;
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numericSourceChanged(const Id& id);
