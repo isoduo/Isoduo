@@ -20,9 +20,9 @@ using test::check;
 namespace {
 auto page() { return layout::column({}); }
 
-bool unavailable(const CreateResult& result) {
+bool failedWith(const CreateResult& result, StartupFailureKind kind) {
     return result.status == Status::failed && !result.desktop && result.failure &&
-           result.failure->kind == StartupFailureKind::renderBackendUnavailable;
+           result.failure->kind == kind;
 }
 
 void defaultFrame(DesktopConfig config) {
@@ -58,7 +58,7 @@ void missingLoader(DesktopConfig config) {
     config.title = u"VK02 missing Vulkan loader";
     config.renderBackend = RenderBackendKind::vulkan;
     auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
-    check(unavailable(result),
+    check(failedWith(result, StartupFailureKind::renderBackendUnavailable),
           "VK02 expected renderBackendUnavailable");
     check(result.failure->message.find(u"126") != result.failure->message.npos, "VK02 native load error");
     check(!FindWindowW(nullptr, L"VK02 missing Vulkan loader"), "VK02 left a native window");
@@ -136,21 +136,19 @@ int failures(DesktopConfig config) {
     Ui ui;
     ScrollState scroll;
     config.renderBackend = RenderBackendKind::vulkan;
-    auto create = [&](RendererTestHooks hooks) {
+    auto create = [&](RendererTestHooks hooks, StartupFailureKind kind) {
 #ifdef _WIN32
         auto result = DesktopHost::createForTest(ui, webAppearance(), page, scroll, config, &hooks);
 #else
         auto result = LinuxDesktopTest::create(ui, webAppearance(), page, scroll, config, &hooks);
 #endif
-        check(!result.desktop && result.failure && result.status == Status::failed, "Expected a startup failure");
-        if (result.failure->kind == StartupFailureKind::renderBackendUnavailable)
-            check(unavailable(result), "Unavailable backend fails startup");
+        check(failedWith(result, kind), "Expected startup failure kind");
         return *result.failure;
     };
     RendererTestHooks loader;
     loader.hideVulkanLoader = true;
-    auto absent = create(loader);
-    check(absent.kind == StartupFailureKind::renderBackendUnavailable && absent.message.find(u"Vulkan loader unavailable: ") == 0, "VK03 missing loader");
+    auto absent = create(loader, StartupFailureKind::renderBackendUnavailable);
+    check(absent.message.find(u"Vulkan loader unavailable: ") == 0, "VK03 missing loader");
     {
         auto retry = config;
         retry.renderBackend = RenderBackendKind::openGL;
@@ -191,18 +189,17 @@ int failures(DesktopConfig config) {
     }
     RendererTestHooks broken;
     broken.hideInstanceProcAddr = true;
-    auto missingSymbol = create(broken);
-    check(missingSymbol.kind == StartupFailureKind::contextCreation &&
-          missingSymbol.message.find(u"vkGetInstanceProcAddr") != missingSymbol.message.npos,
+    auto missingSymbol = create(broken, StartupFailureKind::contextCreation);
+    check(missingSymbol.message.find(u"vkGetInstanceProcAddr") != missingSymbol.message.npos,
           "Broken loader identifies its missing entry point");
     auto requirement = [&](RendererTestHooks hooks, std::u16string_view required, std::u16string_view actual = {}) {
-        auto failure = create(hooks);
-        check(failure.kind == StartupFailureKind::contextVersion && failure.required == required &&
+        auto failure = create(hooks, StartupFailureKind::contextVersion);
+        check(failure.required == required &&
               failure.actual == actual && !failure.message.empty(), "VK03 capability failure");
     };
     RendererTestHooks devices, instanceExtension, dynamicRendering, synchronization;
     devices.hidePhysicalDevices = true;
-    check(create(devices).kind == StartupFailureKind::renderBackendUnavailable, "VK03 no physical devices");
+    create(devices, StartupFailureKind::renderBackendUnavailable);
     instanceExtension.hideInstanceExtension = true;
     requirement(instanceExtension, u"VK_KHR_surface");
     dynamicRendering.hideDynamicRendering = true;
@@ -220,8 +217,8 @@ int failures(DesktopConfig config) {
     auto inject = [&](const char* call, int result, StartupFailureKind kind, const char* symbol) {
         RendererTestHooks hooks;
         hooks.startupResultOnce = {call, result};
-        auto failure = create(hooks);
-        check(failure.kind == kind && failure.message == utf16FromUtf8(std::string(call) + ": " + symbol), "VK05 startup result");
+        auto failure = create(hooks, kind);
+        check(failure.message == utf16FromUtf8(std::string(call) + ": " + symbol), "VK05 startup result");
     };
     inject("vkCreateInstance", -9, StartupFailureKind::renderBackendUnavailable, "VK_ERROR_INCOMPATIBLE_DRIVER");
     inject("vkCreateInstance", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
@@ -292,7 +289,7 @@ int main(int argc, char** argv) {
             ScrollState scroll;
             config.renderBackend = RenderBackendKind::vulkan;
             auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
-            check(unavailable(result),
+            check(failedWith(result, StartupFailureKind::renderBackendUnavailable),
                   "VK03 absent driver is unavailable");
             return 0;
         }
