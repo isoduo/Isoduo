@@ -635,10 +635,16 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
+    struct DrawingFill {
+        Rect rect, clip;
+        int radius;
+        Color color;
+        unsigned char opacity;
+    };
     struct DrawingField {
         std::function<Result(const DrawingEnvironment&)> draw;
         DrawingContent content;
-        std::vector<Rect> pixels;
+        std::vector<DrawingFill> pixels;
         float scale = 0;
         bool diagnosedHeight = false;
     };

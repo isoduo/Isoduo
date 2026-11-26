@@ -26,6 +26,34 @@ void retainedRectangle() {
     test::check(calls == 1, "unchanged arrangement replays retained content");
 }
 
+void nestedClips() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "chart"});
+    DipRect outer{1.5f, 0, 10, 12}, empty{30, 2, 4, 4}, shape{0, 0, 20, 10};
+    Color color{30, 40, 50};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        auto clipped = env.clip(outer, [&](const DrawingEnvironment& child) {
+            auto nested = child.clip(empty, [&](const DrawingEnvironment& inner) {
+                return inner.roundedRect(shape, 20.5f, color, 128);
+            });
+            if (!nested) return nested;
+            return child.fillRect(shape, color);
+        });
+        if (!clipped) return clipped;
+        return env.roundedRect(shape, 0, color);
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1.25f, scroll);
+    DrawingCommand rounded{DrawingCommandKind::roundedRect, shape, color, 128, 20.5f};
+    DrawingCommand inner{DrawingCommandKind::clip, empty, {}, 255, 0, {rounded}};
+    DrawingCommand fill{DrawingCommandKind::fillRect, shape, color};
+    DrawingCommand clip{DrawingCommandKind::clip, outer, {}, 255, 0, {inner, fill}};
+    DrawingCommand after{DrawingCommandKind::roundedRect, shape, color, 255, 0};
+    test::check(area.content()->commands == std::vector<DrawingCommand>{clip, after},
+                "nested clip retains original DIP commands even at an empty intersection");
+}
+
 void redrawLifecycle() {
     Ui ui;
     auto area = *ui.addDrawingArea({.id = "area"});
@@ -80,6 +108,9 @@ void invalidRectanglesAndHeight() {
     int calls = 0;
     area.onDraw([&](const DrawingEnvironment& env) {
         ++calls;
+        for (float radius : {-1.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()})
+            test::check(env.roundedRect({0,0,4,4}, radius, {}).status == Status::invalidValue,
+                        "invalid radius rejected");
         for (auto rect : {DipRect{std::numeric_limits<float>::quiet_NaN(),0,1,2},
                           DipRect{0,std::numeric_limits<float>::infinity(),1,2},
                           DipRect{0,0,-1,2}, DipRect{0,0,1,-2}})
@@ -168,7 +199,7 @@ void pageAndDialog() {
 }
 
 int main() {
-    const test::Case cases[] = {{"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
+    const test::Case cases[] = {{"nested clips", nestedClips}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
 }

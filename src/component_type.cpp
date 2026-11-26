@@ -1506,12 +1506,14 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         const auto& field = UiState::Internals::drawings(c.ui).at(c.placement.id);
-        for (std::size_t i = 0; i < field.pixels.size(); ++i) {
-            auto rect = field.pixels[i];
+        auto translate = [&](Rect rect) {
             rect.x += c.placement.bounds.x;
             rect.y += c.placement.bounds.y;
-            const auto& command = field.content.commands[i];
-            c.overlay(rect, 0, command.color, command.opacity);
+            return rect;
+        };
+        for (const auto& fill : field.pixels) {
+            c.clip(translate(fill.clip));
+            c.overlay(translate(fill.rect), fill.radius, fill.color, fill.opacity);
         }
     }
 };
