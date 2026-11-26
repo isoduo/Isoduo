@@ -30,7 +30,9 @@ int main() {
     int lines = 0;
     DiagnosticQueue output({}, nullptr);
     output.setOutput([&](const std::wstring&) { ++lines; });
-    output.push({});
+    RenderDiagnostic event;
+    event.backend=u"Vulkan";
+    output.push(event);
     output.drain();
 #ifdef NDEBUG
     test::check(lines == 0, "Release stays quiet without a receiver");

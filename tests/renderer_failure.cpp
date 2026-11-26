@@ -157,7 +157,7 @@ static void publicLifecycle(const Appearance& appearance, bool handled) {
         check(next.desktop->run().status == Status::ok, "Replacement host paints and closes");
     }
 }
-static void failure(const Appearance& appearance, bool reset, bool handled, bool modal = false) {
+static void failure(const Appearance& appearance, bool reset, bool handled, bool modal = false, bool vulkan = false) {
     editForm::Form form(editForm::defaultIds(), true);
     auto original=form.handles.name.draft().value;
     check(bool(form.handles.name.setValue(u"workstation A")), "prepare draft");
@@ -165,7 +165,12 @@ static void failure(const Appearance& appearance, bool reset, bool handled, bool
     if (modal) check(bool(form.handles.dialog.open(form.handles.name)), "prepare modal");
     auto selection=access(form.ui).edit(form.ids().name)->selection;
     RendererTestHooks hooks; hooks.hideKhrDebug=true; hooks.errorAtFrame=reset?0:2; hooks.resetAtFrame=reset?2:0; hooks.failRebuildOnce=handled;
-    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,{},false,false,&hooks);
+    DesktopConfig config;
+    if (vulkan) {
+        config.renderBackend = RenderBackendKind::vulkan;
+        hooks.submitResultAtFrame = {1,reset ? -4 : -2};
+    }
+    DesktopHost host(form.ui,appearance,[&]{return form.page();},form.scroll,config,false,false,&hooks);
     auto before=host.compareGpu(640,480,1.f);
     check(before.passed, "pre-failure comparison");
     int callbacks=0;
@@ -318,6 +323,62 @@ static void contextLost(const Appearance& appearance) {
     check(bool(host.rebuildRenderer()) && !host.rendererFailed(), "TD01 rebuild after a lost context");
     host.paint(); check(!host.rendererFailed(), "TD01 recovered paint");
 }
+static void vulkanPresentation(DesktopConfig config) {
+    constexpr int outOfDate = -1000001004, suboptimal = 1000001003;
+    using Kind = RendererFailureKind;
+    struct Case {
+        const char* name;
+        int acquire = 0, present = 0, create = 0, submit = 0;
+        bool loseFence = false, deferred = false;
+        std::optional<Kind> failure;
+    };
+    const Case cases[] = {
+        {.name="late fence", .loseFence=true, .failure=Kind::deviceReset},
+        {.name="lost surface", .present=-1000000000, .failure=Kind::presentFailed},
+        {.name="out of date", .present=outOfDate},
+        {.name="suboptimal", .present=suboptimal},
+        {.name="not ready", .acquire=1, .deferred=true},
+        {.name="timeout", .acquire=2, .deferred=true},
+        {.name="rebuild out of memory", .present=outOfDate, .create=-2, .failure=Kind::resourceFailed},
+        {.name="rebuild lost device", .present=outOfDate, .create=-4, .failure=Kind::deviceReset},
+        {.name="rebuild other error", .present=outOfDate, .create=-3, .failure=Kind::presentFailed},
+        {.name="unknown submit error", .submit=-1234567, .failure=Kind::frameError},
+        {.name="out of date twice", .acquire=outOfDate, .present=outOfDate, .deferred=true}
+    };
+    for (const auto& row : cases) {
+        editForm::Form form;
+        RendererTestHooks fault;
+        DesktopHost host(form.ui, webAppearance(), [&]{return form.page();}, form.scroll, config, false, false, &fault);
+        host.paint();
+        if (row.acquire) fault.acquireResultAtFrame={2,row.acquire};
+        if (row.present) fault.presentResultAtFrame={2,row.present};
+        if (row.submit) fault.submitResultAtFrame={2,row.submit};
+        fault.swapchainCreateResultOnce=row.create;
+        fault.fenceResultAtFrame=row.loseFence ? 2 : 0;
+        auto before=host.frames();
+        host.paint();
+        if (row.failure) {
+            auto seen=host.rendererFailure();
+            check(seen && seen->kind==*row.failure,row.name);
+            if (row.submit) check(seen->message==u"vkQueueSubmit: VkResult(-1234567)","VK05 unknown code");
+            check(bool(host.rebuildRenderer()),"VK08 explicit rebuild");
+        } else {
+            check(!host.rendererFailed() && host.frames()==before+(row.deferred ? 0 : 1),row.name);
+        }
+        before=host.frames();
+        host.paint();
+        check(!host.rendererFailed() && host.frames()==before+1 && host.compareGpu(640,480,1.f).passed,row.name);
+        if (row.present==suboptimal) {
+            fault.presentResultAtFrame={4,suboptimal};
+            fault.swapchainCreateResultOnce=-2;
+            host.paint();
+            check(!host.rendererFailed(),"Suboptimal frame presents");
+            host.paint();
+            check(host.rendererFailed(),"Suboptimal schedules swapchain rebuild before next frame");
+        }
+        std::cout << "PASS " << row.name << '\n';
+    }
+}
 int main(int argc, char** argv) {
     try {
         if (argc == 3 && std::string_view(argv[1]) == "--render-backend" && std::string_view(argv[2]) == "vulkan") {
@@ -331,6 +392,89 @@ int main(int argc, char** argv) {
                 result.failure->kind == StartupFailureKind::contextVersion)) return 77;
             check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::shader &&
                 !result.failure->message.empty(), "RF01 Vulkan shader module failure");
+            {
+                editForm::Form debugForm;
+                RendererTestHooks debugHooks;
+                debugHooks.hideValidationLayer=true;
+                auto debug=config;
+                debug.debugContext=DebugContext::on;
+                std::vector<RenderDiagnostic> events;
+                debug.onDiagnostic=[&](const auto& event){events.push_back(event);};
+                DesktopHost desktop(debugForm.ui,webAppearance(),[&]{return debugForm.page();},debugForm.scroll,debug,false,false,&debugHooks);
+                desktop.paint(); desktop.pump();
+                check(!desktop.capabilities().debugContext && !desktop.capabilities().debugMessages &&
+                      std::any_of(events.begin(),events.end(),[](const auto& e){
+                          return e.backend==u"Vulkan" && e.severity==DiagnosticSeverity::info &&
+                                 e.nativeMessage.find("VK_LAYER_KHRONOS_validation")!=std::string::npos;
+                      }),"DG02 missing validation layer");
+            }
+            {
+                editForm::Form sample;
+                RendererTestHooks debugHooks;
+                auto debug=config;
+                debug.debugContext=DebugContext::on;
+                auto owner=std::this_thread::get_id();
+                bool correctThread=true;
+                std::vector<RenderDiagnostic> events;
+                debug.onDiagnostic=[&](const auto& event) {
+                    correctThread &= owner==std::this_thread::get_id();
+                    events.push_back(event);
+                };
+                DesktopHost desktop(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,debug,false,false,&debugHooks);
+                desktop.paint(); desktop.pump(); events.clear();
+#ifdef ISODUO_REQUIRE_DG01
+                check(desktop.capabilities().debugMessages,"DG01 requires the active validation messenger");
+#endif
+                if (desktop.capabilities().debugMessages) {
+                    debugHooks.misuseOnce=true;
+                    desktop.paint(); desktop.pump();
+                    check(correctThread && std::count_if(events.begin(),events.end(),[](const auto& e) {
+                        return e.backend==u"Vulkan" && e.kind==DiagnosticKind::apiMisuse &&
+                               e.severity==DiagnosticSeverity::error && e.nativeCode && !e.sourceTime &&
+                               e.backendDetail.find("scissorCount-arraylength")!=std::string::npos;
+                    })==1,"DG01 real validation event delivered on UI thread");
+                }
+                events.clear();
+                debugHooks.injectDebugMessage=1000;
+                desktop.paint(); desktop.pump();
+                check(std::any_of(events.begin(),events.end(),[](const auto& e){
+                    return e.backend==u"Vulkan" && e.code=="Isoduo.TestMessage" && e.omittedBefore>=744;
+                }),"DG04 bounded messenger queue");
+            }
+            {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.hideDebugUtils=true;
+                fault.submitResultAtFrame={1,-2};
+                DesktopHost hidden(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,config,false,false,&fault);
+                hidden.paint();
+                check(!hidden.capabilities().debugMessages && hidden.rendererFailed(),"DG02 errors without debug utils");
+            }
+            {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.submitResultAtFrame={1,-2};
+                check(bool(sample.handles.name.setValue(u"workstation A")),"RF04 prepare draft");
+                auto created=DesktopHost::createForTest(sample.ui,webAppearance(),[&]{return sample.page();},
+                                                        sample.scroll,config,&fault);
+                check(bool(created.desktop),"RF04 startup");
+                auto closed=created.desktop->run();
+                check(closed.status==Status::rendererFailed && closed.failure &&
+                      closed.failure->kind==RendererFailureKind::frameError &&
+                      sample.handles.name.draft().value==u"workstation A","RF04 unhandled failure preserves draft");
+            }
+            failure(webAppearance(),false,true,false,true);
+            failure(webAppearance(),false,true,true,true);
+            failure(webAppearance(),true,true,false,true);
+
+            vulkanPresentation(config);
+            hooks.submitResultAtFrame = {1, -4};
+            DesktopHost host(form.ui,webAppearance(),[&]{return form.page();},form.scroll,config,false,false,&hooks);
+            host.paint();
+            auto failure = host.rendererFailure();
+            check(failure && failure->kind == RendererFailureKind::deviceReset &&
+                  failure->nativeCode == 0xfffffffc && failure->message == u"vkQueueSubmit: VK_ERROR_DEVICE_LOST",
+                  "VK05 submit reports the native device reset");
             return 0;
         }
         if (argc == 2 && std::string(argv[1]) == "--ps10") {

@@ -2,8 +2,10 @@
 struct AtlasUpload {
     VkDeviceSize offset;
     VkExtent2D size;
+    VkBuffer restored{};
 };
 struct GlyphBatch {
+    const std::vector<Drawing::RestoredPage>& restored;
     std::vector<ResolvedGlyph> glyphs;
     std::vector<int> uploadAt;
     std::vector<unsigned char> bytes{0};
@@ -13,6 +15,16 @@ struct GlyphBatch {
         while (bytes.size() % 4)
             bytes.push_back(0);
         VkExtent2D extent{uint32_t(r.w), uint32_t(r.h)};
+        if (r.x==0 && r.y==0 && r.w==page.width && r.h==page.height) {
+            for (const auto& saved : restored) {
+                if (saved.page==&page && saved.pixels==page.pixels) {
+                    uploads.push_back({0,extent,saved.staging.handle});
+                    size.width=std::max(size.width,extent.width);
+                    size.height=std::max(size.height,extent.height);
+                    return int(uploads.size()-1);
+                }
+            }
+        }
         uploads.push_back({bytes.size(), extent});
         size.width = std::max(size.width, extent.width);
         size.height = std::max(size.height, extent.height);
@@ -22,7 +34,7 @@ struct GlyphBatch {
         }
         return int(uploads.size() - 1);
     }
-    explicit GlyphBatch(const DrawList &list) : glyphs(list.commands.size()), uploadAt(list.commands.size(), -1) {
+    GlyphBatch(const DrawList &list, const std::vector<Drawing::RestoredPage>& pagesToRestore) : restored(pagesToRestore), glyphs(list.commands.size()), uploadAt(list.commands.size(), -1) {
         auto resolve = [&](size_t i) {
             auto &c = list.commands[i];
             return c.resolve ? c.resolve() : ResolvedGlyph{c.rect, c.coverage};
@@ -122,7 +134,7 @@ struct CommandFrame {
     }
     void record(const DrawList &list, Texture target, VkPipeline pipeline, bool opaque = false) {
         auto &api = d.api;
-        GlyphBatch batch(list);
+        GlyphBatch batch(list,d.restored);
         auto staging = d.buffer(objects, batch.bytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         copyMemory(staging, batch.bytes.data(), batch.bytes.size(), true);
         auto atlas = d.texture(objects, batch.size, VK_FORMAT_R8_UNORM,
@@ -153,7 +165,8 @@ struct CommandFrame {
             copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copy.bufferOffset = region.offset;
             copy.imageExtent = {region.size.width, region.size.height, 1};
-            api.CmdCopyBufferToImage(cmd, staging.handle, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            auto source=region.restored ? region.restored : staging.handle;
+            api.CmdCopyBufferToImage(cmd, source, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
             d.barrier(cmd, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         };
         upload(0, VK_IMAGE_LAYOUT_UNDEFINED);
