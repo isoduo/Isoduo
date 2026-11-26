@@ -163,13 +163,17 @@ struct Desktop::Impl {
         : claim(std::move(ownerClaim)), ui(ui), appearance(appearance), page(std::move(page)), scroll(scroll), config(std::move(config)), hooks(hooks) {}
     ~Impl() { release(); }
     void createRenderer() {
-        renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
-            [this](auto event) { diagnostics.push(std::move(event)); });
+        if (config.renderBackend == RenderBackendKind::vulkan) {
+            const auto size = window->geometry();
+            renderer = createVulkanRenderer(window->reference(), hooks, size.width, size.height);
+        } else {
+            renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
+                [this](auto event) { diagnostics.push(std::move(event)); });
+        }
         caps = renderer->capabilities();
     }
     void attach() {
         window = openWindow(config);
-        if (config.renderBackend == RenderBackendKind::vulkan) startVulkan(window->reference(), hooks);
         createRenderer();
         text.setStyledLookup(systemStyledFontFile);
         auto& state = claim.state();
@@ -371,6 +375,9 @@ struct Desktop::Impl {
                 renderer->draw(canvas.list, width, height);
             }
             if (observeFrame) observeFrame(frame, layoutGeometry);
+        } catch (const DeferredFrame&) {
+            dirty = true;
+            window->deferFrame();
         } catch (const FrameError& error) {
             for (auto code : error.codes) diagnostics.push(frameDiagnostic(code));
             fail(error.failure);
@@ -701,7 +708,10 @@ RunResult Desktop::run() {
         if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
-        if (host.layoutGeometry != host.window->geometry()) host.invalidateFrame();
+        if (host.layoutGeometry != host.window->geometry()) {
+            if (host.renderer) host.renderer->resized();
+            host.invalidateFrame();
+        }
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);
