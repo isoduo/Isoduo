@@ -1,3 +1,4 @@
+#include "drawing_frame_checks.hpp"
 #include "real_input_profiles.hpp"
 #include "presentation_matrix.hpp"
 #include "render_role_checks.hpp"
@@ -471,7 +472,7 @@ int drawingFrames() {
     if (calls.size() != 5 || calls.back() - calls[3] != 2s) throw std::runtime_error("Hidden resume");
     scroll.offset = 100;
     host.paint();
-    if (*ui.animating() || calls.size() != 5) throw std::runtime_error("Clipped frame request");
+    if (!test::drawingFramesPaused(ui) || calls.size() != 5) throw std::runtime_error("Clipped frame request");
     scroll.offset = 0;
     host.paint();
     if (calls.size() != 6) throw std::runtime_error("Scroll resume");

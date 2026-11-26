@@ -1,3 +1,4 @@
+#include "drawing_frame_checks.hpp"
 #include "isoduo/layout.hpp"
 #include "core_internal.hpp"
 #include "fake_measure.hpp"
@@ -482,7 +483,7 @@ void frameMutations() {
     scroll.offset = 50;
     place();
     a.requestFrame();
-    test::check(!*ui.animating() && !*ui.semantics().animating(), "clipped request pauses");
+    test::check(test::drawingFramesPaused(ui), "clipped request pauses");
     ui.simulateFrame(2ms);
     scroll.offset = 0;
     place();

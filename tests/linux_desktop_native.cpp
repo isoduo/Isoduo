@@ -1,3 +1,4 @@
+#include "drawing_frame_checks.hpp"
 #include "isoduo/desktop.hpp"
 #include "desktop_linux_test.hpp"
 #include "renderer.hpp"
@@ -122,7 +123,7 @@ void applicationFrames(DesktopConfig config) {
     LinuxDesktopTest::observeFrames(host, [&](const Frame& frame, const LinuxClientGeometry&) {
         ++presents;
         if (scrollFrame && calls == scrollFrame && !clipped) {
-            clipped = !*ui.animating();
+            clipped = test::drawingFramesPaused(ui);
             check(frame.scrollTo(ui, scroll, 0) && spacer.enable(false), "Scroll the pending area back into view");
         }
     });
