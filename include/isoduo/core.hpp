@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -597,6 +598,7 @@ public:
 private:
     friend class detail::UiState;
     DrawingEnvironment() = default;
+    std::thread::id owner_ = std::this_thread::get_id();
     DipSize size_;
     float scale_ = 1;
     Palette palette_;

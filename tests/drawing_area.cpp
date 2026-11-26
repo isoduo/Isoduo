@@ -1,7 +1,9 @@
 #include "isoduo/layout.hpp"
+#include "core_internal.hpp"
 #include "fake_measure.hpp"
 #include "isoduo/semantics.hpp"
 #include <limits>
+#include <thread>
 #include "check.hpp"
 
 using namespace isoduo;
@@ -167,8 +169,155 @@ void pageAndDialog() {
                 "modal image draws and background reports modal blocking");
 }
 
+void presentationRedraw() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "area", .label = u"Chart"});
+    int calls = 0;
+    ThemeVariant variant;
+    Color border{};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        ++calls;
+        variant = env.variant();
+        border = env.palette().border;
+        return Result{};
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    auto place = [&] { arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1, scroll); };
+    place();
+    auto settings = ui.presentation();
+    settings.variant = ThemeVariant::dark();
+    ui.setPresentation(settings);
+    place();
+    test::check(calls == 2 && variant == settings.variant, "theme change draws with new variant");
+    settings.density = Density::compact;
+    ui.setPresentation(settings);
+    place();
+    test::check(calls == 3, "density redraws even at unchanged size");
+    ++settings.textSize;
+    ui.setPresentation(settings);
+    place();
+    test::check(calls == 4, "text size redraws");
+    ui.setPaletteOverrides({{std::string(webAppearance().name()), variant, "border", Color{17,34,51}}});
+    place();
+    place();
+    test::check(calls == 5 && border == Color{17,34,51}, "palette override draws once with new color");
+}
+
+void callbackAccess() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "area", .label = u"Chart"});
+    auto field = *ui.addTextField({.id = "field", .value = u"before"});
+    std::optional<DrawingEnvironment> saved;
+    bool read = false, guarded = false;
+    Status workerRedraw{}, workerFill{};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        saved = env;
+        read = field.draft().value == u"before";
+        guarded = area.requestRedraw().status == Status::busy &&
+            ui.setPresentation(ui.presentation()).status == Status::busy &&
+            field.setValue(u"after").status == Status::busy &&
+            ui.addButton({.id = "late"}).status == Status::busy;
+        std::thread worker([&] {
+            workerRedraw = area.requestRedraw().status;
+            workerFill = env.fillRect({}, {}).status;
+        });
+        worker.join();
+        return Result{};
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1, scroll);
+    test::check(read && guarded && field.draft().value == u"before", "draw permits queries and refuses mutation");
+    test::check(workerRedraw == Status::wrongThread && workerFill == Status::wrongThread, "drawing is thread affine");
+    test::check(saved && saved->fillRect({}, {}).status == Status::notFound, "saved environment expires");
+}
+
+void invisibleDrawings() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "area", .label = u"Chart"});
+    auto spacer = *ui.addDrawingArea({.id = "spacer", .label = u"Spacer"});
+    auto tabs = *ui.addTabs({.id = "tabs"}, {{{"one"}, u"One", true, {area}}, {{"two"}, u"Two", true, {}}});
+    int calls = 0;
+    area.onDraw([&](const DrawingEnvironment&) { ++calls; return Result{}; });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    auto place = [&](int height = 20) {
+        auto node = layout::scroll(layout::column({layout::drawingArea(area, height), layout::drawingArea(spacer, 100)}, 0, 0));
+        arrange(node, ui, webAppearance(), measure, 100, 40, 1, scroll);
+    };
+    place();
+    tabs.activate({"two"});
+    area.requestRedraw();
+    area.requestRedraw();
+    place();
+    test::check(calls == 1, "inactive page defers requests");
+    tabs.activate({"one"});
+    place(0);
+    test::check(calls == 1, "zero height defers requests");
+    place();
+    test::check(calls == 2, "visible page consumes one pending redraw");
+    scroll.offset = 50;
+    place();
+    area.requestRedraw();
+    area.requestRedraw();
+    place();
+    test::check(calls == 2, "fully scrolled out area defers requests");
+    scroll.offset = 0;
+    place();
+    scroll.offset = 50;
+    place();
+    scroll.offset = 0;
+    place();
+    test::check(calls == 3, "scrolling back consumes only a pending redraw");
+    // Feed the same visibility signal as the desktop host into a core-only Ui.
+    detail::access(ui).setWindowHidden(true);
+    area.requestRedraw();
+    area.requestRedraw();
+    place();
+    test::check(calls == 3 && area.content()->pending, "hidden window retains a single pending redraw");
+    detail::access(ui).setWindowHidden(false);
+    place();
+    place();
+    test::check(calls == 4 && !area.content()->pending, "restored window consumes pending redraw once");
+}
+
+void localizedFailure() {
+    for (bool throws : {false, true}) {
+        Ui ui;
+        auto area = *ui.addDrawingArea({.id = "chart", .label = u"Chart"});
+        auto neighbor = *ui.addDrawingArea({.id = "neighbor", .label = u"Neighbor"});
+        auto field = *ui.addTextField({.id = "field", .label = u"Value"});
+        int calls = 0;
+        area.onDraw([&](const DrawingEnvironment& env) {
+            ++calls;
+            env.fillRect({0,0,10,10}, {});
+            if (calls > 1) return Result{};
+            if (throws) throw std::runtime_error("drawing failure");
+            return Result{Status::failed, {}};
+        });
+        neighbor.onDraw([](const DrawingEnvironment& env) { return env.fillRect({1,2,3,4}, {}); });
+        auto node = layout::column({layout::drawingArea(area, 20), layout::drawingArea(neighbor, 20)});
+        test::FakeMeasure measure;
+        ScrollState scroll;
+        auto place = [&] { arrange(node, ui, webAppearance(), measure, 100, 100, 1, scroll); };
+        auto before = ui.diagnostics().size();
+        place();
+        place();
+        test::check(calls == 1 && area.content()->status == DrawingStatus::failed && area.content()->commands.empty(),
+                    "failure discards partial drawing without retry");
+        test::check(ui.diagnostics().size() == before + 1 && ui.diagnostics().back().find("chart") != std::string::npos,
+                    "one diagnostic identifies the failed drawing");
+        test::check(neighbor.content()->commands.size() == 1 && field.enable(false) && !field.describe()->enabled, "neighbor and UI remain usable");
+        area.requestRedraw();
+        place();
+        test::check(calls == 2 && area.content()->status == DrawingStatus::drawn, "explicit redraw recovers");
+    }
+}
+
 int main() {
-    const test::Case cases[] = {{"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
+    const test::Case cases[] = {{"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
+        {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
 }

@@ -852,6 +852,7 @@ void placeMenu(Frame& frame, detail::UiState& state, const Appearance& appearanc
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal) {
     detail::UiState::OperationScope operation(&detail::access(ui));
+    if (detail::access(ui).drawing()) return {};
     Arranger a{detail::access(ui), appearance, measure, scale, scroll, reveal, {}};
     Rect window{0, 0, width, height};
     a.frame.viewport = window;

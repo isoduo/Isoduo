@@ -69,6 +69,9 @@ public:
             answer.message = std::u16string(gone);
             return answer;
         }
+        if constexpr (std::is_same_v<R, Result>) {
+            if (auto access = handle.ui_->mutationAccess(); !access) return access;
+        }
         return body();
     }
     explicit UiState(std::vector<Component> controls);
@@ -81,6 +84,7 @@ public:
     RadioGroupHandle addRadioGroup(Component control, std::vector<OptionItem> options);
     SliderHandle addSlider(Component control, SliderRange range);
     DrawingAreaHandle addDrawingArea(Component control);
+    void invalidateDrawings();
     void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale);
     ProgressHandle addProgress(Component control);
     DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
@@ -380,6 +384,8 @@ public:
     std::optional<Color> namedColor(std::string_view id, std::string_view name) const;
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
+    Result mutationAccess() const;
+    bool drawing() const { return drawing_; }
     Result creationAccess() const;
     void rendererFailed(bool failed);
     // ---- Context menu (src/context_menu.cpp). One menu is open per window; it never changes focus_.
@@ -442,6 +448,7 @@ private:
     std::function<void()> presentationChanged_;
     std::vector<PaletteOverride> paletteOverrides_;
     const Appearance* boundAppearance_ = nullptr;
+    bool drawing_ = false;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Component> controls_;
     std::map<Id, std::uint64_t, std::less<>> semanticInstances_;

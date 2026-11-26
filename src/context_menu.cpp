@@ -439,12 +439,14 @@ Query<std::vector<MenuItemSnapshot>> ContextMenuHandle::items() const {
 }
 
 Query<ContextMenuHandle> Ui::addContextMenu(ComponentHandle target, std::vector<MenuItem> items, MenuMode mode) {
+    if (auto access = state_->mutationAccess(); !access) return {access.status, access.message, {}};
     detail::UiState::OperationScope operation(state_.get());
     auto id = state_->layoutId(target);
     if (!id) return {Status::notFound, u"Component no longer exists", std::nullopt};
     return state_->attachMenu(*id, std::move(items), mode);
 }
 Result Ui::openContextMenu(ComponentHandle target, std::optional<MenuPosition> at, std::optional<OptionValue> item) {
+    if (auto access = state_->mutationAccess(); !access) return access;
     detail::UiState::OperationScope operation(state_.get());
     auto id = state_->layoutId(target);
     if (!id) return {Status::notFound, u"Component no longer exists"};
