@@ -382,11 +382,20 @@ int main(int argc, char** argv) {
                     return e.backend==u"Vulkan" && e.code=="Isoduo.TestMessage" && e.omittedBefore>=744;
                 }),"DG04 bounded messenger queue");
             }
+            {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.hideDebugUtils=true;
+                fault.submitResultAtFrame={1,-2};
+                DesktopHost hidden(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,config,false,false,&fault);
+                hidden.paint();
+                check(!hidden.capabilities().debugMessages && hidden.rendererFailed(),"DG02 errors without debug utils");
+            }
             failure(webAppearance(),false,true,false,true);
             failure(webAppearance(),false,true,true,true);
             failure(webAppearance(),true,true,false,true);
             failure(webAppearance(),false,false,false,true);
-            for (int mode=0; mode<8; ++mode) {
+            for (int mode=0; mode<9; ++mode) {
                 editForm::Form sample;
                 RendererTestHooks fault;
                 DesktopHost recovery(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,config,false,false,&fault);
@@ -398,10 +407,14 @@ int main(int argc, char** argv) {
                 if (mode==4 || mode==5) fault.acquireResultAtFrame={2,mode-3};
                 if (mode==6) fault.swapchainCreateResultOnce=-2;
                 if (mode==7) fault.submitResultAtFrame={2,-1234567};
+                if (mode==8) {
+                    fault.acquireResultAtFrame={2,-1000001004};
+                    fault.presentResultAtFrame={2,-1000001004};
+                }
                 auto before = recovery.frames();
                 recovery.paint();
                 std::cout << "WSI case " << mode << " frames " << before << " -> " << recovery.frames() << "\n";
-                if (mode<2 || mode>=6) {
+                if (mode<2 || mode==6 || mode==7) {
                     auto failure=recovery.rendererFailure();
                     auto expected=mode==0 ? RendererFailureKind::deviceReset : mode==1 ? RendererFailureKind::presentFailed :
                         mode==6 ? RendererFailureKind::resourceFailed : RendererFailureKind::frameError;

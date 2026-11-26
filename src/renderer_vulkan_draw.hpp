@@ -111,6 +111,10 @@ struct Drawing {
     std::shared_ptr<Session> owner;
     Session &session;
     Selection selected;
+    struct DeviceOwner {
+        Session& session;
+        ~DeviceOwner() { session.destroyDevice(std::exchange(session.device, {}), nullptr); }
+    } deviceOwner{session};
     DeviceCommands api;
     VkDevice device;
     VkQueue queue{};
@@ -146,6 +150,14 @@ struct Drawing {
                                      std::to_string(VK_API_VERSION_PATCH(version)) + " " + driver.driverInfo);
         caps.vendor = utf16FromUtf8(driver.driverName);
         caps.renderer = utf16FromUtf8(props.properties.deviceName);
+        if (session.previousDevice && session.previousDevice!=selected.physical && session.sink) {
+            RenderDiagnostic event;
+            event.backend=u"Vulkan";
+            event.severity=DiagnosticSeverity::info;
+            event.nativeMessage=std::string("Renderer rebuilt on ")+props.properties.deviceName;
+            session.sink(std::move(event));
+        }
+        session.previousDevice=selected.physical;
         caps.renderBackend = RenderBackendKind::vulkan;
         caps.resetDetection = true;
         caps.debugContext = session.validationEnabled;
@@ -169,6 +181,45 @@ struct Drawing {
                                         api.DestroyPipelineLayout);
         rgbaPipeline = createPipeline(VK_FORMAT_R8G8B8A8_UNORM);
     }
+    bool simulatedLoss = false;
+    std::string faultReport() {
+        if (!selected.faultExtension || simulatedLoss) return {};
+        if (std::string_view(selected.faultExtension)==VK_KHR_DEVICE_FAULT_EXTENSION_NAME) {
+            auto get=api.load<PFN_vkGetDeviceFaultReportsKHR>("vkGetDeviceFaultReportsKHR");
+            uint32_t count=0;
+            if (get(device,0,&count,nullptr)!=VK_SUCCESS || !count) return {};
+            std::vector<VkDeviceFaultInfoKHR> reports(count,{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR});
+            auto result=get(device,0,&count,reports.data());
+            std::string detail;
+            if (result==VK_SUCCESS || result==VK_INCOMPLETE)
+                for (uint32_t i=0;i<count;++i) detail+=std::string(reports[i].description)+"\n";
+            return detail;
+        }
+        auto get=api.load<PFN_vkGetDeviceFaultInfoEXT>("vkGetDeviceFaultInfoEXT");
+        VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+        if (get(device,&counts,nullptr)!=VK_SUCCESS) return {};
+        std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+        std::vector<VkDeviceFaultVendorInfoEXT> vendors(counts.vendorInfoCount);
+        VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+        info.pAddressInfos=addresses.data();
+        info.pVendorInfos=vendors.data();
+        counts.vendorBinarySize=0;
+        auto result=get(device,&counts,&info);
+        return result==VK_SUCCESS || result==VK_INCOMPLETE ? info.description : "";
+    }
+    void diagnostic(const char* call,VkResult result,RendererFailureKind kind) {
+        if (!session.sink) return;
+        RenderDiagnostic event;
+        event.backend=u"Vulkan";
+        event.severity=DiagnosticSeverity::error;
+        event.nativeCode=uint32_t(result);
+        event.nativeMessage=std::string(call)+": "+resultName(result);
+        if (kind==RendererFailureKind::deviceReset) {
+            event.kind=DiagnosticKind::deviceReset;
+            event.backendDetail=faultReport();
+        }
+        session.sink(std::move(event));
+    }
     void checked(const char *call, VkResult result, Kind failure = Kind::resource) {
         if (running && result != VK_SUCCESS) {
             auto kind =
@@ -177,6 +228,7 @@ struct Drawing {
                 (std::string_view(call) == "vkQueueSubmit" || std::string_view(call) == "vkWaitForFences" ||
                  std::string_view(call) == "vkEndCommandBuffer" || std::string_view(call) == "vkBeginCommandBuffer"))
                 kind = RendererFailureKind::frameError;
+            diagnostic(call,result,kind);
             throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))},
                              {}};
         }
