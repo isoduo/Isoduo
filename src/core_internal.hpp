@@ -150,7 +150,10 @@ public:
     // none installed every change is instant. Motion plays only when the source exists, presentation
     // motion is automatic, the system animation preference is on and the window is visible.
     void animationTime(std::function<std::uint64_t()> source) { animations_.timeSource(std::move(source)); }
-    void setSystemAnimations(bool enabled);  // Windows "Show animations in Windows"; false ends running ones
+    MotionPreference motionPreference() const;
+    Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    Result simulateSystemMotion(MotionPreference preference);
+    Result setSystemMotion(MotionPreference preference);
     void setWindowHidden(bool hidden);       // minimized / fully covered; true ends running ones
     bool motionEnabled() const;
     void finishAnimations();                  // every running animation jumps to its end
@@ -704,7 +707,10 @@ private:
     struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, pressX = 0; bool held = false; double seenOrigin = 0, seenWidth = 1; int threshold = 4; };
     std::optional<SliderDrag> sliderDrag_;
     AnimationClock animations_;
-    bool systemAnimations_ = true, windowHidden_ = false;
+    Result effectiveMotionChanged(MotionPreference previous);
+    MotionPreference systemMotion_ = MotionPreference::noPreference;
+    std::shared_ptr<std::function<void(MotionPreference)>> motionChanged_;
+    bool windowHidden_ = false;
     std::map<Id, int, std::less<>> sliderTargets_;  // value each running thumb transition is heading to
     static std::string sliderAnimationKey(std::string_view id) { return "slider:" + std::string(id); }
     bool sliderTransitionLive(std::string_view id) const;

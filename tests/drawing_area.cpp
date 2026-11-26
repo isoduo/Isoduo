@@ -247,6 +247,8 @@ void callbackAccess() {
         read = field.draft().value == u"before";
         guarded = area.requestRedraw().status == Status::busy &&
             ui.setPresentation(ui.presentation()).status == Status::busy &&
+            ui.onMotionPreferenceChange({}).status == Status::busy &&
+            ui.simulateSystemMotion(MotionPreference::off).status == Status::busy &&
             ui.onChange({}).status == Status::busy && ui.bindAppearance(nullptr).status == Status::busy &&
             field.setValue(u"after").status == Status::busy &&
             ui.addButton({.id = "late"}).status == Status::busy;
@@ -353,6 +355,46 @@ void localizedFailure() {
     }
 }
 
+void motionChanges() {
+    Ui ui;
+    using M = MotionPreference;
+    test::check(ui.motionPreference() == M::noPreference, "core starts without a preference");
+    auto a = *ui.addDrawingArea({.id = "a"});
+    auto b = *ui.addDrawingArea({.id = "b"});
+    auto root = layout::column({layout::drawingArea(a, 10), layout::drawingArea(b, 10)});
+    std::vector<M> draws, changes;
+    for (auto area : {a, b}) area.onDraw([&](const DrawingEnvironment& env) {
+        draws.push_back(env.motionPreference());
+        return Result{};
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    auto place = [&] { arrange(root, ui, webAppearance(), measure, 200, 200, 1, scroll); };
+    place();
+    ui.onMotionPreferenceChange([&](M) { test::check(false, "replaced callback ran"); });
+    ui.onMotionPreferenceChange([&, calls = 0u](M value) mutable {
+        test::check(calls++ == changes.size(), "registered callback keeps its state");
+        test::check(value == ui.motionPreference(), "callback sees the effective value");
+        changes.push_back(value);
+    });
+    test::check(bool(ui.simulateSystemMotion(M::reduce)), "core accepts simulated preference");
+    place();
+    auto settings = ui.presentation();
+    settings.motion = Motion::off;
+    ui.setPresentation(settings);
+    place();
+    ui.simulateSystemMotion(M::noPreference);
+    place();
+    settings.motion = Motion::automatic;
+    ui.setPresentation(settings);
+    place();
+    ui.onMotionPreferenceChange({});
+    ui.simulateSystemMotion(M::off);
+    test::check(changes == std::vector<M>{M::reduce, M::off, M::noPreference}, "notify only effective changes until cleared");
+    test::check(draws == std::vector<M>{M::noPreference, M::noPreference, M::reduce, M::reduce,
+                M::off, M::off, M::noPreference, M::noPreference}, "both areas redraw on effective changes");
+}
+
 void drawingText() {
     Ui ui;
     auto area = *ui.addDrawingArea({.id = "text"});
@@ -374,7 +416,7 @@ void drawingText() {
 }
 
 int main() {
-    const test::Case cases[] = {{"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
+    const test::Case cases[] = {{"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
         {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);

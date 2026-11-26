@@ -260,10 +260,11 @@ Result detail::UiState::setPresentation(const PresentationSettings& settings) {
     if (settings.variant != presentation_.variant || settings.density != presentation_.density ||
         settings.textSize != presentation_.textSize || settings.fontFamily != presentation_.fontFamily)
         invalidateDrawings();
+    const auto previousMotion = motionPreference();
     presentation_ = settings;
     if (reflow) ++layoutRevision_;
     refreshTooltips();
-    if (!motionEnabled()) finishAnimations();  // switching motion off lands every running transition at once
+    if (auto r = effectiveMotionChanged(previousMotion); !r) return r;
     if (reflow && presentationChanged_) presentationChanged_();
     if (invalidate_) invalidate_();
     return {};
@@ -455,6 +456,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     if (windowHidden_ || !field.content.pending || visible.w <= 0 || visible.h <= 0) return;
 
     DrawingEnvironment env;
+    env.motionPreference_ = motionPreference();
     env.measure_ = &measure;
     env.textSize_ = placement.textSize;
     env.size_ = size;
@@ -1289,16 +1291,47 @@ void detail::UiState::sliderLand(std::string_view id) {
     animations_.cancel(sliderAnimationKey(id));
 }
 bool detail::UiState::motionEnabled() const {
-    return animations_.hasTimeSource() && presentation_.motion == Motion::automatic && systemAnimations_ && !windowHidden_;
+    return animations_.hasTimeSource() && motionPreference() == MotionPreference::noPreference && !windowHidden_;
 }
 void detail::UiState::finishAnimations() {
     const bool wasRunning = animationRunning();
     animations_.finishAll(); sliderTargets_.clear();
     if (wasRunning && invalidate_) invalidate_();  // draw the landed frame
 }
-void detail::UiState::setSystemAnimations(bool enabled) {
-    systemAnimations_ = enabled;
-    if (!motionEnabled()) finishAnimations();
+MotionPreference detail::UiState::motionPreference() const {
+    return presentation_.motion == Motion::off ? MotionPreference::off : systemMotion_;
+}
+Result detail::UiState::effectiveMotionChanged(MotionPreference previous) {
+    const auto current = motionPreference();
+    if (previous == current) return {};
+    invalidateDrawings();
+    if (current != MotionPreference::noPreference) finishAnimations();
+    if (auto callback = motionChanged_) {
+        OperationScope scope(this);
+        try { (*callback)(current); }
+        catch (...) { stopped_ = true; return {Status::failed, u"Motion preference notification failed"}; }
+    }
+    return {};
+}
+Result detail::UiState::setSystemMotion(MotionPreference preference) {
+    const auto previous = motionPreference();
+    systemMotion_ = preference;
+    if (previous == motionPreference()) return {};
+    if (auto r = effectiveMotionChanged(previous); !r) return r;
+    invalidate();
+    return {};
+}
+Result detail::UiState::onMotionPreferenceChange(std::function<void(MotionPreference)> callback) {
+    if (auto r = creationAccess(); !r) return r;
+    motionChanged_ = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
+    return {};
+}
+Result detail::UiState::simulateSystemMotion(MotionPreference preference) {
+    if (auto r = creationAccess(); !r) return r;
+    if (hostClaimed_.test()) return {Status::notSupported, u"Desktop supplies the system motion preference"};
+    if (preference != MotionPreference::noPreference && preference != MotionPreference::reduce &&
+        preference != MotionPreference::off) return {Status::invalidValue, u"Invalid motion preference"};
+    return setSystemMotion(preference);
 }
 void detail::UiState::setWindowHidden(bool hidden) {
     windowHidden_ = hidden;
@@ -1462,7 +1495,7 @@ void detail::UiState::resetHost() {
     windowActive(false);
     setWindowHidden(false);
     setSystemKeyboardCues(false);
-    setSystemAnimations(true);
+    setSystemMotion(MotionPreference::noPreference);
 }
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
@@ -3748,6 +3781,11 @@ Result Ui::onChange(std::function<void()> callback) {
     state_->onChange(std::move(callback));
     return {};
 }
+MotionPreference Ui::motionPreference() const { return state_->motionPreference(); }
+Result Ui::onMotionPreferenceChange(std::function<void(MotionPreference)> callback) {
+    return state_->onMotionPreferenceChange(std::move(callback));
+}
+Result Ui::simulateSystemMotion(MotionPreference preference) { return state_->simulateSystemMotion(preference); }
 Result Ui::setPresentation(const PresentationSettings& settings) { return state_->setPresentation(settings); }
 Query<bool> Ui::animating() const { return state_->animating(); }
 Query<std::optional<HoverTarget>> Ui::hover() const { return state_->hoverQuery(); }

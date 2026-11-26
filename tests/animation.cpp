@@ -1,6 +1,6 @@
 // #75 shared animation clock and the slider thumb transition, observed through the same paint
 // entry the host uses and a fake time source. Seams: UiState::animationTime (fake clock),
-// UiState::setSystemAnimations (simulated Windows setting), Ui::animating / SemanticTree::animating.
+// Ui::simulateSystemMotion, Ui::animating / SemanticTree::animating.
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "check.hpp"
@@ -294,15 +294,15 @@ void undoAndRedoKeysDoNotTouchASlider() {
     }
 }
 void motionOffAndSystemSettingPlayNothing() {
-    for (int source = 0; source < 2; ++source) {
+    for (int source = 0; source < 3; ++source) {
         Volume v;
         auto switchOff = [&] {
             if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::off; check(bool(v.ui.setPresentation(s)), "motion off accepted"); }
-            else v.state().setSystemAnimations(false);
+            else v.ui.simulateSystemMotion(source == 1 ? MotionPreference::off : MotionPreference::reduce);
         };
         auto switchOn = [&] {
             if (source == 0) { auto s = v.ui.presentation(); s.motion = Motion::automatic; check(bool(v.ui.setPresentation(s)), "motion automatic accepted"); }
-            else v.state().setSystemAnimations(true);
+            else v.ui.simulateSystemMotion(MotionPreference::noPreference);
         };
         switchOff();
         check(bool(v.press(Key::right)), "step with motion off");
