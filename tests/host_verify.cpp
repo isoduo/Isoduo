@@ -4449,7 +4449,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
-    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_max_ms\n";
+    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_execution_max_ms\n";
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
         out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.rendererName() << '\t' << windowsBuild() << '\t'
 #ifdef NDEBUG
@@ -4585,7 +4585,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
     if (sliderDrag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
     auto stagesWarm=host.perfBreakdown().summary(true), stagesSteady=host.perfBreakdown().summary(false);
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/reportFile);
-    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_max_ms";
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_execution_max_ms";
     if (sliderDrag) for (const char* stage : {"layout","list","gpu"}) for (const char* column : {"p50","p95","p99","max"}) out << '\t' << stage << '_' << column << "_ms";
     out << '\n';
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
