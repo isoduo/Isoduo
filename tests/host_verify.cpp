@@ -267,8 +267,14 @@ int drawingTextPixels() {
                 std::vector<unsigned char> opaque;
                 for (unsigned char opacity : {255, 128}) {
                     area.onDraw([=](const DrawingEnvironment& env) {
-                        return env.drawText(u"ABC\u4e2d\u6587 ABC\u4e2d\u6587 ABC\u4e2d\u6587", {4, 4, 42, 38},
-                            {size, face.bold, face.italic}, {0,0,0}, opacity);
+                        auto draw = [&](const DrawingEnvironment& block) {
+                            return block.drawText(u"ABC\u4e2d\u6587 ABC\u4e2d\u6587 ABC\u4e2d\u6587", {4, 4, 42, 38},
+                                {size, face.bold, face.italic}, {0,0,0}, opacity);
+                        };
+                        if (opacity == 255) return draw(env);
+                        return env.clip({10, 0, 50, 64}, [&](const DrawingEnvironment& outer) {
+                            return outer.clip({0, 6, 64, 32}, draw);
+                        });
                     });
                     auto result = host.compareGpu(96, 96, scale);
                     if (!result) return 1;
@@ -284,7 +290,12 @@ int drawingTextPixels() {
                                     x >= std::lround(46 * scale) || y >= std::lround(42 * scale)) return 1;
                                 if (y > 28 * scale) secondLine = true;
                             }
-                            if (opacity == 128 && std::abs(red - (background + opaque[index]) / 2) > 2) return 1;
+                            if (opacity == 128) {
+                                bool clipped = x < std::lround(10 * scale) || y < std::lround(6 * scale) ||
+                                               y >= std::lround(38 * scale);
+                                int expected = clipped ? background : (background + opaque[index]) / 2;
+                                if (std::abs(red - expected) > 2) return 1;
+                            }
                         }
                     }
                     if (!secondLine) return 1;
@@ -326,6 +337,52 @@ int drawingAreaPixels() {
                 if (Color{image.pixels[i], image.pixels[i+1], image.pixels[i+2]} != expected) return 1;
             }
         }
+    }
+    const Color red{200, 0, 0}, blue{0, 0, 200};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        auto base = env.roundedRect({0, 0, 40, 20}, 0, red);
+        if (!base) return base;
+        auto clipped = env.clip({2.5f, -1, 16, 12}, [&](const DrawingEnvironment& outer) {
+            auto nested = outer.clip({8.5f, -1, 30, 20}, [&](const DrawingEnvironment& inner) {
+                return inner.fillRect({0, 0, 40, 20}, blue, 128);
+            });
+            if (!nested) return nested;
+            auto empty = outer.clip({20, 0, 10, 10}, [&](const DrawingEnvironment& inner) {
+                return inner.fillRect({0, 0, 40, 20}, blue);
+            });
+            if (!empty) return empty;
+            return outer.roundedRect({0, 0, 8, 8}, 2, blue);
+        });
+        if (!clipped) return clipped;
+        auto capsule = env.roundedRect({22, 1, 14, 10}, 200, blue, 128);
+        if (!capsule) return capsule;
+        auto square = env.roundedRect({40, 1, 10, 10}, 0, blue, 128);
+        if (!square) return square;
+        auto rounded = env.roundedRect({52, 1, 10, 10}, 2.5f, blue, 128);
+        if (!rounded) return rounded;
+        return env.roundedRect({64, 1, 14, 10}, 200, blue);
+    });
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        auto result = host.compareGpu(128, 48, scale);
+        if (!result) return 1;
+        const auto pixel = [&](int x, int y) {
+            const auto i = (y * result.reference.width + x) * 4;
+            const auto& bytes = result.reference.pixels;
+            return Color{bytes[i], bytes[i+1], bytes[i+2]};
+        };
+        const auto edge = [scale](float dip) { return static_cast<int>(std::lround(dip * scale)); };
+        const Color blended{99, 0, 100};
+        int middle = edge(4);
+        if (pixel(edge(2.5f)-1, middle) != red || pixel(edge(2.5f), middle) != blue ||
+            pixel(edge(8.5f)-1, middle) != red || pixel(edge(8.5f), middle) != blended ||
+            pixel(edge(18.5f)-1, middle) != blended || pixel(edge(18.5f), middle) != red ||
+            pixel(edge(12), edge(11)) != red || pixel(edge(22), edge(1)) != red ||
+            pixel(edge(29), middle) != blended ||
+            pixel(edge(40), edge(1)) != pixel(edge(57), middle) ||
+            pixel(edge(52), edge(1)) == pixel(edge(57), middle) ||
+            pixel(edge(64), edge(1)) != webAppearance().palette().background ||
+            pixel(edge(71), middle) != blue ||
+            pixel(edge(1), edge(12)) != webAppearance().palette().background) return 1;
     }
     return 0;
 }

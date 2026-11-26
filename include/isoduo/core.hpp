@@ -578,12 +578,14 @@ struct DrawingTextStyle {
     bool bold = false, italic = false;
     bool operator==(const DrawingTextStyle&) const = default;
 };
-enum class DrawingCommandKind { fillRect, drawText };
+enum class DrawingCommandKind { fillRect, roundedRect, clip, drawText };
 struct DrawingCommand {
     DrawingCommandKind kind;
     DipRect rect;
     Color color;
     unsigned char opacity = 255;
+    float radius = 0;
+    std::vector<DrawingCommand> children{};
     std::u16string text{};
     DrawingTextStyle style{};
     bool operator==(const DrawingCommand&) const = default;
@@ -603,6 +605,8 @@ public:
     const Palette& palette() const { return palette_; }
     const ThemeVariant& variant() const { return variant_; }
     bool enabled() const { return enabled_; }
+    Result clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const;
+    Result roundedRect(DipRect rect, float radius, Color color, unsigned char opacity = 255) const;
     Query<DipSize> measureText(std::u16string_view text, DrawingTextStyle style = {},
                                std::optional<float> wrapWidth = {}) const;
     Result drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style,
