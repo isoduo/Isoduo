@@ -8,6 +8,9 @@
 #else
 #include "desktop_linux_test.hpp"
 #include <dlfcn.h>
+#include "linux_window.hpp"
+#include <X11/Xlib.h>
+#undef Status
 #endif
 #include <iostream>
 
@@ -70,6 +73,41 @@ void presentation(DesktopConfig config) {
     host.clientSize(473,321); host.pump(); host.paint(); report("resized");
     check(!host.rendererFailed() && host.compareGpu(473,321,1).passed,"Resize and occlusion keep renderer usable");
 }
+#else
+void x11Presentation(DesktopConfig config) {
+    Ui ui;
+    ScrollState scroll;
+    RendererTestHooks hooks;
+    hooks.startupResultOnce = {"vkAcquireNextImageKHR", 2}; // VK_TIMEOUT
+    unsigned frames = 0, recoveries = 0;
+    config.width = 320;
+    config.height = 240;
+    config.onRendererFailed = [&](Desktop& desktop, const RendererFailure& failure) {
+        check(failure.kind == RendererFailureKind::deviceReset && desktop.rendererFailed(), "Resize reports device loss");
+        check(desktop.rebuildRenderer() && desktop.capabilities().renderBackend == RenderBackendKind::vulkan,
+              "Rebuild the same Vulkan desktop");
+        ++recoveries;
+    };
+    auto result = LinuxDesktopTest::create(ui, webAppearance(), page, scroll, config, &hooks);
+    check(bool(result.desktop), "Create X11 presentation fixture");
+    auto& desktop = *result.desktop;
+    LinuxDesktopTest::observeFrames(desktop, [&](const Frame&, const LinuxClientGeometry& geometry) {
+        if (++frames == 1) {
+            check(!hooks.startupResultOnce, "The timed-out acquire retries and presents");
+            hooks.startupResultOnce = {"vkCreateSwapchainKHR", -4}; // VK_ERROR_DEVICE_LOST
+            auto& window = *desktop.nativeWindow();
+            auto display = static_cast<Display*>(window.display);
+            XResizeWindow(display, window.windowId, 451, 319);
+            XFlush(display);
+        } else if (geometry.width == 451 && geometry.height == 319) {
+            Frame frame;
+            check(recoveries == 1 && LinuxDesktopTest::compareFrame(desktop, 451, 319, geometry.scale, frame).passed,
+                  "Resize recreates the chain and the recovered frame matches the CPU image");
+            desktop.close();
+        }
+    });
+    check(desktop.run().status == Status::ok && recoveries == 1, "Finish the X11 resize and rebuild trial");
+}
 #endif
 int failures(DesktopConfig config) {
     Ui ui;
@@ -90,13 +128,6 @@ int failures(DesktopConfig config) {
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
 #ifndef _WIN32
     config.backend = absent.backend;
-    if (config.backend == DesktopBackendKind::x11) {
-        auto base = create({});
-        if (base.kind == StartupFailureKind::contextVersion ||
-            (base.kind == StartupFailureKind::renderBackendUnavailable &&
-             base.message.find(u"not connected") == base.message.npos)) return 77;
-        check(base.kind == StartupFailureKind::renderBackendUnavailable, "X11 backend handoff");
-    } else
 #endif
     {
         auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
@@ -142,14 +173,12 @@ int failures(DesktopConfig config) {
 #ifdef _WIN32
     presentation(config);
 #else
-    if (config.backend == DesktopBackendKind::wayland)
+    if (config.backend == DesktopBackendKind::x11) x11Presentation(config);
 #endif
-    {
-        inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
-        inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-        inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-        inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
-    }
+    inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+    inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
 #ifdef _WIN32
     const char* surfaceCall = "vkCreateWin32SurfaceKHR";
 #else
