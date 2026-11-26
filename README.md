@@ -3,7 +3,6 @@
 A C++20 desktop UI framework. The public API is still evolving.
 
 Code: [isoduo/Isoduo](https://github.com/isoduo/Isoduo).
-Private tracker: [isoduo/Isoduo-issues](https://github.com/isoduo/Isoduo-issues).
 Historical numbered issue links retain their original destinations.
 
 Consumers use `<isoduo/...>`,
@@ -472,7 +471,7 @@ auto result = ui.setPaletteOverrides({
 - `focus` is the focus ring's color. `Palette::focus` is an `std::optional<Color>`: empty (the default, and the built-in palettes) means "the accent", so the ring follows a replaced `accent` for every appearance, built-in or custom, even one that assigns `accent` after building its palette; setting `focus` (in a custom palette, or by overriding the `focus` role) pins the ring to its own color. Read the ring color with `Palette::focusColor()`; `Ui::effectivePalette` always returns `focus` set.
 - The list is replaced as a whole and takes effect on the next frame; `setPaletteOverrides({})` restores the built-in colors. Overrides apply only to the built-in appearances whose module is linked; a custom `Appearance` is never affected.
 - Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, `outline` on `background` and `panel`, and `focus` (the focus ring) on `surface`, `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalidValue` with a message naming the pair and its ratio, and the previous list stays active. `isoduo::checkPaletteContrast(palette)` runs the same rules so an application can pre-check a palette.
-- `Ui::paletteOverrides()` reads the list; `Ui::effectivePalette(appearance, variant)` and `SemanticTree::effectivePalette()` (read-only; the Desktop host binds its appearance, a core-only host calls `Ui::bindAppearance`) report the colors that actually paint.
+- `Ui::paletteOverrides()` reads the list; `Ui::effectivePalette(appearance, variant)` and `SemanticTree::effectivePalette()` (read-only; the Desktop host binds its appearance, a core-only host checks the `Result` from `Ui::bindAppearance`) report the colors that actually paint.
 
 ## Pointer hover
 
