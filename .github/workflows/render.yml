@@ -34,7 +34,7 @@ jobs:
       - name: Install pinned Vulkan test tools
         run: cmake -P cmake/InstallVulkanTools.cmake
       - name: Configure Release
-        run: cmake --preset windows-clang-cl-release -C "${{ runner.temp }}/isoduo-vulkan-tools/tools.cmake" -DISODUO_REQUIRE_VULKAN_TESTS=ON
+        run: cmake --preset windows-clang-cl-release -C "${{ runner.temp }}/isoduo-vulkan-tools/tools.cmake" -DISODUO_REQUIRE_VULKAN_TESTS=ON -DISODUO_REQUIRE_CLANG_TIDY=ON
       - name: Build Release
         run: cmake --build --preset windows-clang-cl-release
       - name: Check startup failure without Mesa

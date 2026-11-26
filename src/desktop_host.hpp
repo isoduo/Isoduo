@@ -118,7 +118,7 @@ private:
     std::u16string requestedFont_;
     bool fontConfigured_ = false;
     ShapedMeasure measure_{text_};
-    std::shared_ptr<VulkanSession> vulkanSession;
+    std::shared_ptr<VulkanSession> vulkanSession_;
     std::unique_ptr<Renderer> renderer_;
     std::unique_ptr<WindowsClipboard> clipboard_;
     Frame frame_;

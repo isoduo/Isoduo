@@ -1,0 +1,23 @@
+#include <foreign.hpp>
+
+#define SDK_LIKE_MACRO 1
+struct pollfd;
+struct zwp_text_input_v3_listener;
+using VkDevice = void*;
+using PFN_vkDestroyDevice = void (*)(VkDevice);
+extern "C" void vkDestroyDevice(VkDevice);
+
+enum class RenderBackendKind { openGL };
+
+struct Provider : IRawElementProvider {
+    int get_BoundingRectangle() override { return SDK_LIKE_MACRO; }
+};
+
+class Dispatch {
+public:
+    void createBuffer() { ++bufferCount_; }
+    static constexpr int defaultCount = 1;
+private:
+    int bufferCount_ = defaultCount;
+    static constexpr int capacity_ = 4;
+};

@@ -5,18 +5,18 @@
 #include <set>
 namespace settingsDemo {
 namespace {
-using json = nlohmann::ordered_json;
+using Json = nlohmann::ordered_json;
 using isoduo::detail::utf8FromUtf16;
 using isoduo::detail::utf16FromUtf8;
-bool string(const json& o, const char* key, std::string& out) {
+bool string(const Json& o, const char* key, std::string& out) {
     auto i=o.find(key); if (i==o.end() || !i->is_string()) return false; out=i->get<std::string>(); return true;
 }
-bool integer(const json& o, const char* key, int& out) {
+bool integer(const Json& o, const char* key, int& out) {
     auto i=o.find(key); if (i==o.end() || !i->is_number_integer()) return false;
     if (*i < 0 || *i > 999999) return false; out=i->get<int>(); return true;
 }
 // A multi-line value keeps its line breaks as LF (JSON writes them as \n); CR and other controls stay invalid.
-bool text(const json& o, const char* key, std::u16string& out, size_t max, bool required, bool multiline = false) {
+bool text(const Json& o, const char* key, std::u16string& out, size_t max, bool required, bool multiline = false) {
     std::string s; if (!string(o,key,s)) return false; out=utf16FromUtf8(s);
     return (multiline ? isoduo::validMultiLine(out,max) : isoduo::validSingleLine(out,max)) && (!required || std::any_of(out.begin(),out.end(),[](char16_t c){return c!=u' ' && c!=u'\t' && c!=u'\u3000';}));
 }
@@ -24,7 +24,7 @@ bool text(const json& o, const char* key, std::u16string& out, size_t max, bool 
 // An item's note: a plain string (files written before rich text existed: no styles) or {"text": ..., "spans": [...]},
 // each span {"start", "length", and any of "bold", "italic", "underline" (true) and "color" (a name)}. The spans
 // are normalized (isoduo::normalizeRichText) on the way in, so a file reads back as the canonical value.
-static bool noteValue(const json& item, Item& out) {
+static bool noteValue(const Json& item, Item& out) {
     auto it=item.find("note"); if (it==item.end()) return false;
     if (it->is_string()) return text(item,"note",out.note,200,false,true);
     if (!it->is_object()) return false;
@@ -54,7 +54,7 @@ static bool noteValue(const json& item, Item& out) {
 }
 std::optional<SettingsDocument> parseSettings(const std::string& bytes) {
     if (bytes.size()>maxSettingsBytes) return {};
-    auto j=json::parse(bytes,nullptr,false); if (!j.is_object()) return {};
+    auto j=Json::parse(bytes,nullptr,false); if (!j.is_object()) return {};
     try {
         (void)j.dump(); // Validate UTF-8 even in ignored fields.
         SettingsDocument d{}; std::string v; int n;
@@ -101,10 +101,10 @@ std::optional<SettingsDocument> parseSettings(const std::string& bytes) {
         return d;
     } catch (const std::exception&) { return {}; }
 }
-static json noteJson(const Item& item) {
-    json spans=json::array();
+static Json noteJson(const Item& item) {
+    Json spans=Json::array();
     for (const auto& span:item.noteSpans) {
-        json entry={{"start",span.start},{"length",span.length}};
+        Json entry={{"start",span.start},{"length",span.length}};
         if (span.bold) entry["bold"]=true;
         if (span.italic) entry["italic"]=true;
         if (span.underline) entry["underline"]=true;
@@ -114,15 +114,15 @@ static json noteJson(const Item& item) {
     return {{"text",utf8FromUtf16(item.note)},{"spans",std::move(spans)}};
 }
 std::string writeSettings(const SettingsDocument& d) {
-    json j; j["format"]="isoduo-settings-demo"; j["version"]=1;
+    Json j; j["format"]="isoduo-settings-demo"; j["version"]=1;
     j["general"]={{"name",utf8FromUtf16(d.name)},{"notices",d.notices},{"mode",d.mode->id},{"region",d.region->id},{"volume",d.volume}};
-    j["items"]=json::array(); for (auto& x:d.items) j["items"].push_back({{"id",x.id.id},{"name",utf8FromUtf16(x.name)},{"note",noteJson(x)}});
+    j["items"]=Json::array(); for (auto& x:d.items) j["items"].push_back({{"id",x.id.id},{"name",utf8FromUtf16(x.name)},{"note",noteJson(x)}});
     j["next_item_id"]=d.nextItemId;
     j["presentation"]={{"font_family",utf8FromUtf16(d.presentation.fontFamily)},{"text_size",d.presentation.textSize},{"variant",d.presentation.variant.name},{"density",d.presentation.density==isoduo::Density::compact?"compact":"standard"},{"accent",d.accent},{"justify_as_left",d.presentation.justifyAsLeft}};
     const auto& focus=d.presentation;
     j["presentation"]["focus_indicator"]=focusModeId(focus.focusIndicator);
-    j["presentation"]["focus_ring_width"]=focus.focusRingWidth?json(*focus.focusRingWidth):json(nullptr);
-    j["presentation"]["focus_ring_radius"]=focus.focusRingRadius?json(*focus.focusRingRadius):json(nullptr);
+    j["presentation"]["focus_ring_width"]=focus.focusRingWidth?Json(*focus.focusRingWidth):Json(nullptr);
+    j["presentation"]["focus_ring_radius"]=focus.focusRingRadius?Json(*focus.focusRingRadius):Json(nullptr);
     j["presentation"]["focus_color"]=d.focusColor;
     return j.dump(2)+"\n";
 }

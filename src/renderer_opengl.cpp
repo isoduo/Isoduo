@@ -35,72 +35,72 @@ auto symbol(const char* name) {
 
 // Context-local checked symbol table; no process-global GL function state.
 #define GL_FUNCTIONS(X) \
- X(PFNGLGENQUERIESPROC, GenQueries) \
- X(PFNGLDELETEQUERIESPROC, DeleteQueries) \
- X(PFNGLQUERYCOUNTERPROC, QueryCounter) \
- X(PFNGLGETQUERYOBJECTUI64VPROC, GetQueryObjectui64v) \
- X(PFNGLGETSTRINGPROC, GetString) \
- X(PFNGLGETINTEGERVPROC, GetIntegerv) \
- X(PFNGLGETERRORPROC, GetError) \
- X(PFNGLVIEWPORTPROC, Viewport) \
- X(PFNGLCLEARCOLORPROC, ClearColor) \
- X(PFNGLCLEARPROC, Clear) \
- X(PFNGLENABLEPROC, Enable) \
- X(PFNGLDISABLEPROC, Disable) \
- X(PFNGLSCISSORPROC, Scissor) \
- X(PFNGLBLENDFUNCPROC, BlendFunc) \
- X(PFNGLBLENDFUNCSEPARATEPROC, BlendFuncSeparate) \
- X(PFNGLGENVERTEXARRAYSPROC, GenVertexArrays) \
- X(PFNGLBINDVERTEXARRAYPROC, BindVertexArray) \
- X(PFNGLDELETEVERTEXARRAYSPROC, DeleteVertexArrays) \
- X(PFNGLCREATESHADERPROC, CreateShader) \
- X(PFNGLSHADERSOURCEPROC, ShaderSource) \
- X(PFNGLCOMPILESHADERPROC, CompileShader) \
- X(PFNGLGETSHADERIVPROC, GetShaderiv) \
- X(PFNGLGETSHADERINFOLOGPROC, GetShaderInfoLog) \
- X(PFNGLDELETESHADERPROC, DeleteShader) \
- X(PFNGLCREATEPROGRAMPROC, CreateProgram) \
- X(PFNGLATTACHSHADERPROC, AttachShader) \
- X(PFNGLLINKPROGRAMPROC, LinkProgram) \
- X(PFNGLGETPROGRAMIVPROC, GetProgramiv) \
- X(PFNGLGETPROGRAMINFOLOGPROC, GetProgramInfoLog) \
- X(PFNGLUSEPROGRAMPROC, UseProgram) \
- X(PFNGLDELETEPROGRAMPROC, DeleteProgram) \
- X(PFNGLGENTEXTURESPROC, GenTextures) \
- X(PFNGLBINDTEXTUREPROC, BindTexture) \
- X(PFNGLTEXIMAGE2DPROC, TexImage2D) \
- X(PFNGLTEXSUBIMAGE2DPROC, TexSubImage2D) \
- X(PFNGLTEXPARAMETERIPROC, TexParameteri) \
- X(PFNGLDELETETEXTURESPROC, DeleteTextures) \
- X(PFNGLDRAWARRAYSPROC, DrawArrays) \
- X(PFNGLREADPIXELSPROC, ReadPixels) \
- X(PFNGLFINISHPROC, Finish) \
- X(PFNGLGETUNIFORMLOCATIONPROC, GetUniformLocation) \
- X(PFNGLUNIFORM1IPROC, Uniform1i) \
- X(PFNGLUNIFORM1FPROC, Uniform1f) \
- X(PFNGLUNIFORM2FPROC, Uniform2f) \
- X(PFNGLUNIFORM4FPROC, Uniform4f) \
- X(PFNGLPIXELSTOREIPROC, PixelStorei) \
- X(PFNGLGENFRAMEBUFFERSPROC, GenFramebuffers) \
- X(PFNGLBINDFRAMEBUFFERPROC, BindFramebuffer) \
- X(PFNGLFRAMEBUFFERTEXTURE2DPROC, FramebufferTexture2D) \
- X(PFNGLCHECKFRAMEBUFFERSTATUSPROC, CheckFramebufferStatus) \
- X(PFNGLDELETEFRAMEBUFFERSPROC, DeleteFramebuffers)
+ X(PFNGLGENQUERIESPROC, glGenQueries) \
+ X(PFNGLDELETEQUERIESPROC, glDeleteQueries) \
+ X(PFNGLQUERYCOUNTERPROC, glQueryCounter) \
+ X(PFNGLGETQUERYOBJECTUI64VPROC, glGetQueryObjectui64v) \
+ X(PFNGLGETSTRINGPROC, glGetString) \
+ X(PFNGLGETINTEGERVPROC, glGetIntegerv) \
+ X(PFNGLGETERRORPROC, glGetError) \
+ X(PFNGLVIEWPORTPROC, glViewport) \
+ X(PFNGLCLEARCOLORPROC, glClearColor) \
+ X(PFNGLCLEARPROC, glClear) \
+ X(PFNGLENABLEPROC, glEnable) \
+ X(PFNGLDISABLEPROC, glDisable) \
+ X(PFNGLSCISSORPROC, glScissor) \
+ X(PFNGLBLENDFUNCPROC, glBlendFunc) \
+ X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate) \
+ X(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays) \
+ X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray) \
+ X(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays) \
+ X(PFNGLCREATESHADERPROC, glCreateShader) \
+ X(PFNGLSHADERSOURCEPROC, glShaderSource) \
+ X(PFNGLCOMPILESHADERPROC, glCompileShader) \
+ X(PFNGLGETSHADERIVPROC, glGetShaderiv) \
+ X(PFNGLGETSHADERINFOLOGPROC, glGetShaderInfoLog) \
+ X(PFNGLDELETESHADERPROC, glDeleteShader) \
+ X(PFNGLCREATEPROGRAMPROC, glCreateProgram) \
+ X(PFNGLATTACHSHADERPROC, glAttachShader) \
+ X(PFNGLLINKPROGRAMPROC, glLinkProgram) \
+ X(PFNGLGETPROGRAMIVPROC, glGetProgramiv) \
+ X(PFNGLGETPROGRAMINFOLOGPROC, glGetProgramInfoLog) \
+ X(PFNGLUSEPROGRAMPROC, glUseProgram) \
+ X(PFNGLDELETEPROGRAMPROC, glDeleteProgram) \
+ X(PFNGLGENTEXTURESPROC, glGenTextures) \
+ X(PFNGLBINDTEXTUREPROC, glBindTexture) \
+ X(PFNGLTEXIMAGE2DPROC, glTexImage2D) \
+ X(PFNGLTEXSUBIMAGE2DPROC, glTexSubImage2D) \
+ X(PFNGLTEXPARAMETERIPROC, glTexParameteri) \
+ X(PFNGLDELETETEXTURESPROC, glDeleteTextures) \
+ X(PFNGLDRAWARRAYSPROC, glDrawArrays) \
+ X(PFNGLREADPIXELSPROC, glReadPixels) \
+ X(PFNGLFINISHPROC, glFinish) \
+ X(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation) \
+ X(PFNGLUNIFORM1IPROC, glUniform1i) \
+ X(PFNGLUNIFORM1FPROC, glUniform1f) \
+ X(PFNGLUNIFORM2FPROC, glUniform2f) \
+ X(PFNGLUNIFORM4FPROC, glUniform4f) \
+ X(PFNGLPIXELSTOREIPROC, glPixelStorei) \
+ X(PFNGLGENFRAMEBUFFERSPROC, glGenFramebuffers) \
+ X(PFNGLBINDFRAMEBUFFERPROC, glBindFramebuffer) \
+ X(PFNGLFRAMEBUFFERTEXTURE2DPROC, glFramebufferTexture2D) \
+ X(PFNGLCHECKFRAMEBUFFERSTATUSPROC, glCheckFramebufferStatus) \
+ X(PFNGLDELETEFRAMEBUFFERSPROC, glDeleteFramebuffers)
 struct GL {
 #define FIELD(type, name) type name{};
     GL_FUNCTIONS(FIELD)
 #undef FIELD
     void load() {
-#define LOAD(type, name) name = reinterpret_cast<type>(symbol("gl" #name));
+#define LOAD(type, name) name = reinterpret_cast<type>(symbol(#name));
         GL_FUNCTIONS(LOAD)
 #undef LOAD
     }
 };
 
 static GLuint shader(GL& g, GLenum kind, const char* source) {
-    GLuint s = g.CreateShader(kind); g.ShaderSource(s, 1, &source, nullptr); g.CompileShader(s);
-    GLint ok{}; g.GetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) { char log[4096]{}; g.GetShaderInfoLog(s, sizeof(log), nullptr, log); g.DeleteShader(s); throw std::runtime_error(log); }
+    GLuint s = g.glCreateShader(kind); g.glShaderSource(s, 1, &source, nullptr); g.glCompileShader(s);
+    GLint ok{}; g.glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) { char log[4096]{}; g.glGetShaderInfoLog(s, sizeof(log), nullptr, log); g.glDeleteShader(s); throw std::runtime_error(log); }
     return s;
 }
 struct Scene {
@@ -109,11 +109,11 @@ struct Scene {
     int atlasWidth=0, atlasHeight=0;
     explicit Scene(GL& gl) : g(gl) {}
     ~Scene() {
-        if (fbo) g.DeleteFramebuffers(1,&fbo);
-        if (target) g.DeleteTextures(1,&target);
-        if (textures[0]) g.DeleteTextures(4,textures);
-        if (vao) g.DeleteVertexArrays(1,&vao);
-        if (program) g.DeleteProgram(program);
+        if (fbo) g.glDeleteFramebuffers(1,&fbo);
+        if (target) g.glDeleteTextures(1,&target);
+        if (textures[0]) g.glDeleteTextures(4,textures);
+        if (vao) g.glDeleteVertexArrays(1,&vao);
+        if (program) g.glDeleteProgram(program);
     }
     void init(const std::string& fragmentOverride) {
         const char* vertex = R"(#version 330 core
@@ -141,15 +141,15 @@ void main(){
 })";
         GLuint vs=0,fs=0;
         try { vs=shader(g,GL_VERTEX_SHADER,vertex); fs=shader(g,GL_FRAGMENT_SHADER,fragmentOverride.empty() ? fragment : fragmentOverride.c_str());
-            program=g.CreateProgram();g.AttachShader(program,vs);g.AttachShader(program,fs);g.LinkProgram(program);
-        } catch (...) {if(vs)g.DeleteShader(vs);if(fs)g.DeleteShader(fs);throw;}
-        g.DeleteShader(vs);g.DeleteShader(fs);
-        GLint ok{};g.GetProgramiv(program,GL_LINK_STATUS,&ok);
-        if(!ok){char log[4096]{};g.GetProgramInfoLog(program,sizeof(log),nullptr,log);throw std::runtime_error(log);}
-        g.GenVertexArrays(1,&vao);g.GenTextures(4,textures);
-        for(auto texture : textures){g.BindTexture(GL_TEXTURE_2D,texture);
-            g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);g.TexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);}
-        g.GenTextures(1,&target);g.GenFramebuffers(1,&fbo);
+            program=g.glCreateProgram();g.glAttachShader(program,vs);g.glAttachShader(program,fs);g.glLinkProgram(program);
+        } catch (...) {if(vs)g.glDeleteShader(vs);if(fs)g.glDeleteShader(fs);throw;}
+        g.glDeleteShader(vs);g.glDeleteShader(fs);
+        GLint ok{};g.glGetProgramiv(program,GL_LINK_STATUS,&ok);
+        if(!ok){char log[4096]{};g.glGetProgramInfoLog(program,sizeof(log),nullptr,log);throw std::runtime_error(log);}
+        g.glGenVertexArrays(1,&vao);g.glGenTextures(4,textures);
+        for(auto texture : textures){g.glBindTexture(GL_TEXTURE_2D,texture);
+            g.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);g.glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);}
+        g.glGenTextures(1,&target);g.glGenFramebuffers(1,&fbo);
     }
 };
 
@@ -235,9 +235,9 @@ struct Renderer::Impl {
 #endif
             gl.load();
             GLint major=0,minor=0,profile=0,flagsActual=0;
-            gl.GetIntegerv(GL_MAJOR_VERSION,&major);gl.GetIntegerv(GL_MINOR_VERSION,&minor);
-            gl.GetIntegerv(GL_CONTEXT_PROFILE_MASK,&profile);gl.GetIntegerv(GL_CONTEXT_FLAGS,&flagsActual);
-            auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.GetString(key)); return to16(p ? p : ""); };
+            gl.glGetIntegerv(GL_MAJOR_VERSION,&major);gl.glGetIntegerv(GL_MINOR_VERSION,&minor);
+            gl.glGetIntegerv(GL_CONTEXT_PROFILE_MASK,&profile);gl.glGetIntegerv(GL_CONTEXT_FLAGS,&flagsActual);
+            auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.glGetString(key)); return to16(p ? p : ""); };
             caps.version=string16(GL_VERSION); caps.vendor=string16(GL_VENDOR); caps.renderer=string16(GL_RENDERER);
             if (major < 3 || (major == 3 && minor < 3) || !(profile & GL_CONTEXT_CORE_PROFILE_BIT))
                 throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",caps.version,u"OpenGL 3.3 core is required"}};
@@ -245,7 +245,7 @@ struct Renderer::Impl {
             if (debugEnabled && !(hooks && hooks->hideKhrDebug)) {
                 using GetStringi=PFNGLGETSTRINGIPROC;
                 auto getStringI=reinterpret_cast<GetStringi>(symbol("glGetStringi"));
-                GLint count=0; gl.GetIntegerv(GL_NUM_EXTENSIONS,&count);
+                GLint count=0; gl.glGetIntegerv(GL_NUM_EXTENSIONS,&count);
                 bool supported=major>4 || (major==4 && minor>=3);
                 for (GLint i=0;i<count;++i) { auto extname=reinterpret_cast<const char*>(getStringI(GL_EXTENSIONS,static_cast<GLuint>(i))); if (extname && std::string(extname)=="GL_KHR_debug") supported=true; }
                 if (supported) {
@@ -253,14 +253,14 @@ struct Renderer::Impl {
                         debugCallback=reinterpret_cast<PFNGLDEBUGMESSAGECALLBACKPROC>(symbol("glDebugMessageCallback"));
                         pushGroup=reinterpret_cast<PFNGLPUSHDEBUGGROUPPROC>(symbol("glPushDebugGroup"));
                         popGroup=reinterpret_cast<PFNGLPOPDEBUGGROUPPROC>(symbol("glPopDebugGroup"));
-                        gl.Enable(GL_DEBUG_OUTPUT); gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+                        gl.glEnable(GL_DEBUG_OUTPUT); gl.glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
                         debugCallback(receive,this); caps.debugMessages=true;
                     } catch (...) { debugCallback=nullptr; pushGroup=nullptr; popGroup=nullptr; }
                 }
             }
             if (robust) {
                 GLint strategy = 0;
-                gl.GetIntegerv(GL_RESET_NOTIFICATION_STRATEGY, &strategy);
+                gl.glGetIntegerv(GL_RESET_NOTIFICATION_STRATEGY, &strategy);
                 if (strategy == GL_LOSE_CONTEXT_ON_RESET) {
                     const char* status = major > 4 || (major == 4 && minor >= 5)
                         ? "glGetGraphicsResetStatus" : "glGetGraphicsResetStatusARB";
@@ -272,7 +272,7 @@ struct Renderer::Impl {
                 throw StartupError{{StartupFailureKind::resource, {}, {}, to16(hooks->startupResourceError)}};
             scene=std::make_unique<Scene>(gl);
             try { scene->init(hooks ? hooks->fragmentShaderOverride : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
-            if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
+            if (gl.glGetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
         } catch (const StartupError&) { release(); throw; }
           catch (const std::exception& e) {
             std::string message=e.what(); release();
@@ -370,18 +370,18 @@ struct Renderer::Impl {
     void execute(const DrawList& list,int width,int height,bool offscreen) {
         auto& g=gl; auto& sc=*scene;
         if(offscreen){
-            g.BindTexture(GL_TEXTURE_2D,sc.target);
-            g.TexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
-            g.BindFramebuffer(GL_FRAMEBUFFER,sc.fbo);
-            g.FramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,sc.target,0);
-            require(g.CheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"Framebuffer incomplete");
-        } else g.BindFramebuffer(GL_FRAMEBUFFER,0);
-        g.Viewport(0,0,width,height);g.Disable(GL_FRAMEBUFFER_SRGB);g.Disable(GL_DITHER);
-        g.Enable(GL_BLEND);g.BlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
-        g.UseProgram(sc.program);g.BindVertexArray(sc.vao);g.PixelStorei(GL_UNPACK_ALIGNMENT,1);
-        auto uniform=[&](const char* name){return g.GetUniformLocation(sc.program,name);};
-        g.Uniform2f(uniform("screen"),float(width),float(height));
-        g.Uniform1i(uniform("atlas"),0);
+            g.glBindTexture(GL_TEXTURE_2D,sc.target);
+            g.glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+            g.glBindFramebuffer(GL_FRAMEBUFFER,sc.fbo);
+            g.glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,sc.target,0);
+            require(g.glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"Framebuffer incomplete");
+        } else g.glBindFramebuffer(GL_FRAMEBUFFER,0);
+        g.glViewport(0,0,width,height);g.glDisable(GL_FRAMEBUFFER_SRGB);g.glDisable(GL_DITHER);
+        g.glEnable(GL_BLEND);g.glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+        g.glUseProgram(sc.program);g.glBindVertexArray(sc.vao);g.glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+        auto uniform=[&](const char* name){return g.glGetUniformLocation(sc.program,name);};
+        g.glUniform2f(uniform("screen"),float(width),float(height));
+        g.glUniform1i(uniform("atlas"),0);
         // Resolve the complete frame before uploading. An eviction invalidates borrowed
         // pages, so retry once from the new generation; a frame larger than the atlas
         // is consumed one glyph at a time instead.
@@ -402,8 +402,8 @@ struct Renderer::Impl {
             for(const auto& glyph:resolved)if(glyph.region.page && !pages.contains(glyph.region.page)){
                 if(pages.size()==4){segmented=true;break;}
                 unsigned slot=static_cast<unsigned>(pages.size());pages.emplace(glyph.region.page,slot);
-                const auto& page=*glyph.region.page;g.BindTexture(GL_TEXTURE_2D,sc.textures[slot]);
-                g.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
+                const auto& page=*glyph.region.page;g.glBindTexture(GL_TEXTURE_2D,sc.textures[slot]);
+                g.glTexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
             }
         }
         if(!segmented){sc.atlasWidth=0;sc.atlasHeight=0;}
@@ -423,11 +423,11 @@ struct Renderer::Impl {
                 currentGroup.clear(); continue;
             }
             if(command.type==DrawCommand::Type::clear){
-                g.Disable(GL_SCISSOR_TEST);g.ClearColor(command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);g.Clear(GL_COLOR_BUFFER_BIT);continue;
+                g.glDisable(GL_SCISSOR_TEST);g.glClearColor(command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);g.glClear(GL_COLOR_BUFFER_BIT);continue;
             }
             if(command.type==DrawCommand::Type::clip){
-                auto clip=intersect(command.rect,{0,0,width,height});g.Enable(GL_SCISSOR_TEST);
-                g.Scissor(clip.x,height-clip.y-clip.h,clip.w,clip.h);continue;
+                auto clip=intersect(command.rect,{0,0,width,height});g.glEnable(GL_SCISSOR_TEST);
+                g.glScissor(clip.x,height-clip.y-clip.h,clip.w,clip.h);continue;
             }
             if(command.type!=DrawCommand::Type::fill && command.type!=DrawCommand::Type::rounded && command.type!=DrawCommand::Type::glyph)continue;
             auto glyph=segmented?(command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage}):resolved[index];
@@ -435,31 +435,31 @@ struct Renderer::Impl {
             auto rect=glyph.rect;if(rect.w<=0 || rect.h<=0)continue;
             int kind=command.type==DrawCommand::Type::rounded?1:command.type==DrawCommand::Type::glyph?2:0;
             if(kind==2){const auto& page=*glyph.region.page;
-                if(!segmented)g.BindTexture(GL_TEXTURE_2D,sc.textures[pages.at(&page)]);
-                else {g.BindTexture(GL_TEXTURE_2D,sc.textures[0]);
+                if(!segmented)g.glBindTexture(GL_TEXTURE_2D,sc.textures[pages.at(&page)]);
+                else {g.glBindTexture(GL_TEXTURE_2D,sc.textures[0]);
                 // Each borrowed region is uploaded and drawn before the next
                 // resolution can evict its CPU page.
                 if(sc.atlasWidth!=page.width || sc.atlasHeight!=page.height){
-                    g.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,nullptr);
+                    g.glTexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,nullptr);
                     sc.atlasWidth=page.width;sc.atlasHeight=page.height;
                 }
-                auto r=glyph.region.rect;g.PixelStorei(GL_UNPACK_ROW_LENGTH,page.width);
-                g.TexSubImage2D(GL_TEXTURE_2D,0,r.x,r.y,r.w,r.h,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data()+static_cast<std::size_t>(r.y)*page.width+r.x);
-                g.PixelStorei(GL_UNPACK_ROW_LENGTH,0);}
-                g.Uniform2f(uniform("atlasOrigin"),float(glyph.region.rect.x),float(glyph.region.rect.y));}
-            g.Uniform4f(uniform("rect"),float(rect.x),float(rect.y),float(rect.w),float(rect.h));
-            g.Uniform4f(uniform("tint"),command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);
-            g.Uniform1f(uniform("radius"),float(command.radius));g.Uniform1i(uniform("kind"),kind);
-            g.DrawArrays(GL_TRIANGLES,0,6);
+                auto r=glyph.region.rect;g.glPixelStorei(GL_UNPACK_ROW_LENGTH,page.width);
+                g.glTexSubImage2D(GL_TEXTURE_2D,0,r.x,r.y,r.w,r.h,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data()+static_cast<std::size_t>(r.y)*page.width+r.x);
+                g.glPixelStorei(GL_UNPACK_ROW_LENGTH,0);}
+                g.glUniform2f(uniform("atlasOrigin"),float(glyph.region.rect.x),float(glyph.region.rect.y));}
+            g.glUniform4f(uniform("rect"),float(rect.x),float(rect.y),float(rect.w),float(rect.h));
+            g.glUniform4f(uniform("tint"),command.color.r/255.f,command.color.g/255.f,command.color.b/255.f,command.color.a/255.f);
+            g.glUniform1f(uniform("radius"),float(command.radius));g.glUniform1i(uniform("kind"),kind);
+            g.glDrawArrays(GL_TRIANGLES,0,6);
         }
-        if (hooks && hooks->misuseOnce) { hooks->misuseOnce=false; g.Enable(0xffffffffu); (void)g.GetError(); }
+        if (hooks && hooks->misuseOnce) { hooks->misuseOnce=false; g.glEnable(0xffffffffu); (void)g.glGetError(); }
         // After a device reset the error query keeps answering GL_CONTEXT_LOST, so draining
         // "until GL_NO_ERROR" never ends; stop at a lost context and bound the drain anyway.
         constexpr GLenum contextLost=0x0507;  // GL_CONTEXT_LOST
         const bool simulateLost=hooks && hooks->contextLostAtFrame && hooks->contextLostAtFrame<=frames+1;
         GLenum error=GL_NO_ERROR, first=GL_NO_ERROR;
         std::vector<unsigned> errors;
-        for (int i=0; i<64 && (error=simulateLost ? contextLost : g.GetError())!=GL_NO_ERROR; ++i) {
+        for (int i=0; i<64 && (error=simulateLost ? contextLost : g.glGetError())!=GL_NO_ERROR; ++i) {
             if (first==GL_NO_ERROR) first=error;
             errors.push_back(error);
             if (error==contextLost) break;
@@ -485,10 +485,10 @@ void Renderer::restoreAtlas(const std::vector<const AtlasPage*>& pages) {
     impl_->activate();
     auto& gl=impl_->gl;
     for (std::size_t i=0; i<pages.size() && i<4; ++i) {
-        const auto& page=*pages[i]; gl.BindTexture(GL_TEXTURE_2D,impl_->scene->textures[i]);
-        gl.TexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
+        const auto& page=*pages[i]; gl.glBindTexture(GL_TEXTURE_2D,impl_->scene->textures[i]);
+        gl.glTexImage2D(GL_TEXTURE_2D,0,GL_R8,page.width,page.height,0,GL_RED,GL_UNSIGNED_BYTE,page.pixels.data());
     }
-    require(gl.GetError()==GL_NO_ERROR,"Atlas upload failed");
+    require(gl.glGetError()==GL_NO_ERROR,"Atlas upload failed");
 }
 double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submissionMs,std::chrono::steady_clock::time_point* presented){
     auto start=std::chrono::steady_clock::now();
@@ -498,19 +498,19 @@ double Renderer::draw(const DrawList& list,int width,int height,bool measure,boo
     if (measure) {
         // Bracket execution with timestamps. Some software drivers report a
         // zero start for their first GL_TIME_ELAPSED query.
-        gl.GenQueries(2, queries);
-        gl.QueryCounter(queries[0], GL_TIMESTAMP);
+        gl.glGenQueries(2, queries);
+        gl.glQueryCounter(queries[0], GL_TIMESTAMP);
     }
     impl_->execute(list,width,height,offscreen);
-    if (measure) gl.QueryCounter(queries[1], GL_TIMESTAMP);
+    if (measure) gl.glQueryCounter(queries[1], GL_TIMESTAMP);
     if(submissionMs) *submissionMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
     if(!offscreen) impl_->present();
     if(presented) *presented=std::chrono::steady_clock::now();
     if (!measure) return 0;
     GLuint64 begin=0, end=0;
-    gl.GetQueryObjectui64v(queries[0], GL_QUERY_RESULT, &begin);
-    gl.GetQueryObjectui64v(queries[1], GL_QUERY_RESULT, &end);
-    gl.DeleteQueries(2, queries);
+    gl.glGetQueryObjectui64v(queries[0], GL_QUERY_RESULT, &begin);
+    gl.glGetQueryObjectui64v(queries[1], GL_QUERY_RESULT, &end);
+    gl.glDeleteQueries(2, queries);
     return (double(end) - double(begin)) / 1000000.0;
 }
 RendererCapabilities Renderer::capabilities() const { return impl_->caps; }
@@ -519,9 +519,9 @@ std::string Renderer::name() const {
 }
 Image Renderer::readBack(const DrawList& list,int width,int height){
     impl_->activate();
-    impl_->execute(list,width,height,true);auto& gl=impl_->gl;gl.Finish();
+    impl_->execute(list,width,height,true);auto& gl=impl_->gl;gl.glFinish();
     Image result{width,height,std::vector<unsigned char>(static_cast<std::size_t>(width)*height*4)};
-    std::vector<unsigned char> raw(result.pixels.size());gl.ReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,raw.data());
+    std::vector<unsigned char> raw(result.pixels.size());gl.glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,raw.data());
     const auto stride=static_cast<std::size_t>(width)*4;
     for(int y=0;y<height;++y)std::copy_n(raw.data()+static_cast<std::size_t>(height-1-y)*stride,stride,result.pixels.data()+static_cast<std::size_t>(y)*stride);
     return result;
