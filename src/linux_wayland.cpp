@@ -69,10 +69,12 @@ public:
             wl_surface_commit(surface_);
             if (!waitFor(configured_, deadline))
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"Wayland did not configure the initial window"}};
-            eglWindow_ = wl_egl_window_create(surface_, geometry_.width, geometry_.height);
-            if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
-            egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
-            egl_->nativeWindow(eglWindow_);
+            if (config.renderBackend == RenderBackendKind::openGL) {
+                eglWindow_ = wl_egl_window_create(surface_, geometry_.width, geometry_.height);
+                if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
+                egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
+                egl_->nativeWindow(eglWindow_);
+            }
             reference_ = {DesktopBackendKind::wayland, display_, surface_, 0};
         } catch (...) {
             release();
@@ -113,9 +115,14 @@ public:
         if (frameCallback_) wl_callback_destroy(std::exchange(frameCallback_, nullptr));
         geometryChanged_ |= std::exchange(frameChangesGeometry_, false);
     }
+    void deferFrame() override {
+        // No buffer was presented. Latch the outstanding pacing callback on
+        // the current surface so the compositor schedules the visible retry.
+        wl_surface_commit(surface_);
+    }
     bool poll(int timeoutMs) override {
+        const bool waitingForFrame = frameCallback_ != nullptr;
         if (wl_display_dispatch_pending(display_) < 0) return false;
-        if (!events.empty() || outputLeft_) timeoutMs = 0;
         if (repeat_) {
             const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(repeat_->next - Clock::now()).count();
             const int wait = static_cast<int>(std::max<std::int64_t>(0, remaining));
@@ -123,6 +130,8 @@ public:
         }
         while (wl_display_prepare_read(display_) != 0)
             if (wl_display_dispatch_pending(display_) < 0) return false;
+        // Another queue (EGL or Vulkan WSI) may already have read our callback.
+        if (!events.empty() || outputLeft_ || (waitingForFrame && !frameCallback_)) timeoutMs = 0;
         auto cancel = [this] { wl_display_cancel_read(display_); };
         short flags = POLLIN;
         if (wl_display_flush(display_) < 0) {
@@ -430,6 +439,7 @@ const xdg_surface_listener WaylandWindow::shellSurfaceListener_{
                 w.events.emplace_back(NativeEvent::Kind::visibility).visible = !w.suspended_;
             }
             w.updateGeometry();
+            if (w.suspended_) wl_surface_commit(w.surface_);
         }
 };
 

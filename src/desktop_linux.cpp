@@ -1,4 +1,5 @@
 #include "linux_window.hpp"
+#include "renderer_vulkan.hpp"
 #include "linux_preferences.hpp"
 #include "linux_accessibility.hpp"
 #include "desktop_linux_test.hpp"
@@ -103,6 +104,7 @@ std::unique_ptr<LinuxWindow> openWindow(const DesktopConfig& config) {
 }
 
 struct Desktop::Impl {
+    HostClaim claim;
     Ui& ui;
     const Appearance& appearance;
     std::function<layout::Node()> page;
@@ -116,6 +118,7 @@ struct Desktop::Impl {
     ShapedMeasure measure{text};
     std::optional<LinuxPreferenceMonitor> preferences;
     std::unique_ptr<LinuxWindow> window;
+    std::shared_ptr<VulkanSession> vulkanSession;
     std::unique_ptr<Renderer> renderer;
     RendererCapabilities caps;
     std::optional<RendererFailure> failure;
@@ -138,6 +141,7 @@ struct Desktop::Impl {
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
     bool layoutDirty = true;
     bool leftPressed = false, rightPressed = false, hidden = false;
+    std::uint64_t retryAt = 0;
     bool animationScheduled = false;
     bool painting = false, arranging = false;
     struct WorkScope {
@@ -156,25 +160,30 @@ struct Desktop::Impl {
     std::u16string fontFamily;
     std::set<std::u16string> unavailableFamilies;
 
-    Impl(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
+    Impl(HostClaim ownerClaim, Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
          DesktopConfig config, RendererTestHooks* hooks)
-        : ui(ui), appearance(appearance), page(std::move(page)), scroll(scroll), config(std::move(config)), hooks(hooks) {}
+        : claim(std::move(ownerClaim)), ui(ui), appearance(appearance), page(std::move(page)), scroll(scroll), config(std::move(config)), hooks(hooks) {}
     ~Impl() { release(); }
     void createRenderer() {
-        renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
-            [this](auto event) { diagnostics.push(std::move(event)); });
+        if (config.renderBackend == RenderBackendKind::vulkan) {
+            const auto size = window->geometry();
+            renderer = createVulkanRenderer(window->reference(), hooks, size.width, size.height, vulkanSession, config.debugContext,
+                [this](RenderDiagnostic event){ diagnostics.push(std::move(event)); });
+        } else {
+            renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
+                [this](auto event) { diagnostics.push(std::move(event)); });
+        }
         caps = renderer->capabilities();
     }
     void attach() {
         window = openWindow(config);
         createRenderer();
         text.setStyledLookup(systemStyledFontFile);
-        auto& state = access(ui);
+        auto& state = claim.state();
         configureFont();
         attached = true;
         state.setAsyncClipboard(&window->clipboard());
         state.beforeFocus([this] { finishIme(); });
-        state.rendererFailed(false);
         state.bindAppearance(&appearance);
         {
             std::lock_guard lock(postMutex);
@@ -196,32 +205,19 @@ struct Desktop::Impl {
     }
     void refreshPreferences() {
         const auto settings = readLinuxDesktopPreferences();
-        auto& state = access(ui);
+        auto& state = claim.state();
         state.setSystemKeyboardCues(settings.keyboardCues.value_or(false));
         state.setSystemAnimations(settings.animations.value_or(true));
     }
     void release() {
         accessibility.reset();
         if (attached) {
-            auto& state = access(ui);
-            state.beforeFocus({});
             stopIme();
-            state.compositionCancel();
-            state.setAsyncClipboard(nullptr);
-            state.onInvalidate({});
-            state.onRelayout({});
-            state.onReveal({});
-            state.onPresentation({});
-            state.animationTime({});
-            state.tooltipClock({});
-            state.setClickClock({});
-            state.windowActive(false);
-            state.cancelInput();
-            state.setWindowHidden(false);
-            state.bindAppearance(nullptr);
             attached = false;
         }
+        claim.release();
         renderer.reset();
+        vulkanSession.reset();
         window.reset();
         std::vector<std::function<void()>> discarded;
         {
@@ -230,6 +226,7 @@ struct Desktop::Impl {
             discarded.swap(posted);
             preferences.reset();
         }
+        diagnostics.drain();
     }
     Result post(std::function<void()> work) {
         if (!work) return {Status::invalidValue, u"No work to post"};
@@ -357,6 +354,7 @@ struct Desktop::Impl {
         invalidateFrame();
     }
     void paint() {
+        retryAt = 0;
         dirty = false;
         WorkScope work(painting);
         try {
@@ -383,6 +381,10 @@ struct Desktop::Impl {
                 renderer->draw(canvas.list, width, height);
             }
             if (observeFrame) observeFrame(frame, layoutGeometry);
+        } catch (const DeferredFrame&) {
+            dirty = true;
+            window->deferFrame();
+            if (config.backend == DesktopBackendKind::x11) retryAt = nowMs() + 16;
         } catch (const FrameError& error) {
             for (auto code : error.codes) diagnostics.push(frameDiagnostic(code));
             fail(error.failure);
@@ -397,7 +399,7 @@ struct Desktop::Impl {
         cancelPointer();
         window->discardFrame();
         access(ui).finishAnimations();
-        access(ui).rendererFailed(true);
+        claim.state().rendererFailed(true);
         if (!config.onRendererFailed) closing = true;
     }
     void clearDrag() {
@@ -528,7 +530,7 @@ struct Desktop::Impl {
                 stopIme();
             }
             focused = event.focused;
-            state.windowActive(focused && !hidden);
+            claim.state().windowActive(focused && !hidden);
             if (!focused) {
                 // A recovery prompt can take focus while the last frame is frozen.
                 if (!failure) state.closePopup();
@@ -543,8 +545,8 @@ struct Desktop::Impl {
             return;
         case Kind::visibility:
             hidden = !event.visible;
-            state.setWindowHidden(hidden);
-            state.windowActive(focused && !hidden);
+            claim.state().setWindowHidden(hidden);
+            claim.state().windowActive(focused && !hidden);
             if (hidden) cancelPointer();
             invalidateFrame();
             return;
@@ -608,10 +610,17 @@ struct Desktop::Impl {
             invalidateFrame();
         }
     }
+    bool frameReady() {
+        return dirty && !hidden && !failure && nowMs() >= retryAt && window->prepareFrame();
+    }
     int delay() {
         if (failure) return -1;
         int timeout = animationScheduled || access(ui).animationRunning() ? 16 : -1;
         const auto now = nowMs();
+        if (dirty && !hidden && retryAt) {
+            const auto wait = retryAt > now ? static_cast<int>(retryAt - now) : 0;
+            timeout = timeout < 0 ? wait : std::min(timeout, wait);
+        }
         for (auto deadline : {access(ui).tooltipDeadline(), textScrollDeadline}) if (deadline) {
             int wait = *deadline <= now ? 0 : static_cast<int>(std::min<std::uint64_t>(*deadline - now, INT_MAX));
             timeout = timeout < 0 ? wait : std::min(timeout, wait);
@@ -629,9 +638,11 @@ CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function
 }
 CreateResult LinuxDesktopTest::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,
                                       ScrollState& scroll, DesktopConfig config, RendererTestHooks* hooks) {
+    HostClaim claim(ui);
+    if (claim.status() == Status::busy) return {Status::busy, {}, {}};
     const auto backend = config.backend = selectedBackend(config.backend);
     try {
-        auto impl = std::make_unique<Desktop::Impl>(ui, appearance, std::move(page), scroll, std::move(config), hooks);
+        auto impl = std::make_unique<Desktop::Impl>(std::move(claim), ui, appearance, std::move(page), scroll, std::move(config), hooks);
         impl->attach();
         return {Status::ok, {}, std::unique_ptr<Desktop>(new Desktop(std::move(impl)))};
     } catch (const StartupError& error) {
@@ -641,6 +652,10 @@ CreateResult LinuxDesktopTest::create(Ui& ui, const Appearance& appearance, std:
     } catch (const std::exception& error) {
         return {Status::failed, StartupFailure{StartupFailureKind::resource, {}, {}, utf16FromUtf8(error.what()), backend}, {}};
     }
+}
+bool LinuxDesktopTest::x11InputMethodOpen(const Desktop& desktop) {
+    const auto& window = desktop.impl_->window;
+    return window && window->x11InputMethodOpen();
 }
 GpuComparison LinuxDesktopTest::compareDrawList(Desktop& desktop, const DrawList& list, int width, int height) {
     return detail::compareDrawList(*desktop.impl_->renderer, list, width, height);
@@ -692,7 +707,7 @@ RunResult Desktop::run() {
     if (!host.closing && host.config.platformAccessibilityEnabled)
         host.accessibility.emplace(host.preferences->context(), host.ui, *host.window, host.frame, host.config.title, host.closing);
     while (!host.closing) {
-        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
+        if (host.frameReady()) {
             host.paint();
             if (host.failure && host.config.onRendererFailed) {
                 const auto error = *host.failure;
@@ -704,10 +719,13 @@ RunResult Desktop::run() {
         if (host.accessibility) host.accessibility->flushLayout();
         if (host.closing) break;
         host.syncIme();
-        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
+        if (host.frameReady()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
-        if (host.layoutGeometry != host.window->geometry()) host.invalidateFrame();
+        if (host.layoutGeometry != host.window->geometry()) {
+            if (host.renderer) host.renderer->resized();
+            host.invalidateFrame();
+        }
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);
@@ -758,6 +776,7 @@ Result Desktop::rebuildRenderer() {
     if (!host.window) return {Status::notFound, u"Desktop window is closed"};
     if (host.painting) return {Status::busy, u"Painting in progress"};
     if (!host.failure) return {Status::invalidValue, u"Renderer is not failed"};
+    if (host.hooks) ++host.hooks->rebuildAttempts;
     host.renderer.reset();
     try {
         host.createRenderer();
@@ -770,7 +789,7 @@ Result Desktop::rebuildRenderer() {
         return {Status::failed, utf16FromUtf8(error.what())};
     }
     host.failure.reset();
-    access(host.ui).rendererFailed(false);
+    host.claim.state().rendererFailed(false);
     host.invalidateFrame();
     return {};
 }

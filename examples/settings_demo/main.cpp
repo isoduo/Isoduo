@@ -69,13 +69,20 @@ int main(int argc, char** argv) {
         const auto& appearance = isoduo::webAppearance();
 #endif
         auto name = appearance.name();
+        isoduo::DesktopConfig options;
         std::filesystem::path directory, diagnosticsOut;
 #ifdef _WIN32
         constexpr std::wstring_view settingsFlag = L"--settings-dir", diagnosticsFlag = L"--diagnostics-out";
 #else
         constexpr std::string_view settingsFlag = "--settings-dir", diagnosticsFlag = "--diagnostics-out";
 #endif
-        for (int i = 1; i < argc; i += 2) {
+#ifdef _WIN32
+        bool smoke = false;
+#endif
+        for (int i = 1; i < argc; ++i) {
+#ifdef _WIN32
+            if (std::wstring_view(argv[i]) == L"--smoke") { smoke = true; continue; }
+#endif
             std::basic_string_view flag(argv[i]);
             bool hasValue = i + 1 < argc;
 #ifndef _WIN32
@@ -83,7 +90,9 @@ int main(int argc, char** argv) {
 #endif
             if (hasValue && flag == settingsFlag && directory.empty()) directory = argv[i + 1];
             else if (hasValue && flag == diagnosticsFlag && diagnosticsOut.empty()) diagnosticsOut = argv[i + 1];
-            else { std::cerr << "Usage: [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
+            else if (hasValue && std::filesystem::path(argv[i]) == "--render-backend") options.renderBackend = parseRenderBackend(argv[i+1]);
+            else { std::cerr << "Usage: [--render-backend opengl|vulkan] [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
+            ++i;
         }
 #ifndef ISODUO_DEMO_DIAGNOSTICS
         if (!diagnosticsOut.empty()) { std::cerr << "--diagnostics-out needs a build with Isoduo::Diagnostics\n"; return 1; }
@@ -108,7 +117,6 @@ int main(int argc, char** argv) {
         settingsDemo::Demo demo(std::move(about));
         if (loaded.document) demo.loadDocument(*loaded.document);
         demo.onSave([&store](const auto& document) { return store.save(document); },pathText);
-        isoduo::DesktopConfig options;
 #ifdef ISODUO_DEMO_DIAGNOSTICS
         options.onDiagnostic = [&](const isoduo::RenderDiagnostic& event) { diagnostics.record(event); };
         // Evidence runs (TD01) save the in-memory record; normal runs never write it.
@@ -127,7 +135,7 @@ int main(int argc, char** argv) {
         };
         options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
 #ifdef ISODUO_DEMO_DIAGNOSTICS
-            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure,desktop.capabilities().renderBackend));
             exportDiagnostics();
 #endif
             WindowsPrompt prompt(desktop.nativeWindow());
@@ -138,14 +146,25 @@ int main(int argc, char** argv) {
         options.onCloseRequested = [&](isoduo::Desktop& desktop) { return prompt.requestClose(desktop); };
         options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
 #ifdef ISODUO_DEMO_DIAGNOSTICS
-            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure,desktop.capabilities().renderBackend));
             exportDiagnostics();
 #endif
             prompt.show(desktop, failure.message);
         };
 #endif
+#ifdef _WIN32
+        if (smoke) options.onRendererFailed = [](auto& desktop, const auto&) { desktop.close(); };
+#endif
         auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
-        if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
+        if (!creation.desktop) {
+            reportStartupFailure(creation.failure);
+#ifdef _WIN32
+            if (smoke && creation.failure &&
+                (creation.failure->kind == isoduo::StartupFailureKind::renderBackendUnavailable ||
+                 creation.failure->kind == isoduo::StartupFailureKind::contextVersion)) return 77;
+#endif
+            return 1;
+        }
 #ifndef _WIN32
         // Declared after creation, so it stops the prompt before the Desktop is destroyed on every exit path,
         // including an exception from run(): the prompt's worker must not post to a destroyed Desktop.
@@ -175,6 +194,12 @@ int main(int argc, char** argv) {
 #endif
         auto caps = creation.desktop->capabilities();
         demo.setRenderer(caps.version + u" — " + caps.renderer);
+#ifdef _WIN32
+        if (smoke) {
+            // run() shows and updates the window before it dispatches posted work.
+            if (!creation.desktop->post([&] { creation.desktop->close(); })) return 1;
+        }
+#endif
         auto result=creation.desktop->run();
 #ifdef _WIN32
         if (noticeTimer) KillTimer(nullptr, noticeTimer);

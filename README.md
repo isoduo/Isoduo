@@ -62,6 +62,14 @@ for the same XID. On Wayland the prompt opens unparented: an external prompt
 process cannot reliably be made a child of another client's surface. This is a
 known platform limit.
 
+When opening an X11 input method, Isoduo preserves an application's configured
+`LC_CTYPE`. If it is still `"C"`, Isoduo temporarily selects the session locale
+under a lock shared by X11 hosts and restores `"C"` before releasing the lock.
+Other application threads can observe this change. Applications that use
+locale-sensitive operations on other threads should call `setlocale(LC_CTYPE, "")`
+at startup, before creating threads or desktops. If the input method cannot
+open, the X11 window continues without it.
+
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the
 optional `Gtk/EnableAnimations` setting through Xfconf. When the preference is
@@ -314,9 +322,37 @@ ui.semantics().perform({"about.note"}, isoduo::Verb::setWritingMode, isoduo::Wri
 
 ## Desktop support
 
+A `Ui` can have one host at a time. While a `Desktop` owns it, another
+`Desktop::create` or `runDesktop` returns `Status::busy`. A failed creation
+releases the `Ui` immediately, so the application can retry with different settings.
+After `run()` returns or an unrun desktop is destroyed, a new desktop can host the
+same controls with their values, focus and page selection preserved.
+
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
-The native host targets Windows and OpenGL 3.3 and exposes a UI Automation provider. MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+The Windows, Wayland and X11 hosts support OpenGL 3.3 (default) and Vulkan 1.3. The Windows host exposes a UI Automation provider.
+The edit form and settings demo accept `--render-backend opengl|vulkan`. Vulkan requires a system loader,
+dynamic rendering, synchronization2, and a device that can present an RGBA8 or BGRA8 UNORM swapchain to the window.
+Verify Vulkan presentation on Windows, GNOME Wayland and Xfce/X11. Resize and cover the window, minimize
+and restore it, and confirm that drawing resumes at the new size. Run the renderer recovery tests on each
+host to check device loss, rebuilding and the first recovered frame. The demos open one desktop.
+[The multi-desktop test](tests/multi_desktop.cpp) exercises concurrent desktops and recovery in one
+while the other continues rendering.
+
+Applications can handle an unavailable Vulkan backend explicitly and retry with the same Ui:
+
+```cpp
+isoduo::DesktopConfig config;
+config.renderBackend = isoduo::RenderBackendKind::vulkan;
+auto result = isoduo::Desktop::create(ui, appearance, page, scroll, config);
+if (result.failure && (result.failure->kind == isoduo::StartupFailureKind::renderBackendUnavailable ||
+                       result.failure->kind == isoduo::StartupFailureKind::contextVersion)) {
+    config.renderBackend = isoduo::RenderBackendKind::openGL;
+    result = isoduo::Desktop::create(ui, appearance, page, scroll, config);
+}
+```
+
+MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
 ## Motion (animations)
 

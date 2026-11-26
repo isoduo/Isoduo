@@ -1205,6 +1205,46 @@ void detail::UiState::refreshTooltips() {
     }
     if (changed && invalidate_) invalidate_();
 }
+detail::HostClaim::HostClaim(Ui& ui) : state_(&access(ui)) {
+    if (state_->hostClaimed_.test_and_set(std::memory_order_acquire)) state_ = nullptr;
+}
+void detail::HostClaim::release() {
+    if (!state_) return;
+    state_->resetHost();
+    state_->hostClaimed_.clear(std::memory_order_release);
+    state_ = nullptr;
+}
+void detail::UiState::resetHost() {
+    onInvalidate({});
+    onRelayout({});
+    onSemanticPending({});
+    onReveal({});
+    onPresentation({});
+    beforeFocus({});
+    setClipboard(nullptr);
+    setAsyncClipboard(nullptr);
+    bindAppearance(nullptr);
+    animationTime({});
+    tooltipClock({});
+    setClickClock({});
+    rendererFailed(false);
+    compositionCancel();
+    cancelInput();
+    clickRun_ = {};
+    clickSettings_ = {};
+    textScrolls_.clear();
+    visibility_.clear();
+    hasFrameVisibility_ = false;
+    tooltipNow_ = 0;
+    tooltipHover_.clear();
+    tooltipPausedAt_.reset();
+    keyboardCues_ = false;
+    hoverClear();
+    windowActive(false);
+    setWindowHidden(false);
+    setSystemKeyboardCues(false);
+    setSystemAnimations(true);
+}
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
     if (failed) {

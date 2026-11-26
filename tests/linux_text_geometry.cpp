@@ -185,7 +185,7 @@ void compare(Fixture& fixture, Desktop& desktop) {
         check(placement && test::caretMatchesHit(frame, fixture.rich, 0, 2), "The styled caret round-trips through hit testing");
         check(result && test::hasPaintRole(result, "rich", detail::PaintRole::caret) &&
               test::hasPaintRole(result, "rich", detail::PaintRole::selection),
-              "The CPU and OpenGL images agree on the selection and caret");
+              "The CPU and GPU images agree on the selection and caret");
         check(test::matchesVerticalLabel(result, frame.find(fixture.vertical)), "The vertical glyphs render in the same area");
         const auto caret = placement->caretRect(2);
         const auto region = std::find_if(result.regions.begin(), result.regions.end(), [](const auto& item) {
@@ -257,13 +257,16 @@ void compareAtlas(Fixture& fixture, Desktop& desktop) {
 
 int main(int argc, char** argv) {
     try {
-        check(argc == 3 || argc == 5, "Usage: isoduo_linux_text_geometry <wayland|x11> <input|compare|atlas> [widthDip heightDip]");
+        const bool vulkan = argc > 1 && std::string_view(argv[argc-1]) == "--vulkan";
+        if (vulkan) --argc;
+        check(argc == 3 || argc == 5, "Usage: isoduo_linux_text_geometry <wayland|x11> <input|compare|atlas> [widthDip heightDip] [--vulkan]");
         const std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Choose a native backend");
-        check(mode == "input" || mode == "compare" || mode == "atlas", "Choose real input or CPU/OpenGL comparison");
+        check(mode == "input" || mode == "compare" || mode == "atlas", "Choose real input or CPU/GPU comparison");
         Fixture fixture;
         if (argc == 5 && mode == "input") fixture.enableScaleTrial();
         DesktopConfig config;
+        if (vulkan) config.renderBackend = RenderBackendKind::vulkan;
         config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
         config.title = u"Isoduo text geometry";
         config.width = argc == 5 ? std::stoi(argv[3]) : width;
