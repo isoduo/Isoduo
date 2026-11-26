@@ -74,6 +74,8 @@ Result detail::UiState::validateMenuItems(const std::vector<MenuItem>& items) co
 Query<ContextMenuHandle> detail::UiState::attachMenu(const Id& target, std::vector<MenuItem> items, MenuMode mode) {
     OperationScope operation(this);
     if (auto r = configurationAccess(target); !r) return {r.status, r.message, std::nullopt};
+    if (!componentType(find(target)->kind).acceptsContextMenu())
+        return {Status::notSupported, u"Component does not support context menus", {}};
     if (menuAttachments_.contains(target)) return {Status::invalidValue, u"Component already has a context menu", std::nullopt};
     if (auto r = validateMenuItems(items); !r) return {r.status, r.message, std::nullopt};
     menuAttachments_.emplace(target, MenuAttachment{mode, std::move(items)});

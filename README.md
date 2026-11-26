@@ -490,7 +490,7 @@ Then in your project:
 ```cmake
 cmake_minimum_required(VERSION 3.25)
 project(StationApp LANGUAGES CXX)
-find_package(Isoduo 0.4 REQUIRED COMPONENTS Desktop AppearanceWeb)
+find_package(Isoduo 0.5 REQUIRED COMPONENTS Desktop AppearanceWeb)
 add_executable(station_app main.cpp)
 target_link_libraries(station_app PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 install(FILES "${Isoduo_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)

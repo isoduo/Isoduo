@@ -254,6 +254,39 @@ void emitFailureIfNeeded(const std::filesystem::path& folder, const std::string&
 }
 
 // The same recorded frame must be executed by the graphics backend offscreen.
+int drawingAreaPixels() {
+    Ui ui;
+    auto area = ui.addDrawingArea({.id = "swatch", .label = u"Swatch"}).value.value();
+    area.onDraw([](const DrawingEnvironment& env) {
+        auto result = env.fillRect({0.5f, 0.5f, 16.f, 10.f}, {200, 0, 0});
+        if (!result) return result;
+        return env.fillRect({8.5f, 2.5f, 4.f, 4.f}, {0, 0, 200}, 128);
+    });
+    ScrollState scroll;
+    DesktopHost host(ui, webAppearance(), [&] { return layout::drawingArea(area, 12); },
+                     scroll, Fixture::options(), false, true);
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        auto result = host.compareGpu(64, 48, scale);
+        if (!result) return 1;
+        const auto& image = result.reference;
+        // Compare the complete CPU image to the DIP scene as well as both backends to the CPU image.
+        const auto edge = [scale](float dip) { return std::lround(dip * scale); };
+        auto background = webAppearance().palette().background;
+        for (int y = 0; y < image.height; ++y) {
+            for (int x = 0; x < image.width; ++x) {
+                Color expected = background;
+                if (x >= edge(.5f) && x < edge(16.5f) && y >= edge(.5f) && y < edge(10.5f))
+                    expected = {200, 0, 0};
+                if (x >= edge(8.5f) && x < edge(12.5f) && y >= edge(2.5f) && y < edge(6.5f))
+                    expected = {99, 0, 100};
+                auto i = (y * image.width + x) * 4;
+                if (Color{image.pixels[i], image.pixels[i+1], image.pixels[i+2]} != expected) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 void gpuDrawListSmoke(const Appearance& appearance, Report& report, const std::filesystem::path& evidence) {
     Fixture f(appearance, true);
     f.host.forceScale(1.f);
@@ -2978,6 +3011,7 @@ void x04NormalMatrix(const Appearance& appearance, Report& report) {
                     if (semantic->kind == ComponentKind::checkbox && semantic->checked == true) compared = compared && accent;
                     if (semantic->kind == ComponentKind::radioGroup && !semantic->value.empty()) compared = compared && accent;
                     if ((semantic->kind == ComponentKind::list || semantic->kind == ComponentKind::tabs) && !semantic->value.empty()) compared = compared && selected;
+                    if (semantic->kind == ComponentKind::drawingArea) compared = compared && accent;
                     if (semantic->kind == ComponentKind::progress && item && semantic->numericValue)
                         compared = compared && item->progressFill.w == item->progressTrack.w * *semantic->numericValue / 100 &&
                             (*semantic->numericValue == 0 || accent);
@@ -3010,6 +3044,10 @@ void x04DisabledMatrix(const Appearance& appearance, Report& report) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + initial->id;
+                if (auto image = std::get_if<DrawingAreaHandle>(&entry.handle)) {
+                    report.check("X04-disabled-member", x04::disabledDrawingArea(*image), sample);
+                    continue;
+                }
                 if (initial->kind == ComponentKind::tabs) {
                     auto tabs = std::get<TabsHandle>(entry.handle);
                     bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus());
@@ -4619,7 +4657,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(reportCrash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
+        bool drawingPixels = false, dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
         bool multilineOnly = false, verticalOnly = false, richtextOnly = false, wordSelectOnly = false, justifyOnly = false;
                 bool uiaIme = false, demoComparison = false, demoPerf = false, demoPerfFont = false;
         bool ime = false, clipboardOnly = false, dpi = false, x02Only = false, x04Only = false, x04ClippedOnly = false, x04ExecutingOnly = false, x04DisabledOnly = false, x04SelectionOnly = false, hoverOnly = false, focusOnly = false;
@@ -4639,6 +4677,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--paint-delay-ms" && i+1<argc) perfDelay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perfDuration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            else if (arg == L"--drawing-area") drawingPixels = true;
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01Only = true;
             else if (arg == L"--demo-compare") demoComparison = true;
             else if (arg == L"--trial-screenshots") trial = true;
@@ -4771,6 +4810,7 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
+        if (drawingPixels) return drawingAreaPixels();
         if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
             throw std::runtime_error("Invalid verification options");

@@ -189,6 +189,11 @@ Node scroll(Node child, ScrollState& state, int height) {
 Node scrollText(LabelHandle label, ScrollState& state, int height) {
     Node n = scroll(component(label), state, height); n.scrollableText = true; return n;
 }
+Node drawingArea(DrawingAreaHandle area, int height) {
+    Node node = component(area);
+    node.drawingHeight = std::max(0, height);
+    return node;
+}
 Node verticalText(LabelHandle label, int height) {
     if (height < 0) throw std::invalid_argument("Vertical text height must not be negative");
     Node n = component(label); n.verticalHeight = height; return n;
@@ -235,6 +240,9 @@ const Placement* Frame::find(const RadioGroupHandle& handle) const {
     return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const SliderHandle& handle) const {
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const DrawingAreaHandle& handle) const {
     return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ProgressHandle& handle) const {
@@ -496,6 +504,7 @@ struct Arranger {
         p.component = node.component;
         p.textSize = pixels(node.textSize);
         detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
+        context.drawingHeight = d(node.drawingHeight);
         context.verticalHeight = d(node.verticalHeight);
         detail::componentType(control->kind).arrange(context);
         return p;
@@ -959,6 +968,8 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     for (const auto& item : a.frame.overlays) if (!item.tooltip && !item.menu) record(item);
     a.ui.frameVisibility(std::move(visibility));
     a.ui.semanticFrame(a.frame);
+    for (const auto& item : a.frame.items) a.ui.arrangeDrawing(item, appearance, scale);
+    for (const auto& item : a.frame.overlays) if (item.dialog) a.ui.arrangeDrawing(item, appearance, scale);
     a.ui.hoverRefresh(a.frame);  // scrolling and reflow move components under a resting pointer
     a.ui.sliderTrackRefresh(a.frame);  // a held slider thumb is drawn on this frame's track
     return std::move(a.frame);

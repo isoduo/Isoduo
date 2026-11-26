@@ -4,7 +4,7 @@
 
 namespace isoduo {
 struct NodeRef { std::string id; std::optional<OptionValue> item = {}; bool operator==(const NodeRef&) const = default; };
-enum class Role { textField, button, label, checkbox, radioGroup, radioOption, slider, dropdown, dropdownOption, list, listItem, tabs, tabItem, progress, dialog, tooltip, menu, menuItem, menuSeparator };
+enum class Role { textField, button, label, checkbox, radioGroup, radioOption, slider, dropdown, dropdownOption, list, listItem, tabs, tabItem, progress, dialog, tooltip, menu, menuItem, menuSeparator, drawingArea };
 // The text units a semantic query can ask for: what a double click selects and what a triple click selects.
 enum class TextUnitKind { word, paragraph };
 // Rich text fields: apply a style change to the range [begin, end) of the committed text (Verb::setStyle).

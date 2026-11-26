@@ -71,6 +71,7 @@ public:
         isoduo::DialogHandle dialog;
         isoduo::ButtonHandle progressZero, progressHalf, progressFull, progressBelow, progressAbove;
         isoduo::LabelHandle v03Title, progressSource, dialogTitle, dialogBody, dialogResult;
+        isoduo::DrawingAreaHandle swatch;
         isoduo::ProgressHandle progress;
         isoduo::TooltipHandle progressTip;
         isoduo::CheckboxHandle notices, compact;

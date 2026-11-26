@@ -15,7 +15,7 @@
 
 namespace isoduo {
 // Labels may span lines and describe another component; an overflowing scrollText label is focusable.
-enum class ComponentKind { textField, button, label, checkbox, radioGroup, slider, dropdown, list, tabs, progress, navigationList };
+enum class ComponentKind { textField, button, label, checkbox, radioGroup, slider, dropdown, list, tabs, progress, navigationList, drawingArea };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class LabelKind { plain, name, description, error };
 enum class Status { ok, notFound, disabled, readOnly, blockedByModal, busy, invalidValue, wrongThread, failed, notSupported, emptyHistory, hidden, rendererFailed };
@@ -562,6 +562,63 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
+struct DipRect {
+    float x = 0, y = 0, w = 0, h = 0;
+    bool operator==(const DipRect&) const = default;
+};
+struct DipSize {
+    float w = 0, h = 0;
+    bool operator==(const DipSize&) const = default;
+};
+enum class DrawingCommandKind { fillRect };
+struct DrawingCommand {
+    DrawingCommandKind kind;
+    DipRect rect;
+    Color color;
+    unsigned char opacity = 255;
+    bool operator==(const DrawingCommand&) const = default;
+};
+enum class DrawingStatus { none, drawn, failed };
+struct DrawingContent {
+    DrawingStatus status = DrawingStatus::none;
+    bool pending = false;
+    DipSize size;
+    std::vector<DrawingCommand> commands;
+    bool operator==(const DrawingContent&) const = default;
+};
+class DrawingEnvironment {
+public:
+    DipSize size() const { return size_; }
+    float scale() const { return scale_; }
+    const Palette& palette() const { return palette_; }
+    const ThemeVariant& variant() const { return variant_; }
+    bool enabled() const { return enabled_; }
+    Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
+private:
+    friend class detail::UiState;
+    DrawingEnvironment() = default;
+    DipSize size_;
+    float scale_ = 1;
+    Palette palette_;
+    ThemeVariant variant_;
+    bool enabled_ = true;
+    std::weak_ptr<std::vector<DrawingCommand>> commands_;
+};
+class DrawingAreaHandle : private detail::HandleBase<DrawingAreaHandle> {
+public:
+    DrawingAreaHandle() = default;
+    Result remove() const;
+    Result enable(bool enabled) const;
+    Result requestRedraw() const;
+    Result onDraw(std::function<Result(const DrawingEnvironment&)> draw) const;
+    Query<DrawingContent> content() const;
+    Query<ComponentSnapshot> describe() const;
+    bool operator==(const DrawingAreaHandle&) const = default;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    using HandleBase::HandleBase;
+};
 // A display-only percentage. Source values are never written; display is clamped to 0-100.
 class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
@@ -605,7 +662,7 @@ private:
 class ListHandle;
 class TabsHandle;
 class NavigationListHandle;
-using ComponentHandle = std::variant<std::monostate, TextFieldHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
+using ComponentHandle = std::variant<std::monostate, TextFieldHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle, DrawingAreaHandle>;
 class TabsHandle : private detail::HandleBase<TabsHandle> {
 public:
     TabsHandle() = default;
@@ -773,6 +830,7 @@ public:
     Query<RadioGroupHandle> addRadioGroup(ComponentConfig config, std::vector<OptionItem> items);
     // Invalid ranges and steps return invalidValue without creating a component.
     Query<SliderHandle> addSlider(ComponentConfig config, SliderRange range);
+    Query<DrawingAreaHandle> addDrawingArea(ComponentConfig config);
     Query<ProgressHandle> addProgress(ComponentConfig config);
     Query<DropdownHandle> addDropdown(ComponentConfig config, std::vector<OptionItem> items);
     Query<TabsHandle> addTabs(ComponentConfig config, std::vector<TabPage> pages);
