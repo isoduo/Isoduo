@@ -99,8 +99,11 @@ TextRun styledRun(TextMeasure& measure, std::u16string_view text, int pixels, co
 }
 }
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    return detail::wrapStyled(measure, text, pixels, width, {});
+}
+std::vector<std::u16string> detail::wrapStyled(TextMeasure& measure, std::u16string_view text, int pixels, int width, FontStyle style) {
     std::vector<std::u16string> lines;
-    for (auto [begin, end] : wrapRanges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels); }))
+    for (auto [begin, end] : wrapRanges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels, style); }))
         lines.emplace_back(text.substr(begin, end - begin));
     return lines;
 }
@@ -969,8 +972,8 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     for (const auto& item : a.frame.overlays) if (!item.tooltip && !item.menu) record(item);
     a.ui.frameVisibility(std::move(visibility));
     a.ui.semanticFrame(a.frame);
-    for (const auto& item : a.frame.items) a.ui.arrangeDrawing(item, appearance, scale);
-    for (const auto& item : a.frame.overlays) if (item.dialog) a.ui.arrangeDrawing(item, appearance, scale);
+    for (const auto& item : a.frame.items) a.ui.arrangeDrawing(item, appearance, scale, measure);
+    for (const auto& item : a.frame.overlays) if (item.dialog) a.ui.arrangeDrawing(item, appearance, scale, measure);
     a.ui.hoverRefresh(a.frame);  // scrolling and reflow move components under a resting pointer
     a.ui.sliderTrackRefresh(a.frame);  // a held slider thumb is drawn on this frame's track
     return std::move(a.frame);

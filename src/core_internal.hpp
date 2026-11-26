@@ -18,6 +18,13 @@
 namespace isoduo {
 using Id = std::string;
 namespace detail {
+struct DrawingTextLayout {
+    std::vector<std::u16string> lines;
+    int pixels = 0, lineHeight = 0;
+    double x = 0, y = 0;
+    float width = 0;
+};
+std::vector<std::u16string> wrapStyled(TextMeasure&, std::u16string_view, int pixels, int width, FontStyle);
 struct TextHit { unsigned offset = 0; bool upstream = false; };
 // A component as the framework keeps it: the application's configuration plus its component type (#96). The public
 // ComponentConfig names no type; Ui::add_x sets it, and a component created as data (the UiState constructor,
@@ -85,7 +92,7 @@ public:
     SliderHandle addSlider(Component control, SliderRange range);
     DrawingAreaHandle addDrawingArea(Component control);
     void invalidateDrawings();
-    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale);
+    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure);
     ProgressHandle addProgress(Component control);
     DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
     TabsHandle addTabs(Component control, std::vector<TabPage> pages);
@@ -646,6 +653,7 @@ private:
         std::function<Result(const DrawingEnvironment&)> draw;
         DrawingContent content;
         std::vector<Rect> pixels;
+        std::map<std::size_t, DrawingTextLayout> text;
         float scale = 0;
         bool diagnosedHeight = false;
     };

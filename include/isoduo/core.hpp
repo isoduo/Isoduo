@@ -571,12 +571,21 @@ struct DipSize {
     float w = 0, h = 0;
     bool operator==(const DipSize&) const = default;
 };
-enum class DrawingCommandKind { fillRect };
+class TextMeasure;
+enum class DrawingTextSize { body, caption };
+struct DrawingTextStyle {
+    DrawingTextSize size = DrawingTextSize::body;
+    bool bold = false, italic = false;
+    bool operator==(const DrawingTextStyle&) const = default;
+};
+enum class DrawingCommandKind { fillRect, drawText };
 struct DrawingCommand {
     DrawingCommandKind kind;
     DipRect rect;
     Color color;
     unsigned char opacity = 255;
+    std::u16string text{};
+    DrawingTextStyle style{};
     bool operator==(const DrawingCommand&) const = default;
 };
 enum class DrawingStatus { none, drawn, failed };
@@ -594,11 +603,18 @@ public:
     const Palette& palette() const { return palette_; }
     const ThemeVariant& variant() const { return variant_; }
     bool enabled() const { return enabled_; }
+    Query<DipSize> measureText(std::u16string_view text, DrawingTextStyle style = {},
+                               std::optional<float> wrapWidth = {}) const;
+    Result drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style,
+                    Color color, unsigned char opacity = 255) const;
     Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
 private:
     friend class detail::UiState;
     DrawingEnvironment() = default;
+    Result access() const;
     std::thread::id owner_ = std::this_thread::get_id();
+    TextMeasure* measure_ = nullptr;
+    int textSize_ = 0;
     DipSize size_;
     float scale_ = 1;
     Palette palette_;
@@ -857,7 +873,7 @@ public:
     Query<bool> contextMenuOpen() const;
     Query<MenuSnapshot> contextMenu() const;  // hidden while no menu is open
     Result invokeMenuItem(std::string id);
-    void onChange(std::function<void()> callback);
+    Result onChange(std::function<void()> callback);
     Result setPresentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
     // True while any on-screen transition (for example a slider thumb sliding to its new value) is
@@ -878,7 +894,7 @@ public:
     // Tells the Ui which appearance it is shown with so SemanticTree::effectivePalette can report
     // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
     // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
-    void bindAppearance(const Appearance* appearance);
+    Result bindAppearance(const Appearance* appearance);
     // The component (and item, for lists, tabs, radio groups, navigation lists and dropdowns) the
     // pointer hovers, from the real mouse or from simulateHover. The value is empty when nothing is
     // hovered, or the target was disabled or is blocked by a modal dialog. It answers the same with
