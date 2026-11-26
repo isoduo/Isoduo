@@ -242,7 +242,8 @@ struct CommandFrame {
         if (timestamps)
             d.api.CmdWriteTimestamp2(cmd, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, timestamps, 1);
         d.checked("vkEndCommandBuffer", d.api.EndCommandBuffer(cmd));
-        VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        // Gate the starting timestamp on image availability as well as the draw.
+        VkPipelineStageFlags stage = timestamps ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         info.commandBufferCount = 1;
         info.pCommandBuffers = &cmd;

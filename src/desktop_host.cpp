@@ -425,6 +425,7 @@ void DesktopHost::paint() {
         if(firstPresentMs_<0) firstPresentMs_=age;
         double cpu=std::chrono::duration<double,std::milli>(beforeGpu-start).count();
         double sampleAge=age-std::chrono::duration<double,std::milli>(presented-start).count();
+        gpuSamples_.add(sampleAge,gpu);
         perfSamples_.add(sampleAge,cpu+submission+gpu);
         perfBreakdown_.add(sampleAge,std::chrono::duration<double,std::milli>(afterLayout-start).count(),
             std::chrono::duration<double,std::milli>(afterList-afterLayout).count(),submission+gpu);
