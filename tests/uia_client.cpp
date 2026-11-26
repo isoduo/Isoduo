@@ -307,19 +307,19 @@ bool drawingImageCase(const wchar_t* host, const wchar_t* appearance) {
     bool ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation))) &&
         SUCCEEDED(automation->ElementFromHandle(search.window, &root));
     if (ok) {
-        auto hidden = findId(automation, root, L"form.title.pages.v03.swatch");
+        auto hidden = findId(automation, root, L"form.title.pages.v03.chart");
         if (hidden) { hidden->Release(); ok = false; }
         SendMessageW(search.window, WM_APP + 80, 2, 0);
     }
     if (ok) {
-        auto image = findId(automation, root, L"form.title.pages.v03.swatch");
+        auto image = findId(automation, root, L"form.title.pages.v03.chart");
         CONTROLTYPEID imageType{};
         BSTR imageName = nullptr, imageDescription = nullptr;
         BOOL imageFocusable = TRUE, imageEnabled = TRUE;
         RECT imageBounds{};
         bool imageOk = image && SUCCEEDED(image->get_CurrentControlType(&imageType)) && imageType == UIA_ImageControlTypeId &&
-            SUCCEEDED(image->get_CurrentName(&imageName)) && imageName && std::wstring(imageName) == L"Accent color" &&
-            SUCCEEDED(image->get_CurrentHelpText(&imageDescription)) && imageDescription && std::wstring(imageDescription) == L"Current accent" &&
+            SUCCEEDED(image->get_CurrentName(&imageName)) && imageName && std::wstring(imageName) == L"Progress chart" &&
+            SUCCEEDED(image->get_CurrentHelpText(&imageDescription)) && imageDescription && std::wstring(imageDescription) == L"Completed and remaining progress" &&
             SUCCEEDED(image->get_CurrentIsKeyboardFocusable(&imageFocusable)) && !imageFocusable &&
             SUCCEEDED(image->get_CurrentBoundingRectangle(&imageBounds)) && !IsRectEmpty(&imageBounds);
         SendMessageW(search.window, WM_APP + 80, 75, 0);

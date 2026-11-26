@@ -695,6 +695,15 @@ void drawListInitial(const Appearance& appearance, Report& report, std::ofstream
 }
 
 
+bool containsColor(const Image& canvas, Rect bounds, Color color) {
+    auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
+    for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
+        auto i = (static_cast<std::size_t>(y) * canvas.width + x) * 4;
+        if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
+    }
+    return false;
+}
+
 int demoCompare(const std::filesystem::path& evidence) {
     std::filesystem::create_directories(evidence);
     std::ofstream out(evidence / "demo-render-compare.tsv");
@@ -761,6 +770,33 @@ int demoCompare(const std::filesystem::path& evidence) {
         for(const auto& region:result.regions) out << region.owner << ':' << region.role << ':' << (region.passed?"PASS":"FAIL") << ',';
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
+    }
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        Fixture f(*appearance, true);
+        auto& h = f.form.handles;
+        f.host.hiddenSource([] { return false; });
+        if (!h.tabs.activate({"v03"}) || !h.pauseIndicator.invoke()) return 1;
+        for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+            auto settings = f.form.ui.presentation();
+            settings.variant = variant;
+            if (!f.form.ui.setPresentation(settings)) return 1;
+            for (float scale : {1.f, 1.25f, 1.5f}) {
+                auto frame = f.host.layout(960, 720, scale, f.form.scroll, {});
+                auto result = f.host.compareGpu(960, 720, scale);
+                bool pass = bool(result);
+                for (auto area : {h.chart, h.indicator}) {
+                    auto placement = frame.find(area);
+                    pass = pass && placement && intersect(placement->bounds, placement->clip) == placement->bounds &&
+                        area.content()->status == DrawingStatus::drawn &&
+                        containsColor(result.reference, placement->bounds, appearance->palette(variant).accent) &&
+                        compareImages(result.reference, result.actual, {placement->bounds}).regionsOk;
+                }
+                auto key = std::string("showcase-") + std::string(appearance->name()) + "-" + variant.name + "-" + std::to_string(scale);
+                emitFailureIfNeeded(evidence, key, result, pass);
+                std::cout << key << (pass ? " PASS" : " FAIL") << '\n';
+                if (!pass) ++failures;
+            }
+        }
     }
     return out && rows==72 && !failures ? 0 : 1;
 }
@@ -3547,14 +3583,7 @@ void x04NameConflictMatrix(const Appearance& appearance, Report& report) {
 // Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
 // Colored pixels demonstrate a cue was drawn; they are not OCR of the semantic string.
 void semanticRasterSamples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
-    auto containsColor = [](const Image& canvas, Rect bounds, Color color) {
-        auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
-        for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
-            auto i = (static_cast<std::size_t>(y) * canvas.width + x) * 4;
-            if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
-        }
-        return false;
-    };
+
     {
         Fixture dark(appearance, true); auto& d = dark.form.handles;
         auto settings = dark.form.ui.presentation(); settings.variant = ThemeVariant::dark();

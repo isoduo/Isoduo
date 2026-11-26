@@ -2174,6 +2174,48 @@ void x04TooltipAtEachSizeAndScale() {
     }
 }
 
+void showcaseDrawingMotion() {
+    using namespace std::chrono_literals;
+    editForm::Form form(ids, true);
+    test::FakeMeasure measure;
+    auto& h = form.handles;
+    check(bool(h.tabs.activate({"v03"})), "open drawing showcase");
+    auto place = [&] { arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    auto tick = [&](auto elapsed) { check(bool(form.ui.simulateFrame(elapsed)), "deliver showcase frame"); place(); };
+    auto completedWidth = [&] {
+        auto content = h.chart.content();
+        for (const auto& command : content->commands)
+            if (command.kind == DrawingCommandKind::fillRect) return command.rect.w;
+        return -1.f;
+    };
+    place();
+    auto initial = completedWidth();
+    check(initial > 0, "initial completed bar is half full");
+    check(bool(h.progressFull.invoke()), "change chart data");
+    tick(0ms);
+    tick(150ms);
+    check(std::abs(completedWidth() - initial * 1.5f) < 0.01f, "chart reaches midpoint at 150 ms");
+    tick(150ms);
+    check(std::abs(completedWidth() - initial * 2) < 0.01f, "chart reaches endpoint at 300 ms");
+    auto dots = h.indicator.content()->commands;
+    tick(100ms);
+    check(dots != h.indicator.content()->commands, "indicator rotates");
+    check(bool(h.pauseIndicator.invoke()) && !*form.ui.animating(), "pause withdraws frame requests");
+    dots = h.indicator.content()->commands;
+    tick(500ms);
+    check(dots == h.indicator.content()->commands, "paused indicator stays still");
+    check(bool(h.pauseIndicator.invoke()) && *form.ui.animating(), "resume requests frames");
+    for (auto preference : {MotionPreference::reduce, MotionPreference::off}) {
+        check(bool(form.ui.simulateSystemMotion(preference)), "change motion preference");
+        check(bool(h.progressZero.invoke()), "empty chart");
+        place();
+        check(completedWidth() == 0 && !*form.ui.animating(), "empty endpoint without frames");
+        check(bool(h.progressFull.invoke()), "fill chart");
+        place();
+        check(std::abs(completedWidth() - initial * 2) < 0.01f && !*form.ui.animating(), "full endpoint without frames");
+    }
+}
+
 void x04NormalInventoryAtEachSizeAndScale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         editForm::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
@@ -2197,7 +2239,10 @@ void x04NormalInventoryAtEachSizeAndScale() {
                 detail::componentType(item->kind).paint(paint);
                 if (semantic->kind == ComponentKind::drawingArea) {
                     auto accent = appearance->palette(form.ui.presentation().variant).accent;
-                    check(paint.colors == std::vector<Color>{accent}, "showcase image draws the accent swatch");
+                    check(std::find(paint.colors.begin(), paint.colors.end(), accent) != paint.colors.end(),
+                          "showcase drawing uses the current accent");
+                    if (semantic->id == form.handles.chart.describe()->id)
+                        check(paint.drawn.find(u"Complete") != std::u16string::npos, "chart labels the completed bar");
                 }
                 for (const auto& expected : x04::normalText(*semantic))
                     check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
@@ -3007,6 +3052,7 @@ void presentationCombinationMatrix() {
 
 int main() {
     const test::Case cases[] = {
+        {"Showcase drawing motion", showcaseDrawingMotion},
         {"MX01 presentation matrix", presentationCombinationMatrix},
         {"PS01 presentation settings", presentationSettingsAreAtomic},
         {"PS size scaling", presentationSizeScalesExplicitAndDefaultText},
