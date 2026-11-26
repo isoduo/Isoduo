@@ -88,7 +88,7 @@ jobs:
       - name: Register lavapipe ICD
         run: cmake -DKIND=Drivers "-DMANIFEST=build/Debug/lvp_icd.x86_64.json" -P cmake/RegisterVulkanManifest.cmake
       - name: Test Debug diagnostics
-        run: ctest --preset windows-clang-cl-debug --timeout 900 -R '^(renderer_failure|diagnostic_queue|diagnostics)$'
+        run: ctest --preset windows-clang-cl-debug --timeout 900 -R '^(renderer_failure|renderer_fault_sweep_opengl|diagnostic_queue|diagnostics)$'
       - name: Test Vulkan with Khronos validation
         run: ctest --preset windows-clang-cl-debug --timeout 900 --no-tests=error -L vulkan -E '^vulkan_no_driver$'
       - name: Upload render evidence and CTest logs

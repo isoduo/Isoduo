@@ -180,7 +180,7 @@ class SurfaceRenderer final : public Renderer {
                                                                         : d_.createPipeline(d_.selected.format.format);
         if (hooks) getCaps_ = [real=getCaps_,hooks](auto physical, auto surface, auto* caps) {
             auto result = real(physical, surface, caps);
-            if (result == VK_SUCCESS && hooks->zeroSurfaceExtent) caps->currentExtent = {};
+            if (result == VK_SUCCESS && std::exchange(hooks->zeroSurfaceExtentOnce, false)) caps->currentExtent = {};
             return result;
         };
         if (initial.width && initial.height)
@@ -226,6 +226,7 @@ class SurfaceRenderer final : public Renderer {
     double draw(const DrawList &list, int width, int height, bool measure, bool offscreen, double *submission,
                 std::chrono::steady_clock::time_point *displayed) override {
         ++frameNumber_;
+        if (d_.hooks) d_.hooks->vulkanDrawAttempts = frameNumber_;
         auto start = std::chrono::steady_clock::now();
         if (offscreen) {
             CommandFrame frame(d_, measure);
