@@ -89,7 +89,10 @@ int run(char** argv, bool vulkan) {
             std::cout << "frame\t" << monotonicMs(sample.presented) << '\t'
                       << sample.geometry.width << '\t' << sample.geometry.height << '\t'
                       << sample.geometry.scale << '\t' << sample.layoutMs << '\t'
-                      << sample.listMs << '\t' << sample.submissionMs << '\t' << sample.gpuMs
+                      << sample.listMs << '\t' << sample.submissionMs << '\t';
+            if (std::isfinite(sample.gpuMs)) std::cout << sample.gpuMs;
+            else std::cout << "unknown";
+            std::cout
                       << '\t' << sample.delayMs << '\t' << sample.focused << '\n';
             std::cout << "arrangements\t" << std::exchange(arrangements, 0) << '\n';
             if (list) {
@@ -123,8 +126,15 @@ int summarize(char** argv) {
     PerfBreakdown stages;
     double age, layout, list, submit, gpu, injected;
     while (std::cin >> age) {
-        if (!(std::cin >> layout >> list >> submit >> gpu >> injected))
+        std::string timestamp;
+        if (!(std::cin >> layout >> list >> submit >> timestamp >> injected))
             throw std::invalid_argument("Incomplete performance sample");
+        if (timestamp == "unknown") gpu = std::numeric_limits<double>::quiet_NaN();
+        else {
+            const auto result = std::from_chars(timestamp.data(), timestamp.data()+timestamp.size(), gpu);
+            if (result.ec != std::errc{} || result.ptr != timestamp.data()+timestamp.size() || !std::isfinite(gpu))
+                throw std::invalid_argument("Invalid GPU sample");
+        }
         samples.add(age, layout + list + submit + gpu + injected);
         stages.add(age, layout, list, submit + gpu);
     }
@@ -146,10 +156,15 @@ int summarize(char** argv) {
     for (bool warm : {true, false}) {
         const auto sample = samples.summary(warm);
         const auto phase = stages.summary(warm);
-        std::cout << (warm ? "warmup" : "steady") << '\t' << sample.count << '\t' << sample.p50
-                  << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
-        for (auto* stage : {&phase.layout, &phase.list, &phase.gpu})
-            std::cout << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+        std::cout << (warm ? "warmup" : "steady") << '\t' << sample.count;
+        if (std::isfinite(sample.maximum))
+            std::cout << '\t' << sample.p50 << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
+        else std::cout << "\tunknown\tunknown\tunknown\tunknown\tunknown";
+        for (auto* stage : {&phase.layout, &phase.list, &phase.gpu}) {
+            if (std::isfinite(stage->maximum))
+                std::cout << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+            else std::cout << "\tunknown\tunknown\tunknown\tunknown";
+        }
         std::cout << '\n';
     }
     return 0;
