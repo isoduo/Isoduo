@@ -9,6 +9,20 @@
 #include <vector>
 
 namespace isoduo::detail {
+MotionPreference gnomeMotion(GVariant* enabled, GVariant* reduced) {
+    if (enabled && g_variant_is_of_type(enabled, G_VARIANT_TYPE_BOOLEAN) && !g_variant_get_boolean(enabled))
+        return MotionPreference::off;
+    if (reduced && g_variant_is_of_type(reduced, G_VARIANT_TYPE_STRING) &&
+        std::string_view(g_variant_get_string(reduced, nullptr)) == "reduce") return MotionPreference::reduce;
+    return MotionPreference::noPreference;
+}
+MotionPreference xfceMotion(GVariant* enabled) {
+    if (enabled && ((g_variant_is_of_type(enabled, G_VARIANT_TYPE_BOOLEAN) && !g_variant_get_boolean(enabled)) ||
+                    (g_variant_is_of_type(enabled, G_VARIANT_TYPE_INT32) && g_variant_get_int32(enabled) == 0)))
+        return MotionPreference::off;
+    return MotionPreference::noPreference;
+}
+
 namespace {
 using Variant = std::unique_ptr<GVariant, decltype(&g_variant_unref)>;
 using Settings = std::unique_ptr<GSettings, decltype(&g_object_unref)>;
@@ -36,36 +50,27 @@ Variant gnomeSetting(const char* schema, const char* key) {
     auto settings = gnomeSettings(schema, key);
     return {settings ? g_settings_get_value(settings.get(), key) : nullptr, g_variant_unref};
 }
-std::optional<bool> gnomeAnimations() {
+MotionPreference readGnomeMotion() {
     auto enabled = gnomeSetting(gnomeInterface, gnomeAnimationsKey);
     auto reduced = gnomeSetting(gnomeAccessibility, gnomeReducedMotion);
-    if (reduced && g_variant_is_of_type(reduced.get(), G_VARIANT_TYPE_STRING) &&
-        std::string_view(g_variant_get_string(reduced.get(), nullptr)) == "reduce") return false;
-    if (enabled && g_variant_is_of_type(enabled.get(), G_VARIANT_TYPE_BOOLEAN))
-        return g_variant_get_boolean(enabled.get()) != FALSE;
-    return {};
+    return gnomeMotion(enabled.get(), reduced.get());
 }
 
 Bus xfceBus() {
     if (!std::getenv("DBUS_SESSION_BUS_ADDRESS") && !std::getenv("XDG_RUNTIME_DIR")) return {nullptr, g_object_unref};
     return {g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr), g_object_unref};
 }
-std::optional<bool> xfceAnimations() {
+MotionPreference readXfceMotion() {
     auto bus = xfceBus();
-    if (!bus) return {};
+    if (!bus) return MotionPreference::noPreference;
     Variant reply(g_dbus_connection_call_sync(bus.get(), xfconfService, xfconfPath,
         xfconfService, "GetProperty", g_variant_new("(ss)", xfceChannel, xfceAnimationsKey),
         G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 250, nullptr, nullptr), g_variant_unref);
-    if (!reply) return {};
+    if (!reply) return MotionPreference::noPreference;
     GVariant* property = nullptr;
     g_variant_get(reply.get(), "(v)", &property);
     Variant value(property, g_variant_unref);
-    if (g_variant_is_of_type(value.get(), G_VARIANT_TYPE_BOOLEAN)) return g_variant_get_boolean(value.get()) != FALSE;
-    if (g_variant_is_of_type(value.get(), G_VARIANT_TYPE_INT32)) {
-        auto integer = g_variant_get_int32(value.get());
-        if (integer == 0 || integer == 1) return integer == 1;
-    }
-    return {};
+    return xfceMotion(value.get());
 }
 
 bool desktopIs(std::string_view desktop, std::string_view name) {
@@ -84,8 +89,8 @@ LinuxDesktopPreferences readLinuxDesktopPreferences() {
     const auto desktop = std::getenv("XDG_CURRENT_DESKTOP");
     if (!desktop) return {};
     // GNOME and Xfce do not publish an always-show-widget-focus preference.
-    if (desktopIs(desktop, "GNOME")) return {gnomeAnimations(), {}};
-    if (desktopIs(desktop, "XFCE")) return {xfceAnimations(), {}};
+    if (desktopIs(desktop, "GNOME")) return {readGnomeMotion(), {}};
+    if (desktopIs(desktop, "XFCE")) return {readXfceMotion(), {}};
     return {};
 }
 

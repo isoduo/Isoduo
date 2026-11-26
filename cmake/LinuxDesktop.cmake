@@ -62,7 +62,7 @@ if(ISODUO_BUILD_TESTS)
   add_executable(isoduo_linux_preferences_tests tests/linux_preferences.cpp)
   isoduo_target(isoduo_linux_preferences_tests)
   target_include_directories(isoduo_linux_preferences_tests PRIVATE src)
-  target_link_libraries(isoduo_linux_preferences_tests PRIVATE Isoduo::Desktop)
+  target_link_libraries(isoduo_linux_preferences_tests PRIVATE Isoduo::Desktop PkgConfig::ISODUO_LINUX_DESKTOP)
   add_test(NAME linux_preferences COMMAND isoduo_linux_preferences_tests)
 
   add_executable(isoduo_linux_desktop_startup_tests tests/linux_desktop_startup.cpp)

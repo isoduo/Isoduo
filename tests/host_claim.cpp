@@ -46,7 +46,8 @@ static void inputAndWindowStateEndWithHost() {
     state.pointerDown("button");
     state.keyDown({Key::space});
     state.frameVisibility({{"button", false}});
-    state.setSystemAnimations(false);
+    check(ui.simulateSystemMotion(MotionPreference::reduce).status == Status::notSupported, "Attached Ui uses host motion preferences");
+    state.setSystemMotion(MotionPreference::off);
     state.setWindowHidden(true);
     first.release();
 
