@@ -21,6 +21,19 @@ class SurfaceRenderer final : public Renderer {
     std::unique_ptr<Swapchain> chain;
     bool dirty = true;
     VkPipeline pipeline{};
+    int frameNumber = 0;
+    void installHooks() {
+        if (!d.hooks) return;
+        auto submit = d.api.QueueSubmit;
+        d.api.QueueSubmit = [this, submit](auto queue, auto count, auto infos, auto fence) {
+            auto &fault = d.hooks->submitResultAtFrame;
+            if (frameNumber && fault.first == frameNumber) {
+                fault.first = 0;
+                return static_cast<VkResult>(fault.second);
+            }
+            return submit(queue, count, infos, fence);
+        };
+    }
     void presentationResult(const char *call, VkResult result, bool rebuilding = false) {
         if (result == VK_SUCCESS)
             return;
@@ -94,6 +107,7 @@ class SurfaceRenderer final : public Renderer {
                                                                         : d.createPipeline(d.selected.format.format);
         if (initial.width && initial.height)
             rebuild(initial);
+        installHooks();
         d.running = true;
     }
     ~SurfaceRenderer() override { d.api.DeviceWaitIdle(d.device); }
@@ -105,6 +119,7 @@ class SurfaceRenderer final : public Renderer {
     Image readBack(const DrawList &list, int width, int height) override { return readPixels(d, list, width, height); }
     double draw(const DrawList &list, int width, int height, bool measure, bool offscreen, double *submission,
                 std::chrono::steady_clock::time_point *displayed) override {
+        ++frameNumber;
         auto start = std::chrono::steady_clock::now();
         if (offscreen) {
             CommandFrame frame(d, measure);

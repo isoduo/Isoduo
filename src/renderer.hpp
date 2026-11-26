@@ -18,6 +18,7 @@ struct RendererTestHooks {
     bool hideDynamicRendering = false, hideSynchronization2 = false;
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
+    std::pair<int, int> submitResultAtFrame{};
     int lastAcquire=0, lastPresent=0, retryTimers=0;
     unsigned compositeAlphaMask=0;
     double presentMs=0;

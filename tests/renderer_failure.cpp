@@ -331,6 +331,13 @@ int main(int argc, char** argv) {
                 result.failure->kind == StartupFailureKind::contextVersion)) return 77;
             check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::shader &&
                 !result.failure->message.empty(), "RF01 Vulkan shader module failure");
+            hooks.submitResultAtFrame = {1, -4};
+            DesktopHost host(form.ui,webAppearance(),[&]{return form.page();},form.scroll,config,false,false,&hooks);
+            host.paint();
+            auto failure = host.rendererFailure();
+            check(failure && failure->kind == RendererFailureKind::deviceReset &&
+                  failure->nativeCode == 0xfffffffc && failure->message == u"vkQueueSubmit: VK_ERROR_DEVICE_LOST",
+                  "VK05 submit reports the native device reset");
             return 0;
         }
         if (argc == 2 && std::string(argv[1]) == "--ps10") {
