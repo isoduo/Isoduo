@@ -52,7 +52,7 @@ void writeImage(const std::filesystem::path& path, const Image& image) {
 
 class Report {
 public:
-    explicit Report(std::filesystem::path folder) : folder_(std::move(folder)) {
+    Report(std::filesystem::path folder, RenderBackendKind backend) : folder_(std::move(folder)), backend_(backend) {
         std::filesystem::create_directories(folder_);
         out_.open(folder_ / "comparison.tsv");
         check(bool(out_), "Open comparison report");
@@ -78,7 +78,7 @@ public:
         check(bool(out_), "Write comparison report");
         const auto stem = folder_ / name;
         writeImage(stem.string() + "-cpu.pam", reference);
-        if (!pass || name == "layered-draw-list") writeImage(stem.string() + "-gl.pam", result.actual);
+        if (!pass || name == "layered-draw-list") writeImage(stem.string() + (backend_ == RenderBackendKind::vulkan ? "-vulkan.pam" : "-gl.pam"), result.actual);
         if (!pass) {
             auto diff = reference;
             for (std::size_t i = 0; i < diff.pixels.size(); i += 4) {
@@ -113,6 +113,7 @@ public:
     int failures() const { return failures_; }
 private:
     std::filesystem::path folder_;
+    RenderBackendKind backend_;
     std::ofstream out_;
     int failures_ = 0;
 };
@@ -164,6 +165,7 @@ void showcase(DesktopConfig config, const Appearance& appearance, std::string_vi
             setup = handles.name.focus() && handles.name.setValue(u"");
             handles.apply.invoke();
             setup &= handles.name.describe()->invalid;
+            reveal = ids.name;
             break;
         case 4:
             setup = bool(handles.region.focus());
@@ -313,7 +315,8 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
         const auto name = std::string("SD-") + char('a' + scene) + "-" + std::string(appearanceName) +
             (dark ? "-dark" : "-light") + (scale == 1.f ? "-100" : "-150");
         const auto result = report.compare(name, width, height, scale, setup, [&] {
-            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
+            const auto reveal = scene == 0 || scene == 2 ? state.focused() : Id{};
+            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 0, reveal);
         });
         if (!result) continue;
         auto has = [&](std::string_view owner, PaintRole role) { return test::hasPaintRole(*result, owner, role); };
@@ -351,7 +354,7 @@ bool verifyPresentationMatrix(DesktopConfig config, const Appearance& appearance
                     if (!result) {
                         const auto stem = (folder / (std::string(appearanceName) + "-" + std::to_string(comparisons))).string();
                         writeImage(stem + "-cpu.pam", result.reference);
-                        writeImage(stem + "-gl.pam", result.actual);
+                        writeImage(stem + (desktop->capabilities().renderBackend == RenderBackendKind::vulkan ? "-vulkan.pam" : "-gl.pam"), result.actual);
                         std::cerr << stem << " " << width << 'x' << height << " scale=" << scale
                                   << " different_pixels=" << result.comparison.differentPixels
                                   << " failed_role_mask=" << result.failedRoles << '\n';
@@ -360,7 +363,7 @@ bool verifyPresentationMatrix(DesktopConfig config, const Appearance& appearance
                 }};
         }, [](bool ok, const std::string& message) { check(ok, message.c_str()); });
         std::cout << "PASS " << appearanceName << " presentation matrix, " << comparisons
-                  << " offscreen comparisons in a native EGL context\n";
+                  << " offscreen comparisons on the native desktop renderer\n";
         return true;
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << appearanceName << " presentation matrix: " << error.what() << '\n';
@@ -418,11 +421,15 @@ void diagnostics(DesktopConfig config, bool receiver) {
 
 int main(int argc, char** argv) {
     try {
-        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|presentation-matrix|diagnostics|no-receiver> [evidence]");
+        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|presentation-matrix|diagnostics|no-receiver> [evidence [vulkan]]");
         std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Specify a native desktop backend");
         DesktopConfig config;
         config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
+        if (argc == 5 && std::string_view(argv[4]) == "vulkan") {
+            config.renderBackend = RenderBackendKind::vulkan;
+            --argc;
+        }
         config.title = u"Isoduo render verification";
         config.width = width;
         config.height = height;
@@ -439,7 +446,7 @@ int main(int argc, char** argv) {
             return web && material ? 0 : 1;
         }
         check(argc == 4 && (mode == "draw-list" || mode == "compare"), "Specify comparison mode and evidence folder");
-        Report report(argv[3]);
+        Report report(argv[3], config.renderBackend);
         config.debugContext = DebugContext::off;
         if (mode == "draw-list") drawList(config, report);
         else for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
