@@ -11,6 +11,7 @@
 #endif
 #include <vulkan/vulkan.h>
 #include <cstring>
+#include <atomic>
 #ifdef ISODUO_TEST_VULKAN_VALIDATION
 #include <cstdio>
 #include <cstdlib>
@@ -107,15 +108,13 @@ template<class T, class Query> std::vector<T> enumerate(const char* name, Query 
         return entries;
     }
 }
-#ifdef ISODUO_TEST_VULKAN_VALIDATION
-VKAPI_ATTR VkBool32 VKAPI_CALL failValidation(VkDebugUtilsMessageSeverityFlagBitsEXT,
-        VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
-    std::fprintf(stderr, "Vulkan validation error: %s\n", data->pMessage);
-    std::fflush(stderr);
-    std::_Exit(EXIT_FAILURE);
 }
-#endif
-struct Session {
+struct VulkanSession {
+    DebugContext debug = DebugContext::buildDefault;
+    std::function<void(RenderDiagnostic)> sink;
+    std::atomic<bool> testingScissorCount = false;
+    bool validationEnabled = false;
+    bool surfaceLost = false;
 #ifdef _WIN32
     HMODULE library = LoadLibraryExW(L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
 #else
@@ -124,10 +123,8 @@ struct Session {
     bool debugUtils = false;
     PFN_vkGetInstanceProcAddr lookup{};
     VkInstance instance{};
-#ifdef ISODUO_TEST_VULKAN_VALIDATION
     VkDebugUtilsMessengerEXT validationMessenger{};
     PFN_vkDestroyDebugUtilsMessengerEXT destroyMessenger{};
-#endif
     VkSurfaceKHR surface{};
     VkDevice device{};
     PFN_vkDestroyDevice destroyDevice{};
@@ -142,12 +139,10 @@ struct Session {
     PFN_vkDestroySurfaceKHR destroySurfaceKHR{};
     PFN_vkCreateDevice createDevice{};
     PFN_vkGetDeviceProcAddr getDeviceProcAddr{};
-    ~Session() {
+    ~VulkanSession() {
         if (device) destroyDevice(device, nullptr);
         if (surface) destroySurfaceKHR(instance, surface, nullptr);
-#ifdef ISODUO_TEST_VULKAN_VALIDATION
         if (validationMessenger) destroyMessenger(instance, validationMessenger, nullptr);
-#endif
         if (instance && destroyInstance) destroyInstance(instance, nullptr);
 #ifdef _WIN32
         if (library) FreeLibrary(library);
@@ -183,6 +178,33 @@ struct Session {
         getDeviceProcAddr = function<PFN_vkGetDeviceProcAddr>("vkGetDeviceProcAddr");
     }
 };
+namespace {
+using Session = VulkanSession;
+VKAPI_ATTR VkBool32 VKAPI_CALL diagnosticMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+        VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* data, void* user) {
+    auto& session = *static_cast<Session*>(user);
+    RenderDiagnostic event;
+    event.backend = u"Vulkan";
+    event.kind = type & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT ? DiagnosticKind::apiMisuse :
+                 type & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT ? DiagnosticKind::performance : DiagnosticKind::other;
+    event.severity = severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? DiagnosticSeverity::error :
+                     severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT ? DiagnosticSeverity::warning : DiagnosticSeverity::info;
+    event.nativeCode = data->messageIdNumber;
+    if (data->pMessage) event.nativeMessage = data->pMessage;
+    if (data->pMessageIdName) event.code = data->pMessageIdName;
+    event.backendDetail = event.code + " type=" + std::to_string(type);
+    if (data->cmdBufLabelCount && data->pCmdBufLabels[0].pLabelName) event.componentId=data->pCmdBufLabels[0].pLabelName;
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+    if (event.severity == DiagnosticSeverity::error && !(session.testingScissorCount &&
+        event.code == "VUID-vkCmdSetScissor-scissorCount-arraylength")) {
+        std::fprintf(stderr,"Vulkan validation error: %s\n",event.nativeMessage.c_str());
+        std::fflush(stderr);
+        std::_Exit(EXIT_FAILURE);
+    }
+#endif
+    if (session.sink) session.sink(std::move(event));
+    return VK_FALSE;
+}
 StartupFailure missing(std::string required, std::string actual = {}) {
     return {Kind::contextVersion, utf16FromUtf8(required), utf16FromUtf8(actual), utf16FromUtf8("Vulkan requires " + required)};
 }
@@ -205,7 +227,14 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     uint32_t version = VK_API_VERSION_1_0;
     if (getVersion) check("vkEnumerateInstanceVersion", getVersion(&version));
     if (version < VK_API_VERSION_1_3) throw StartupError{missing("Vulkan 1.3", versionString(version))};
-    auto query = s.function<PFN_vkEnumerateInstanceExtensionProperties>("vkEnumerateInstanceExtensionProperties");
+    std::function<std::remove_pointer_t<PFN_vkEnumerateInstanceExtensionProperties>> query = s.function<PFN_vkEnumerateInstanceExtensionProperties>("vkEnumerateInstanceExtensionProperties");
+    if (hooks && hooks->hideDebugUtils) query = [real=query](auto layer, auto count, auto out) {
+        auto result=real(layer,count,out);
+        if (out && result==VK_SUCCESS) *count=uint32_t(std::remove_if(out,out+*count,[](auto& entry) {
+            return std::string_view(entry.extensionName)==VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+        })-out);
+        return result;
+    };
     auto extensions = enumerate<VkExtensionProperties>("vkEnumerateInstanceExtensionProperties",
         [&](uint32_t* count, VkExtensionProperties* out){ return query(nullptr, count, out); });
     const char* required[] = {VK_KHR_SURFACE_EXTENSION_NAME, platformExtension(window)};
@@ -228,24 +257,49 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     if (s.debugUtils) enabled.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     info.enabledExtensionCount = static_cast<uint32_t>(enabled.size());
     info.ppEnabledExtensionNames = enabled.data();
-#ifdef ISODUO_TEST_VULKAN_VALIDATION
     const char* layer = "VK_LAYER_KHRONOS_validation";
-    info.enabledLayerCount = 1;
-    info.ppEnabledLayerNames = &layer;
-    VkDebugUtilsMessengerCreateInfoEXT validation{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-    validation.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    validation.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    validation.pfnUserCallback = failValidation;
-    info.pNext = &validation;
+    bool requested = s.debug == DebugContext::on;
+#ifndef NDEBUG
+    requested |= s.debug == DebugContext::buildDefault;
 #endif
+    if (requested) {
+        std::function<std::remove_pointer_t<PFN_vkEnumerateInstanceLayerProperties>> layers =
+            s.function<PFN_vkEnumerateInstanceLayerProperties>("vkEnumerateInstanceLayerProperties");
+        if (hooks && hooks->hideValidationLayer) layers = [](auto count, auto) { *count=0; return VK_SUCCESS; };
+        auto available=enumerate<VkLayerProperties>("vkEnumerateInstanceLayerProperties",layers);
+        s.validationEnabled=std::any_of(available.begin(),available.end(),[&](auto& entry){return std::string_view(entry.layerName)==layer;});
+        if (s.validationEnabled) {
+            info.enabledLayerCount=1;
+            info.ppEnabledLayerNames=&layer;
+        } else {
+#ifdef ISODUO_TEST_VULKAN_VALIDATION
+            if (!hooks || !hooks->hideValidationLayer) check("vkCreateInstance",VK_ERROR_LAYER_NOT_PRESENT);
+#endif
+            if (s.sink) {
+                RenderDiagnostic event;
+                event.backend=u"Vulkan";
+                event.severity=DiagnosticSeverity::info;
+                event.nativeMessage="VK_LAYER_KHRONOS_validation is unavailable";
+                s.sink(std::move(event));
+            }
+        }
+    }
+    VkDebugUtilsMessengerCreateInfoEXT validation{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    validation.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+    validation.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+    validation.pfnUserCallback = diagnosticMessage;
+    validation.pUserData = &s;
+    if (s.debugUtils) info.pNext = &validation;
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
     s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
-#ifdef ISODUO_TEST_VULKAN_VALIDATION
+    if (s.debugUtils) {
     s.destroyMessenger = s.function<PFN_vkDestroyDebugUtilsMessengerEXT>("vkDestroyDebugUtilsMessengerEXT");
     auto createMessenger = s.function<PFN_vkCreateDebugUtilsMessengerEXT>("vkCreateDebugUtilsMessengerEXT");
     check("vkCreateDebugUtilsMessengerEXT", createMessenger(s.instance, &validation, nullptr, &s.validationMessenger));
-#endif
+    }
     s.enumeratePhysicalDevices = s.function<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
     auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices",
         [&](uint32_t* n, VkPhysicalDevice* out){ return s.enumeratePhysicalDevices(s.instance, n, out); });
@@ -353,9 +407,26 @@ void createDevice(Session& s, const Selection& selected, RendererTestHooks* hook
 namespace {
 Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* hooks, bool surfaceNeeded) {
     if (hooks && hooks->hideVulkanLoader) unavailable("Vulkan loader unavailable");
-    session.load();
-    auto devices = createInstance(session, window, hooks, surfaceNeeded);
-    if (surfaceNeeded) createSurface(session, window, hooks);
+    std::vector<VkPhysicalDevice> devices;
+    if (session.instance) {
+        if (session.device) session.destroyDevice(std::exchange(session.device, {}), nullptr);
+        if (session.surfaceLost && session.surface)
+            session.destroySurfaceKHR(session.instance, std::exchange(session.surface, {}), nullptr);
+        session.surfaceLost = false;
+        devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices", [&](auto n, auto out) {
+            return session.enumeratePhysicalDevices(session.instance, n, out);
+        });
+        if (devices.empty()) unavailable("No Vulkan physical devices");
+        if (hooks && std::exchange(hooks->failRebuildOnce, false))
+            session.createDevice = [](VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*) {
+                return VK_ERROR_DEVICE_LOST;
+            };
+        else session.createDevice = session.function<PFN_vkCreateDevice>("vkCreateDevice");
+    } else {
+        session.load();
+        devices = createInstance(session, window, hooks, surfaceNeeded);
+    }
+    if (surfaceNeeded && !session.surface) createSurface(session, window, hooks);
     std::optional<StartupFailure> firstFailure;
     for (auto device : devices) {
         Selection selection{device};
@@ -383,15 +454,21 @@ Image renderVulkanOffscreen(const DrawList& list,int width,int height) {
     return readPixels(renderer,list,width,height);
 }
 #ifdef _WIN32
-std::unique_ptr<Renderer> createVulkanRenderer(HWND window,RendererTestHooks* hooks) {
+std::unique_ptr<Renderer> createVulkanRenderer(HWND window,RendererTestHooks* hooks, std::shared_ptr<VulkanSession>& retained, DebugContext debug, std::function<void(RenderDiagnostic)> sink) {
+    if (!retained) retained = std::make_shared<Session>();
+    retained->debug = debug;
+    retained->sink = std::move(sink);
     RECT client{};
     GetClientRect(window,&client);
-    return std::make_unique<SurfaceRenderer>(window,hooks,VkExtent2D{uint32_t(client.right),uint32_t(client.bottom)});
+    return std::make_unique<SurfaceRenderer>(window,hooks,VkExtent2D{uint32_t(client.right),uint32_t(client.bottom)}, retained);
 }
 #else
-std::unique_ptr<Renderer> createVulkanRenderer(VulkanWindow window, RendererTestHooks* hooks, int width, int height) {
+std::unique_ptr<Renderer> createVulkanRenderer(VulkanWindow window, RendererTestHooks* hooks, int width, int height, std::shared_ptr<VulkanSession>& retained, DebugContext debug, std::function<void(RenderDiagnostic)> sink) {
+    if (!retained) retained = std::make_shared<Session>();
+    retained->debug = debug;
+    retained->sink = std::move(sink);
     if (window.backend == DesktopBackendKind::wayland)
-        return std::make_unique<SurfaceRenderer>(window, hooks, VkExtent2D{uint32_t(width), uint32_t(height)},
+        return std::make_unique<SurfaceRenderer>(window, hooks, VkExtent2D{uint32_t(width), uint32_t(height)}, retained,
                                                  VK_PRESENT_MODE_MAILBOX_KHR);
     Session session;
     initialize(session, window, hooks, true);
