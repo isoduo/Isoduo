@@ -38,6 +38,24 @@ void defaultFrame(DesktopConfig config) {
 #endif
 }
 #ifdef _WIN32
+void missingLoader(DesktopConfig config) {
+    auto loader = LoadLibraryExW(L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (loader) {
+        FreeLibrary(loader);
+        check(false, "VK02 requires vulkan-1.dll to be absent from System32, but it loaded");
+    }
+    check(GetLastError() == ERROR_MOD_NOT_FOUND, "VK02 expected ERROR_MOD_NOT_FOUND");
+    Ui ui;
+    ScrollState scroll;
+    config.title = u"VK02 missing Vulkan loader";
+    config.renderBackend = RenderBackendKind::vulkan;
+    auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
+    check(result.status == Status::failed && !result.desktop && result.failure &&
+          result.failure->kind == StartupFailureKind::renderBackendUnavailable,
+          "VK02 expected renderBackendUnavailable");
+    check(!FindWindowW(nullptr, L"VK02 missing Vulkan loader"), "VK02 left a native window");
+}
+
 void presentation(DesktopConfig config) {
     Ui ui;
     ScrollState scroll;
@@ -184,6 +202,12 @@ int main(int argc, char** argv) {
             return 0;
         }
         DesktopConfig config;
+#ifdef _WIN32
+        if (argc == 2 && std::string_view(argv[1]) == "--no-loader") {
+            missingLoader(config);
+            return 0;
+        }
+#endif
         if (argc == 3) config.backend = std::string_view(argv[2]) == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
         if (argc >= 2 && std::string_view(argv[1]) == "--default-frame") {
             defaultFrame(config);
