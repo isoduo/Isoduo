@@ -323,6 +323,62 @@ static void contextLost(const Appearance& appearance) {
     check(bool(host.rebuildRenderer()) && !host.rendererFailed(), "TD01 rebuild after a lost context");
     host.paint(); check(!host.rendererFailed(), "TD01 recovered paint");
 }
+static void vulkanPresentation(DesktopConfig config) {
+    constexpr int outOfDate = -1000001004, suboptimal = 1000001003;
+    using Kind = RendererFailureKind;
+    struct Case {
+        const char* name;
+        int acquire = 0, present = 0, create = 0, submit = 0;
+        bool loseFence = false, deferred = false;
+        std::optional<Kind> failure;
+    };
+    const Case cases[] = {
+        {.name="late fence", .loseFence=true, .failure=Kind::deviceReset},
+        {.name="lost surface", .present=-1000000000, .failure=Kind::presentFailed},
+        {.name="out of date", .present=outOfDate},
+        {.name="suboptimal", .present=suboptimal},
+        {.name="not ready", .acquire=1, .deferred=true},
+        {.name="timeout", .acquire=2, .deferred=true},
+        {.name="rebuild out of memory", .present=outOfDate, .create=-2, .failure=Kind::resourceFailed},
+        {.name="rebuild lost device", .present=outOfDate, .create=-4, .failure=Kind::deviceReset},
+        {.name="rebuild other error", .present=outOfDate, .create=-3, .failure=Kind::presentFailed},
+        {.name="unknown submit error", .submit=-1234567, .failure=Kind::frameError},
+        {.name="out of date twice", .acquire=outOfDate, .present=outOfDate, .deferred=true}
+    };
+    for (const auto& row : cases) {
+        editForm::Form form;
+        RendererTestHooks fault;
+        DesktopHost host(form.ui, webAppearance(), [&]{return form.page();}, form.scroll, config, false, false, &fault);
+        host.paint();
+        if (row.acquire) fault.acquireResultAtFrame={2,row.acquire};
+        if (row.present) fault.presentResultAtFrame={2,row.present};
+        if (row.submit) fault.submitResultAtFrame={2,row.submit};
+        fault.swapchainCreateResultOnce=row.create;
+        fault.fenceResultAtFrame=row.loseFence ? 2 : 0;
+        auto before=host.frames();
+        host.paint();
+        if (row.failure) {
+            auto seen=host.rendererFailure();
+            check(seen && seen->kind==*row.failure,row.name);
+            if (row.submit) check(seen->message==u"vkQueueSubmit: VkResult(-1234567)","VK05 unknown code");
+            check(bool(host.rebuildRenderer()),"VK08 explicit rebuild");
+        } else {
+            check(!host.rendererFailed() && host.frames()==before+(row.deferred ? 0 : 1),row.name);
+        }
+        before=host.frames();
+        host.paint();
+        check(!host.rendererFailed() && host.frames()==before+1 && host.compareGpu(640,480,1.f).passed,row.name);
+        if (row.present==suboptimal) {
+            fault.presentResultAtFrame={4,suboptimal};
+            fault.swapchainCreateResultOnce=-2;
+            host.paint();
+            check(!host.rendererFailed(),"Suboptimal frame presents");
+            host.paint();
+            check(host.rendererFailed(),"Suboptimal schedules swapchain rebuild before next frame");
+        }
+        std::cout << "PASS " << row.name << '\n';
+    }
+}
 int main(int argc, char** argv) {
     try {
         if (argc == 3 && std::string_view(argv[1]) == "--render-backend" && std::string_view(argv[2]) == "vulkan") {
@@ -366,6 +422,9 @@ int main(int argc, char** argv) {
                 };
                 DesktopHost desktop(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,debug,false,false,&debugHooks);
                 desktop.paint(); desktop.pump(); events.clear();
+#ifdef ISODUO_REQUIRE_DG01
+                check(desktop.capabilities().debugMessages,"DG01 requires the active validation messenger");
+#endif
                 if (desktop.capabilities().debugMessages) {
                     debugHooks.misuseOnce=true;
                     desktop.paint(); desktop.pump();
@@ -391,40 +450,24 @@ int main(int argc, char** argv) {
                 hidden.paint();
                 check(!hidden.capabilities().debugMessages && hidden.rendererFailed(),"DG02 errors without debug utils");
             }
+            {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.submitResultAtFrame={1,-2};
+                check(bool(sample.handles.name.setValue(u"workstation A")),"RF04 prepare draft");
+                auto created=DesktopHost::createForTest(sample.ui,webAppearance(),[&]{return sample.page();},
+                                                        sample.scroll,config,&fault);
+                check(bool(created.desktop),"RF04 startup");
+                auto closed=created.desktop->run();
+                check(closed.status==Status::rendererFailed && closed.failure &&
+                      closed.failure->kind==RendererFailureKind::frameError &&
+                      sample.handles.name.draft().value==u"workstation A","RF04 unhandled failure preserves draft");
+            }
             failure(webAppearance(),false,true,false,true);
             failure(webAppearance(),false,true,true,true);
             failure(webAppearance(),true,true,false,true);
-            failure(webAppearance(),false,false,false,true);
-            for (int mode=0; mode<9; ++mode) {
-                editForm::Form sample;
-                RendererTestHooks fault;
-                DesktopHost recovery(sample.ui,webAppearance(),[&]{return sample.page();},sample.scroll,config,false,false,&fault);
-                recovery.paint();
-                if (mode==0) fault.fenceResultAtFrame=2;
-                if (mode==1) fault.presentResultAtFrame={2,-1000000000};
-                if (mode==2 || mode==6) fault.presentResultAtFrame={2,-1000001004};
-                if (mode==3) fault.presentResultAtFrame={2,1000001003};
-                if (mode==4 || mode==5) fault.acquireResultAtFrame={2,mode-3};
-                if (mode==6) fault.swapchainCreateResultOnce=-2;
-                if (mode==7) fault.submitResultAtFrame={2,-1234567};
-                if (mode==8) {
-                    fault.acquireResultAtFrame={2,-1000001004};
-                    fault.presentResultAtFrame={2,-1000001004};
-                }
-                auto before = recovery.frames();
-                recovery.paint();
-                std::cout << "WSI case " << mode << " frames " << before << " -> " << recovery.frames() << "\n";
-                if (mode<2 || mode==6 || mode==7) {
-                    auto failure=recovery.rendererFailure();
-                    auto expected=mode==0 ? RendererFailureKind::deviceReset : mode==1 ? RendererFailureKind::presentFailed :
-                        mode==6 ? RendererFailureKind::resourceFailed : RendererFailureKind::frameError;
-                    check(failure && failure->kind==expected,"native error classification");
-                    if (mode==7) check(failure->message==u"vkQueueSubmit: VkResult(-1234567)","VK05 unknown code");
-                    check(bool(recovery.rebuildRenderer()),"VK08 explicit rebuild");
-                } else check(!recovery.rendererFailed() && recovery.frames()==before+(mode<4),"VK07 retry or defer");
-                recovery.paint();
-                check(!recovery.rendererFailed() && recovery.compareGpu(640,480,1.f).passed,"Recovered image");
-            }
+
+            vulkanPresentation(config);
             hooks.submitResultAtFrame = {1, -4};
             DesktopHost host(form.ui,webAppearance(),[&]{return form.page();},form.scroll,config,false,false,&hooks);
             host.paint();

@@ -126,6 +126,14 @@ struct Drawing {
     PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
     PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
     Resources resources;
+    // Whole CPU pages uploaded while rebuilding; the next full-page copy can
+    // use these buffers even when a frame interleaves several atlas pages.
+    struct RestoredPage {
+        const AtlasPage* page;
+        std::vector<unsigned char> pixels;
+        Buffer staging;
+    };
+    std::vector<RestoredPage> restored;
     VkSampler sampler{};
     VkDescriptorSetLayout descriptors{};
     VkPipelineLayout layout{};
