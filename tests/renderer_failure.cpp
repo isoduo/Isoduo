@@ -407,6 +407,20 @@ int main(int argc, char** argv) {
             check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::shader &&
                 !result.failure->message.empty(), "RF01 Vulkan shader module failure");
             {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.hideBufferMemoryTypes = true;
+                auto options = config;
+                bool notified = false;
+                options.onRendererFailed = [&](Desktop& desktop, const RendererFailure& failure) {
+                    notified = desktop.rendererFailed() && failure.kind == RendererFailureKind::resourceFailed;
+                    desktop.close();
+                };
+                auto created = DesktopHost::createForTest(sample.ui, webAppearance(), [&]{return sample.page();}, sample.scroll, options, &fault);
+                check(created.desktop && created.desktop->run().status == Status::rendererFailed && notified,
+                      "Missing buffer memory type during paint notifies the application");
+            }
+            {
                 editForm::Form debugForm;
                 RendererTestHooks debugHooks;
                 debugHooks.hideValidationLayer=true;

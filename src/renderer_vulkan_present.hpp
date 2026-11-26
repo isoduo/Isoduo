@@ -29,6 +29,11 @@ class SurfaceRenderer final : public Renderer {
     }
     void installHooks() {
         if (!d.hooks) return;
+        if (d.hooks->hideBufferMemoryTypes)
+            d.api.GetBufferMemoryRequirements = [real=d.api.GetBufferMemoryRequirements](auto device, auto buffer, auto* req) {
+                real(device, buffer, req);
+                req->memoryTypeBits = 0;
+            };
         auto wait = d.api.WaitForFences;
         d.api.WaitForFences = [this, wait](auto... args) {
             auto result = wait(args...);

@@ -13,7 +13,7 @@ struct DeviceCommands {
     }
     PFN_vkCreateBuffer CreateBuffer = load<PFN_vkCreateBuffer>("vkCreateBuffer");
     PFN_vkDestroyBuffer DestroyBuffer = load<PFN_vkDestroyBuffer>("vkDestroyBuffer");
-    PFN_vkGetBufferMemoryRequirements GetBufferMemoryRequirements =
+    std::function<std::remove_pointer_t<PFN_vkGetBufferMemoryRequirements>> GetBufferMemoryRequirements =
         load<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
     PFN_vkAllocateMemory AllocateMemory = load<PFN_vkAllocateMemory>("vkAllocateMemory");
     PFN_vkFreeMemory FreeMemory = load<PFN_vkFreeMemory>("vkFreeMemory");
@@ -317,6 +317,8 @@ struct Drawing {
             info.memoryTypeIndex = i;
             return make<VkDeviceMemory>(owner, "vkAllocateMemory", api.AllocateMemory, info, api.FreeMemory);
         }
+        if (running)
+            throw FrameError{{RendererFailureKind::resourceFailed, 0, u"No compatible Vulkan memory type"}, {}};
         throw StartupError{{Kind::resource, {}, {}, u"No compatible Vulkan memory type"}};
     }
     Buffer buffer(Resources &owner, VkDeviceSize bytes, VkBufferUsageFlags usage) {
