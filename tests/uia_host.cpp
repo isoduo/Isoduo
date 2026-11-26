@@ -158,6 +158,8 @@ int wmain(int argc, wchar_t** argv) {
             auto button = form.ui.addButton({.id = id, .label = u"Status fixture"}).value.value();
             button.bind([i] { return isoduo::Result{static_cast<isoduo::Status>(i), {}}; });
         }
+        form.ui.addLabel({.id = "fixture.swatch.caption", .value = u"Current accent",
+                          .target = form.handles.swatch.describe()->id, .labelKind = isoduo::LabelKind::description});
         auto disabled = form.ui.addButton({.id = "fixture.real_disabled", .label = u"Disabled"}).value.value();
         disabled.enable(false);
         for (bool enabled : {false, true}) {
