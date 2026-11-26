@@ -21,7 +21,7 @@ jobs:
       - name: Build Vulkan startup test
         run: cmake --build --preset windows-clang-cl-release --target isoduo_vulkan_startup_tests
       - name: Test VK02 without the System32 loader
-        run: cmake -DTEST_PROGRAM=build/Release/isoduo_vulkan_startup_tests.exe -P cmake/TestVulkanNoLoader.cmake
+        run: cmake "-DTEST_PROGRAM=build/Release/isoduo_vulkan_startup_tests.exe" -P cmake/TestVulkanNoLoader.cmake
   render:
     runs-on: windows-latest
     timeout-minutes: 60
