@@ -198,7 +198,7 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
     }
 }
 std::unique_ptr<Renderer> DesktopHost::createRenderer() {
-    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession, debugContext_,
+    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession_, debugContext_,
         [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
     return std::make_unique<Renderer>(window_, hooks_, debugContext_,
         [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
@@ -248,7 +248,7 @@ Result DesktopHost::post(std::function<void()> work) {
     if (!postWindow_) return {Status::notFound, u"Desktop window is closed"};
     posted_.push_back(std::move(work));
     // One wake-up message serves everything queued before it is handled.
-    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage, 0, 0)) {
+    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage_, 0, 0)) {
         posted_.clear();
         return {Status::failed, u"Unable to wake the desktop thread"};
     }
@@ -289,7 +289,7 @@ void DesktopHost::release() {
     ImmAssociateContext(window_, inputContext_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
     renderer_.reset();
-    vulkanSession.reset();
+    vulkanSession_.reset();
     DestroyWindow(window_);
     window_ = nullptr;
     claim_.release();
@@ -617,7 +617,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
-    case postedWorkMessage:
+    case postedWorkMessage_:
         runPosted(); return 0;
     case WM_APP+45:
         ui_.semantics().dispatchEvents(); return 0;

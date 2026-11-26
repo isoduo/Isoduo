@@ -10,11 +10,13 @@ jobs:
         compiler: [clang, gcc]
     steps:
       - uses: actions/checkout@v4
-      - name: Install desktop development packages
-        run: cmake -DISODUO_INSTALL_RENDER_TEST_PACKAGES=ON -P cmake/ci/InstallLinuxDesktopPackages.cmake
+      - name: Install desktop, naming check and render test packages
+        run: cmake -DDESKTOP=ON -DRENDER_TESTS=ON -P cmake/ci/InstallLinuxPackages.cmake
       - name: Build and test core
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release-core
       - name: Build desktop
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release
+      - name: Check identifier names
+        run: ctest --test-dir build/linux-${{ matrix.compiler }}-release --no-tests=error --output-on-failure -R '^identifier_naming'
       - name: Run the native renderer fault sweep
         run: cmake "-DBUILD_DIR=build/linux-${{ matrix.compiler }}-release" -P cmake/ci/TestLinuxRendererFaultSweep.cmake
