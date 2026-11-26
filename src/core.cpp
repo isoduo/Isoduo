@@ -4,6 +4,7 @@
 #include "rich_text.hpp"
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #ifdef _WIN32
 #define NOMINMAX
@@ -351,11 +352,45 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
     for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
+namespace {
+bool validDrawingRect(DipRect rect) {
+    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) &&
+           std::isfinite(rect.h) && rect.w >= 0 && rect.h >= 0;
+}
+}
+Result DrawingEnvironment::clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const {
+    auto commands = commands_.lock();
+    if (!commands) return {Status::notFound, u"Drawing has finished"};
+    if (!validDrawingRect(rect) || !draw) return {Status::invalidValue, u"Invalid clip block"};
+
+    // All copies of the environment write to the active block, including a captured outer environment.
+    DrawingCommand block{DrawingCommandKind::clip, rect, {}};
+    commands->swap(block.children);
+    Result result;
+    try {
+        result = draw(*this);
+    } catch (...) {
+        commands->swap(block.children);
+        throw;
+    }
+    commands->swap(block.children);
+    commands->push_back(std::move(block));
+    return result;
+}
+
+Result DrawingEnvironment::roundedRect(DipRect rect, float radius, Color color, unsigned char opacity) const {
+    auto commands = commands_.lock();
+    if (!commands) return {Status::notFound, u"Drawing has finished"};
+    if (!validDrawingRect(rect) || !std::isfinite(radius) || radius < 0)
+        return {Status::invalidValue, u"Invalid rounded rectangle"};
+    commands->push_back({DrawingCommandKind::roundedRect, rect, color, opacity, radius});
+    return {};
+}
+
 Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
     auto commands = commands_.lock();
     if (!commands) return {Status::notFound, u"Drawing has finished"};
-    if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) ||
-        !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
+    if (!validDrawingRect(rect))
         return {Status::invalidValue, u"Drawing rectangles require finite coordinates and nonnegative dimensions"};
     commands->push_back({DrawingCommandKind::fillRect, rect, color, opacity});
     return {};
@@ -405,16 +440,28 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
         return;
     }
     field.content.commands = std::move(*commands);
-    // Clip the independently rounded edges before narrowing to the integer pixel grid.
-    auto edge = [scale](double value, int limit) {
-        return static_cast<int>(std::clamp(std::round(value * scale), 0.0, static_cast<double>(limit)));
+    // Preserve the original corners when a rounded shape extends beyond the clip.
+    // Leave integer headroom for edge differences and translation into client coordinates.
+    auto edge = [scale](double dip) {
+        constexpr double limit = std::numeric_limits<int>::max() / 4;
+        return static_cast<int>(std::clamp(std::round(dip * scale), -limit, limit));
     };
-    for (const auto& command : field.content.commands) {
-        auto r = command.rect;
-        int left = edge(r.x, bounds.w), top = edge(r.y, bounds.h);
-        int right = edge(double(r.x) + r.w, bounds.w), bottom = edge(double(r.y) + r.h, bounds.h);
-        field.pixels.push_back({left, top, right - left, bottom - top});
-    }
+    auto flatten = [&](auto& visit, const std::vector<DrawingCommand>& list, Rect clip) -> void {
+        for (const auto& command : list) {
+            auto r = command.rect;
+            int left = edge(r.x), top = edge(r.y);
+            Rect rect{left, top, edge(double(r.x) + r.w) - left, edge(double(r.y) + r.h) - top};
+            auto visibleRect = intersect(rect, clip);
+            if (visibleRect.w <= 0 || visibleRect.h <= 0) continue;
+            if (command.kind == DrawingCommandKind::clip) {
+                visit(visit, command.children, visibleRect);
+            } else {
+                int radius = std::min({edge(command.radius), rect.w / 2, rect.h / 2});
+                field.pixels.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});
+            }
+        }
+    };
+    flatten(flatten, field.content.commands, {0, 0, bounds.w, bounds.h});
 }
 
 Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)> draw) const {

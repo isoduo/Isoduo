@@ -570,12 +570,14 @@ struct DipSize {
     float w = 0, h = 0;
     bool operator==(const DipSize&) const = default;
 };
-enum class DrawingCommandKind { fillRect };
+enum class DrawingCommandKind { fillRect, roundedRect, clip };
 struct DrawingCommand {
     DrawingCommandKind kind;
     DipRect rect;
     Color color;
     unsigned char opacity = 255;
+    float radius = 0;
+    std::vector<DrawingCommand> children{};
     bool operator==(const DrawingCommand&) const = default;
 };
 enum class DrawingStatus { none, drawn, failed };
@@ -593,6 +595,8 @@ public:
     const Palette& palette() const { return palette_; }
     const ThemeVariant& variant() const { return variant_; }
     bool enabled() const { return enabled_; }
+    Result clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const;
+    Result roundedRect(DipRect rect, float radius, Color color, unsigned char opacity = 255) const;
     Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
 private:
     friend class detail::UiState;
