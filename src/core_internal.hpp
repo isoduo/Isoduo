@@ -193,9 +193,9 @@ public:
     const Component* find(std::string_view id) const;
     bool registerable(std::string_view id);
     void seedTestControls(std::vector<Component> controls);
-    std::map<Id, std::string, std::less<>> overlayIds_;
-    std::map<Id, Id, std::less<>> tooltipIds_;
-    std::vector<std::string> diagnostics_;
+    std::map<Id, std::string, std::less<>> overlayIds;
+    std::map<Id, Id, std::less<>> tooltipIds;
+    std::vector<std::string> diagnosticMessages;
     std::optional<ComponentSnapshot> describe(std::string_view id) const;
     std::vector<Verb> snapshotVerbs(const Component&, const ComponentSnapshot&, bool item = false) const;
     void semanticFrame(const Frame& frame);

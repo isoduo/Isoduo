@@ -20,5 +20,5 @@ int main(int argc, char** argv) {
     }
     if (argc != 2) return 1;
     std::filesystem::path dir(argv[1]);
-    return writeWords(dir / "draw.vert.spv", draw_vert) && writeWords(dir / "draw.frag.spv", draw_frag) ? 0 : 1;
+    return writeWords(dir / "draw.vert.spv", drawVert) && writeWords(dir / "draw.frag.spv", drawFrag) ? 0 : 1;
 }

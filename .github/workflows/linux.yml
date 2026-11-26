@@ -10,9 +10,11 @@ jobs:
         compiler: [clang, gcc]
     steps:
       - uses: actions/checkout@v4
-      - name: Install desktop development packages
-        run: cmake -P cmake/ci/InstallLinuxDesktopPackages.cmake
+      - name: Install desktop and naming check packages
+        run: cmake -DDESKTOP=ON -P cmake/ci/InstallLinuxPackages.cmake
       - name: Build and test core
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release-core
       - name: Build desktop
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release
+      - name: Check identifier names
+        run: ctest --test-dir build/linux-${{ matrix.compiler }}-release --no-tests=error --output-on-failure -R '^identifier_naming'

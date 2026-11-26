@@ -8,6 +8,7 @@
 
 namespace isoduo::detail {
 // UAX #50 Vertical_Orientation. Data: vertical_orientation_data.inc (see third-party notices).
+// NOLINTNEXTLINE(readability-identifier-naming) -- These are the Unicode property values.
 enum class VerticalOrientation { U, R, Tu, Tr };
 VerticalOrientation verticalOrientation(char32_t codePoint);
 
