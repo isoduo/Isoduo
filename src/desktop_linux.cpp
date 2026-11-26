@@ -118,6 +118,7 @@ struct Desktop::Impl {
     ShapedMeasure measure{text};
     std::optional<LinuxPreferenceMonitor> preferences;
     std::unique_ptr<LinuxWindow> window;
+    std::shared_ptr<VulkanSession> vulkanSession;
     std::unique_ptr<Renderer> renderer;
     RendererCapabilities caps;
     std::optional<RendererFailure> failure;
@@ -165,7 +166,8 @@ struct Desktop::Impl {
     void createRenderer() {
         if (config.renderBackend == RenderBackendKind::vulkan) {
             const auto size = window->geometry();
-            renderer = createVulkanRenderer(window->reference(), hooks, size.width, size.height);
+            renderer = createVulkanRenderer(window->reference(), hooks, size.width, size.height, vulkanSession, config.debugContext,
+                [this](RenderDiagnostic event){ diagnostics.push(std::move(event)); });
         } else {
             renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
                 [this](auto event) { diagnostics.push(std::move(event)); });
@@ -214,6 +216,7 @@ struct Desktop::Impl {
         }
         claim.release();
         renderer.reset();
+        vulkanSession.reset();
         window.reset();
         std::vector<std::function<void()>> discarded;
         {
@@ -762,6 +765,7 @@ Result Desktop::rebuildRenderer() {
     if (!host.window) return {Status::notFound, u"Desktop window is closed"};
     if (host.painting) return {Status::busy, u"Painting in progress"};
     if (!host.failure) return {Status::invalidValue, u"Renderer is not failed"};
+    if (host.hooks) ++host.hooks->rebuildAttempts;
     host.renderer.reset();
     try {
         host.createRenderer();

@@ -40,7 +40,7 @@ struct DeviceCommands {
     PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
     PFN_vkCmdClearAttachments CmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
     PFN_vkCmdSetViewport CmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
-    PFN_vkCmdSetScissor CmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
+    std::function<std::remove_pointer_t<PFN_vkCmdSetScissor>> CmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
     PFN_vkCmdBindPipeline CmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
     PFN_vkCmdPushConstants CmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
@@ -72,7 +72,7 @@ struct DeviceCommands {
     std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
     PFN_vkCreateFence CreateFence = load<PFN_vkCreateFence>("vkCreateFence");
     PFN_vkDestroyFence DestroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
-    PFN_vkWaitForFences WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
+    std::function<std::remove_pointer_t<PFN_vkWaitForFences>> WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
     PFN_vkDeviceWaitIdle DeviceWaitIdle = load<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle");
     PFN_vkQueueWaitIdle QueueWaitIdle = load<PFN_vkQueueWaitIdle>("vkQueueWaitIdle");
     PFN_vkCreateSemaphore CreateSemaphore = load<PFN_vkCreateSemaphore>("vkCreateSemaphore");
@@ -108,7 +108,8 @@ struct Texture {
     VkExtent2D extent;
 };
 struct Drawing {
-    Session session;
+    std::shared_ptr<Session> owner;
+    Session &session;
     Selection selected;
     DeviceCommands api;
     VkDevice device;
@@ -125,8 +126,8 @@ struct Drawing {
     VkDescriptorSetLayout descriptors{};
     VkPipelineLayout layout{};
     VkPipeline rgbaPipeline{};
-    Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks)
-        : selected(initialize(session, window, testHooks, surface)), api{session}, device(session.device),
+    Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks, std::shared_ptr<Session> retained = {})
+        : owner(retained ? std::move(retained) : std::make_shared<Session>()), session(*owner), selected(initialize(session, window, testHooks, surface)), api{session}, device(session.device),
           hooks(testHooks) {
         api.GetDeviceQueue(device, *selected.graphicsQueue, 0, &queue);
         session.function<PFN_vkGetPhysicalDeviceMemoryProperties>("vkGetPhysicalDeviceMemoryProperties")(
@@ -147,6 +148,8 @@ struct Drawing {
         caps.renderer = utf16FromUtf8(props.properties.deviceName);
         caps.renderBackend = RenderBackendKind::vulkan;
         caps.resetDetection = true;
+        caps.debugContext = session.validationEnabled;
+        caps.debugMessages = caps.debugContext && session.validationMessenger;
         VkSamplerCreateInfo sample{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         sample.addressModeU = sample.addressModeV = sample.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler = make<VkSampler>(resources, "vkCreateSampler", api.CreateSampler, sample, api.DestroySampler);
