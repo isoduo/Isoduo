@@ -324,7 +324,8 @@ void DesktopHost::scheduleTooltip() {
     }
 }
 void DesktopHost::refreshSystemAnimations() {
-    claim_.state().setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
+    const bool enabled = animationReader_ ? animationReader_() : systemClientAnimations();
+    claim_.state().setSystemMotion(enabled ? MotionPreference::noPreference : MotionPreference::off);
 }
 void DesktopHost::refreshVisibility() {
     const bool hidden = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || coveredByAnotherWindow(window_);

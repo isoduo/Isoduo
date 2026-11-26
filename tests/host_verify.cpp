@@ -2001,12 +2001,17 @@ void sliderAnimationNative(const Appearance& appearance, Report& report) {
         "started=" + std::to_string(started) + ", frames during=" + std::to_string(framesDuring) + ", ended=" + std::to_string(ended) + ", no frames after=" + std::to_string(idle));
     // The system preference, changed while running, lands the transition at once and holds for later changes.
     tapNow(VK_RIGHT); const bool running = animating();
+    std::vector<MotionPreference> preferences;
+    ui.onMotionPreferenceChange([&](MotionPreference preference) { preferences.push_back(preference); });
     systemOn = false; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
-    const bool landed = !animating();
+    const bool landed = !animating() && ui.motionPreference() == MotionPreference::off;
     tapNow(VK_RIGHT); const bool instant = !animating() && *f.form.handles.volume.draft() == 55;
     systemOn = true; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
     tapNow(VK_LEFT); const bool again = animating();
-    report.check("A75-system-setting", running && landed && instant && again,
+    ui.onMotionPreferenceChange({});
+    report.check("A75-system-setting", running && landed && instant && again &&
+        preferences == std::vector<MotionPreference>{MotionPreference::off, MotionPreference::noPreference} &&
+        ui.simulateSystemMotion(MotionPreference::reduce).status == Status::notSupported,
         "running=" + std::to_string(running) + ", landed on change=" + std::to_string(landed) + ", instant while off=" + std::to_string(instant) + ", plays after on=" + std::to_string(again));
     pumpFor(400);
     // #72 x #75: both tickets follow WM_SETTINGCHANGE through ONE case. The "everything changed" broadcast (wParam 0)
