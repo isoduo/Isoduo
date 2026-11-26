@@ -1,5 +1,10 @@
 name: Core
 on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.ref_type == 'tag' && format('tag-run-{0}', github.run_id)) || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core:
     runs-on: windows-latest
