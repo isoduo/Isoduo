@@ -506,7 +506,7 @@ void semanticBusyAndRemovedDrivers() {
 }
 
 void writeSemanticTsv(editForm::Form& form, const char* state) {
-    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
+    constexpr std::array roles = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip", "menu", "menu_item", "menu_separator", "drawing_area"};
     auto filename = std::string("semantic-") + (appearance == &webAppearance() ? "web-" : "material-") + state + ".tsv";
     std::ofstream out(filename, std::ios::binary);
     auto clean = [&](const std::u16string& text) { auto str = detail::utf8FromUtf16(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
@@ -516,7 +516,7 @@ void writeSemanticTsv(editForm::Form& form, const char* state) {
         check(bool(children), "Tree traversal succeeds while writing TSV");
         for (const auto& ref : *children) {
             auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
-            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
+            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles.at(static_cast<std::size_t>(n->role)) << '\t'
                 << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blockedByModal << '\t';
             if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
             else out << '-';
