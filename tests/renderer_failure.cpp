@@ -329,6 +329,10 @@ static void zeroExtentRecovery(DesktopConfig config) {
     hooks.submitResultAtFrame = {1, -4};
     bool recovered = false;
     config.onRendererFailed = [&](Desktop& desktop, const RendererFailure&) {
+        hooks.failImageCreationOnce = true;
+        auto failed = desktop.rebuildRenderer();
+        check(failed.status == Status::failed && failed.message == u"vkCreateImage: VK_ERROR_OUT_OF_DEVICE_MEMORY" &&
+              desktop.rendererFailed(), "Atlas image allocation must succeed before recovery completes");
         hooks.zeroSurfaceExtent = true;
         recovered = desktop.rebuildRenderer() && !desktop.rendererFailed();
         desktop.close();

@@ -29,6 +29,10 @@ class SurfaceRenderer final : public Renderer {
     }
     void installHooks() {
         if (!d.hooks) return;
+        d.api.CreateImage = [real=d.api.CreateImage, hooks=d.hooks](auto... args) {
+            if (std::exchange(hooks->failImageCreationOnce, false)) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            return real(args...);
+        };
         if (d.hooks->hideBufferMemoryTypes)
             d.api.GetBufferMemoryRequirements = [real=d.api.GetBufferMemoryRequirements](auto device, auto buffer, auto* req) {
                 real(device, buffer, req);
@@ -193,16 +197,29 @@ class SurfaceRenderer final : public Renderer {
     std::string name() const override { return utf8FromUtf16(d.caps.renderer) + " / " + utf8FromUtf16(d.caps.version); }
     void restoreAtlas(const std::vector<const AtlasPage*>& pages) override {
         // Allocation failures here are explicit rebuild failures, before the UI unfreezes.
+        if (pages.empty()) return;
         d.running=false;
+        CommandFrame frame(d);
         for (const auto* page : pages) {
             if (page->pixels.empty()) continue;
-            auto buffer=d.buffer(d.resources,page->pixels.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            auto buffer=d.buffer(frame.objects,page->pixels.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
             void* mapped{};
             d.checked("vkMapMemory",d.api.MapMemory(d.device,buffer.memory,0,page->pixels.size(),0,&mapped));
             std::memcpy(mapped,page->pixels.data(),page->pixels.size());
             d.api.UnmapMemory(d.device,buffer.memory);
-            d.restored.push_back({page,page->pixels,buffer});
+            VkExtent2D extent{uint32_t(page->width), uint32_t(page->height)};
+            auto image = d.texture(d.resources, extent, VK_FORMAT_R8_UNORM,
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            VkBufferImageCopy copy{};
+            copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            copy.imageExtent = {extent.width, extent.height, 1};
+            d.barrier(frame.cmd, image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            d.api.CmdCopyBufferToImage(frame.cmd, buffer.handle, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            d.barrier(frame.cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            d.restored.push_back({page, page->pixels, image.image});
         }
+        frame.submit();
+        frame.wait();
         d.running=true;
     }
     Image readBack(const DrawList &list, int width, int height) override { return readPixels(d, list, width, height); }
