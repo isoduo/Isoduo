@@ -102,6 +102,7 @@ public:
     unsigned char overlayAlpha() const { return overlayAlpha_; }
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;
+    // Set the active clip within the original placement clip.
     virtual void clip(Rect rect) = 0;
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;

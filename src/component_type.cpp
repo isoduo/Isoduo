@@ -1506,27 +1506,28 @@ public:
     }
     void paint(ComponentPaint& c) const override {
         const auto& field = UiState::Internals::drawings(c.ui).at(c.placement.id);
-        for (std::size_t i = 0; i < field.pixels.size(); ++i) {
-            auto rect = field.pixels[i];
+        auto translate = [&](Rect rect) {
             rect.x += c.placement.bounds.x;
             rect.y += c.placement.bounds.y;
-            const auto& command = field.content.commands[i];
-            if (command.kind == DrawingCommandKind::drawText) {
-                auto entry = field.text.find(i);
-                if (entry == field.text.end()) continue;
-                const auto& layout = entry->second;
+            return rect;
+        };
+        for (const auto& pixel : field.pixels) {
+            const auto rect = translate(pixel.clip);
+            c.clip(rect);
+            if (pixel.text) {
+                const auto& layout = *pixel.text;
                 const double x = c.placement.bounds.x + layout.x;
                 double y = c.placement.bounds.y + layout.y;
                 if (x + layout.width + layout.pixels < rect.x) continue;
                 for (const auto& line : layout.lines) {
                     if (y >= double(rect.y) + rect.h) break;
                     if (y + layout.lineHeight > rect.y)
-                        c.drawingTextLine(line, layout.pixels, {command.style.bold, command.style.italic},
-                            static_cast<int>(x), static_cast<int>(y), command.color, command.opacity, rect);
+                        c.drawingTextLine(line, layout.pixels, layout.face,
+                            static_cast<int>(x), static_cast<int>(y), pixel.color, pixel.opacity, rect);
                     y += layout.lineHeight;
                 }
             } else {
-                c.overlay(rect, 0, command.color, command.opacity);
+                c.overlay(translate(pixel.rect), pixel.radius, pixel.color, pixel.opacity);
             }
         }
     }

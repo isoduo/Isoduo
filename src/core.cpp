@@ -4,6 +4,7 @@
 #include "rich_text.hpp"
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #ifdef _WIN32
 #define NOMINMAX
@@ -365,10 +366,10 @@ detail::DrawingTextLayout layoutDrawingText(TextMeasure& measure, int bodySize, 
     layout.lineHeight = measure.lineHeight(layout.pixels);
     const int limit = std::numeric_limits<int>::max();
     const int wrapWidth = width ? static_cast<int>(std::min<double>(limit, std::round(double(*width) * scale))) : limit;
-    FontStyle face{style.bold, style.italic};
-    layout.lines = detail::wrapStyled(measure, text, layout.pixels, wrapWidth, face);
+    layout.face = {style.bold, style.italic};
+    layout.lines = detail::wrapStyled(measure, text, layout.pixels, wrapWidth, layout.face);
     for (const auto& line : layout.lines)
-        layout.width = std::max(layout.width, measure.measure(line, layout.pixels, face).width);
+        layout.width = std::max(layout.width, measure.measure(line, layout.pixels, layout.face).width);
     return layout;
 }
 }
@@ -388,9 +389,38 @@ Result DrawingEnvironment::drawText(std::u16string_view text, DipRect rect, Draw
     if (auto result = access(); !result) return result;
     auto commands = commands_.lock();
     if (!validMultiLine(text) || !validDrawingRect(rect)) return {Status::invalidValue, u"Invalid drawing text or rectangle"};
-    commands->push_back({DrawingCommandKind::drawText, rect, color, opacity, std::u16string(text), style});
+    commands->push_back({DrawingCommandKind::drawText, rect, color, opacity, 0, {}, std::u16string(text), style});
     return {};
 }
+Result DrawingEnvironment::clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validDrawingRect(rect) || !draw) return {Status::invalidValue, u"Invalid clip block"};
+
+    // All copies of the environment write to the active block, including a captured outer environment.
+    DrawingCommand block{DrawingCommandKind::clip, rect, {}};
+    commands->swap(block.children);
+    Result result;
+    try {
+        result = draw(*this);
+    } catch (...) {
+        commands->swap(block.children);
+        throw;
+    }
+    commands->swap(block.children);
+    commands->push_back(std::move(block));
+    return result;
+}
+
+Result DrawingEnvironment::roundedRect(DipRect rect, float radius, Color color, unsigned char opacity) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validDrawingRect(rect) || !std::isfinite(radius) || radius < 0)
+        return {Status::invalidValue, u"Invalid rounded rectangle"};
+    commands->push_back({DrawingCommandKind::roundedRect, rect, color, opacity, radius});
+    return {};
+}
+
 Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
     if (auto result = access(); !result) return result;
     auto commands = commands_.lock();
@@ -445,7 +475,6 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     field.scale = scale;
     field.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
     field.pixels.clear();
-    field.text.clear();
     if (!result) {
         auto message = placement.id + " drawing failed";
         diagnosticMessages.push_back(message);
@@ -454,22 +483,33 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     }
     field.content.commands = std::move(*commands);
     commands.reset();
-    // Clip the independently rounded edges before narrowing to the integer pixel grid.
-    auto edge = [scale](double value, int limit) {
-        return static_cast<int>(std::clamp(std::round(value * scale), 0.0, static_cast<double>(limit)));
+    // Preserve the original corners when a rounded shape extends beyond the clip.
+    // Leave integer headroom for edge differences and translation into client coordinates.
+    auto edge = [scale](double dip) {
+        constexpr double limit = std::numeric_limits<int>::max() / 4;
+        return static_cast<int>(std::clamp(std::round(dip * scale), -limit, limit));
     };
-    for (const auto& command : field.content.commands) {
-        auto r = command.rect;
-        int left = edge(r.x, bounds.w), top = edge(r.y, bounds.h);
-        int right = edge(double(r.x) + r.w, bounds.w), bottom = edge(double(r.y) + r.h, bounds.h);
-        if (command.kind == DrawingCommandKind::drawText && right > left && bottom > top) {
-            auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
-            layout.x = std::round(double(r.x) * scale);
-            layout.y = std::round(double(r.y) * scale);
-            field.text.emplace(field.pixels.size(), std::move(layout));
+    auto flatten = [&](auto& visit, const std::vector<DrawingCommand>& list, Rect clip) -> void {
+        for (const auto& command : list) {
+            auto r = command.rect;
+            int left = edge(r.x), top = edge(r.y);
+            Rect rect{left, top, edge(double(r.x) + r.w) - left, edge(double(r.y) + r.h) - top};
+            auto visibleRect = intersect(rect, clip);
+            if (visibleRect.w <= 0 || visibleRect.h <= 0) continue;
+            if (command.kind == DrawingCommandKind::clip) {
+                visit(visit, command.children, visibleRect);
+            } else if (command.kind == DrawingCommandKind::drawText) {
+                auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
+                layout.x = std::round(double(r.x) * scale);
+                layout.y = std::round(double(r.y) * scale);
+                field.pixels.push_back({rect, visibleRect, 0, command.color, command.opacity, std::move(layout)});
+            } else {
+                int radius = std::min({edge(command.radius), rect.w / 2, rect.h / 2});
+                field.pixels.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});
+            }
         }
-        field.pixels.push_back({left, top, right - left, bottom - top});
-    }
+    };
+    flatten(flatten, field.content.commands, {0, 0, bounds.w, bounds.h});
 }
 
 Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)> draw) const {
@@ -481,7 +521,6 @@ Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)
         else {
             field.content = {};
             field.pixels.clear();
-            field.text.clear();
         }
         ui_->invalidate();
         return {};

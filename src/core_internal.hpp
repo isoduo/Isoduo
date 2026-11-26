@@ -22,6 +22,7 @@ struct DrawingTextLayout {
     std::vector<std::u16string> lines;
     int pixels = 0, lineHeight = 0;
     double x = 0, y = 0;
+    FontStyle face{};
     float width = 0;
 };
 std::vector<std::u16string> wrapStyled(TextMeasure&, std::u16string_view, int pixels, int width, FontStyle);
@@ -649,11 +650,17 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
+    struct DrawingPixel {
+        Rect rect, clip;
+        int radius;
+        Color color;
+        unsigned char opacity;
+        std::optional<DrawingTextLayout> text{};
+    };
     struct DrawingField {
         std::function<Result(const DrawingEnvironment&)> draw;
         DrawingContent content;
-        std::vector<Rect> pixels;
-        std::map<std::size_t, DrawingTextLayout> text;
+        std::vector<DrawingPixel> pixels;
         float scale = 0;
         bool diagnosedHeight = false;
     };
