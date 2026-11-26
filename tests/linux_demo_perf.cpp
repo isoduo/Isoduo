@@ -43,7 +43,7 @@ double monotonicMs(std::chrono::steady_clock::time_point time) {
     return std::chrono::duration<double, std::milli>(time.time_since_epoch()).count();
 }
 
-int run(char** argv) {
+int run(char** argv, bool vulkan) {
     const std::string_view backend = argv[1], appearance = argv[2], scenario = argv[3];
     if (backend != "wayland" && backend != "x11") throw std::invalid_argument("Expected wayland or x11");
     if (appearance != "web" && appearance != "material") throw std::invalid_argument("Expected web or material");
@@ -52,6 +52,7 @@ int run(char** argv) {
     if (!list && !typing && !slider && !animation && scenario != "startup")
         throw std::invalid_argument("Unknown performance scenario");
     DesktopConfig config;
+    if (vulkan) config.renderBackend = RenderBackendKind::vulkan;
     config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
     config.width = parseNumber(argv[4], 1, 8192);
     config.height = parseNumber(argv[5], 1, 8192);
@@ -161,9 +162,9 @@ int main(int argc, char** argv) {
         if (argc == 5 && std::string_view(argv[1]) == "seed")
             return seed(argv[2], parseNumber(argv[3], 20, 100), utf16FromUtf8(argv[4]));
         if (argc == 8 && std::string_view(argv[1]) == "summarize") return summarize(argv);
-        if (argc == 8) return run(argv);
+        if (argc == 8 || (argc == 9 && std::string_view(argv[8]) == "--vulkan")) return run(argv,argc == 9);
         std::cerr << "Usage: isoduo_linux_demo_perf seed DIRECTORY ITEM_COUNT FONT\n"
-                     "       isoduo_linux_demo_perf BACKEND APPEARANCE SCENARIO WIDTH HEIGHT DELAY_MS DIRECTORY\n"
+                     "       isoduo_linux_demo_perf BACKEND APPEARANCE SCENARIO WIDTH HEIGHT DELAY_MS DIRECTORY [--vulkan]\n"
                      "       isoduo_linux_demo_perf summarize SCENARIO DELAY_MS STARTUP_MS PRESENTS REDRAWS CPU_MS\n"
                      "       stdin sample columns: age_ms layout_ms list_ms submission_ms gpu_ms injected_ms\n";
         return 2;

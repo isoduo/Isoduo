@@ -123,6 +123,7 @@ class SurfaceRenderer final : public Renderer {
             return measure ? frame.gpuMilliseconds() : 0;
         } else {
             bool rebuilt = false;
+            std::chrono::steady_clock::duration acquireTime{};
             for (;;) {
                 if (dirty || !chain || chain->extent.width != uint32_t(width) ||
                     chain->extent.height != uint32_t(height)) {
@@ -136,11 +137,21 @@ class SurfaceRenderer final : public Renderer {
                 auto ready = d.make<VkSemaphore>(frame.objects, "vkCreateSemaphore", d.api.CreateSemaphore, info,
                                                  d.api.DestroySemaphore);
                 uint32_t index{};
+                constexpr uint64_t timeoutNs = 100000000;
+                auto beforeAcquire = std::chrono::steady_clock::now();
                 auto result = invoke(d.hooks, "vkAcquireNextImageKHR", [&] {
-                    return acquire(d.device, chain->handle, 100000000, ready, {}, &index);
+                    return acquire(d.device, chain->handle, timeoutNs, ready, {}, &index);
                 });
-                if (d.hooks)
+                auto elapsed = std::chrono::steady_clock::now() - beforeAcquire;
+                acquireTime += elapsed;
+                if (d.hooks) {
                     d.hooks->lastAcquire = result;
+                    ++d.hooks->acquireCalls;
+                    d.hooks->acquireTimeouts += result == VK_TIMEOUT;
+                    d.hooks->acquireTimeoutMs = timeoutNs / 1e6;
+                    d.hooks->maxAcquireMs = std::max(d.hooks->maxAcquireMs,
+                        std::chrono::duration<double, std::milli>(elapsed).count());
+                }
                 if (result == VK_TIMEOUT || result == VK_NOT_READY)
                     throw DeferredFrame{};
                 if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -158,7 +169,7 @@ class SurfaceRenderer final : public Renderer {
                 frame.submit(ready, done);
                 if (submission)
                     *submission =
-                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start - acquireTime).count();
                 VkPresentInfoKHR show{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
                 show.waitSemaphoreCount = show.swapchainCount = 1;
                 show.pWaitSemaphores = &done;

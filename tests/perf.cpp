@@ -1,3 +1,4 @@
+#include <limits>
 #include "perf.hpp"
 int main() {
     isoduo::detail::PerfSamples samples;
@@ -13,4 +14,8 @@ int main() {
     if (stageWarm.layout.count != 1 || stageWarm.layout.maximum != 1 || stageWarm.gpu.maximum != 3) return 4;
     if (stageSteady.layout.count != 2 || stageSteady.layout.p50 != 4 || stageSteady.layout.maximum != 8) return 5;
     if (stageSteady.list.p95 != 9 || stageSteady.list.maximum != 9 || stageSteady.gpu.p50 != 6 || stageSteady.gpu.maximum != 10) return 6;
+    isoduo::detail::PerfSamples unsupported;
+    unsupported.add(1100, std::numeric_limits<double>::quiet_NaN());
+    auto unknown = unsupported.summary(false);
+    if (isoduo::detail::activePerfPass(unknown, false) || std::isfinite(unknown.maximum)) return 7;
 }
