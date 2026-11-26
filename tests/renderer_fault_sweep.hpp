@@ -6,6 +6,8 @@
 #include "desktop_linux_test.hpp"
 #endif
 #include "utf.hpp"
+#include <glcorearb.h>
+#include <vulkan/vulkan_core.h>
 #include <cstdlib>
 #include <initializer_list>
 #include <tuple>
@@ -16,6 +18,10 @@ using namespace isoduo::detail;
 using StartupKind = StartupFailureKind;
 using FrameKind = RendererFailureKind;
 using Inject = std::function<void(RendererTestHooks&)>;
+using VerifyPaint = std::function<void(const RendererCapabilities&, const std::vector<RenderDiagnostic>&,
+                                       const RendererTestHooks&)>;
+using VerifyRebuild = std::function<void(const RendererCapabilities&, const RendererTestHooks&)>;
+constexpr int unknownVkResult = -1234567;
 
 inline RenderBackendKind renderBackend(std::string_view name) {
     check(name == "opengl" || name == "vulkan", "Fault sweep renderer must be opengl or vulkan");
@@ -101,7 +107,17 @@ struct StartupFault {
     Inject inject;
     StartupKind kind;
     bool rebuild = false;
+    std::u16string_view required{};
+    std::u16string_view actual{};
+    std::u16string message{};
 };
+
+inline StartupFault vkStartupFault(const char* call, int result, StartupKind kind, bool rebuild,
+                                   std::u16string_view resultName, const char* name = nullptr) {
+    auto message = utf16FromUtf8(call) + u": ";
+    message.append(resultName);
+    return {name ? name : call, vkResult(call, result), kind, rebuild, {}, {}, std::move(message)};
+}
 
 struct FrameFault {
     const char* name;
@@ -109,6 +125,7 @@ struct FrameFault {
     FrameKind kind;
     std::u16string_view message{};
     bool armAtCreate = false;
+    std::optional<unsigned> nativeCode{};
 };
 
 inline void startup(const DesktopConfig& config, const StartupFault& fault) {
@@ -116,22 +133,27 @@ inline void startup(const DesktopConfig& config, const StartupFault& fault) {
     fault.inject(fixture.hooks);
     auto result = fixture.open(config);
     check(result.status == Status::failed && !result.desktop && result.failure &&
-          result.failure->kind == fault.kind && result.failure->backend == config.backend && !result.failure->message.empty(),
+          result.failure->kind == fault.kind && result.failure->backend == config.backend &&
+          result.failure->required == fault.required && result.failure->actual == fault.actual &&
+          !result.failure->message.empty() && result.failure->message.find(fault.message) != std::u16string::npos,
           "Startup fault returns the expected StartupFailure");
     // Failed creation must release the Ui claim so the public API can retry.
     checkOpened(fixture.open(config, false));
 }
 
-inline void rebuild(DesktopConfig config, const Inject& inject, bool expectFailure, bool replaceSurface = false) {
+inline void rebuild(DesktopConfig config, const Inject& inject, bool expectFailure, bool replaceSurface = false,
+                    std::u16string_view message = {}, const VerifyRebuild& verify = {}) {
     Fixture fixture;
     const bool vulkan = config.renderBackend == RenderBackendKind::vulkan;
     const auto kind = replaceSurface ? FrameKind::presentFailed : FrameKind::deviceReset;
-    if (replaceSurface) fixture.hooks.presentResultAtFrame = {1, -1000000000}; // VK_ERROR_SURFACE_LOST_KHR
-    else if (vulkan) fixture.hooks.submitResultAtFrame = {1, -4}; // VK_ERROR_DEVICE_LOST
+    if (replaceSurface) fixture.hooks.presentResultAtFrame = {1, VK_ERROR_SURFACE_LOST_KHR};
+    else if (vulkan) fixture.hooks.submitResultAtFrame = {1, VK_ERROR_DEVICE_LOST};
     else fixture.hooks.resetAtFrame = 1;
 
     int callbacks = 0, painted = 0;
     bool stillFailed = false, recovered = false;
+    RendererCapabilities firstCapabilities;
+    RendererTestHooks firstHooks;
     Result first{Status::invalidValue, {}}, posted{Status::failed, {}}, closed{Status::failed, {}};
     std::optional<RendererFailure> seen;
     config.onRendererFailed = [&](Desktop& desktop, const RendererFailure& failure) {
@@ -142,8 +164,12 @@ inline void rebuild(DesktopConfig config, const Inject& inject, bool expectFailu
         }
         inject(fixture.hooks);
         first = boundary("Desktop::rebuildRenderer", [&] { return desktop.rebuildRenderer(); });
+        firstCapabilities = desktop.capabilities();
+        firstHooks = fixture.hooks;
         stillFailed = desktop.rendererFailed();
-        fixture.hooks = {};
+        RendererTestHooks cleared;
+        cleared.rebuildAttempts = fixture.hooks.rebuildAttempts;
+        fixture.hooks = cleared;
         recovered = !stillFailed || bool(boundary("Desktop::rebuildRenderer retry", [&] { return desktop.rebuildRenderer(); }));
         if (!recovered) desktop.close();
         // The swapchain may have no extent yet. Once it has one, a frame must present.
@@ -158,9 +184,12 @@ inline void rebuild(DesktopConfig config, const Inject& inject, bool expectFailu
     const auto result = runDesktop(desktop);
     check(callbacks == 1 && seen && seen->kind == kind, "The initial fault reaches onRendererFailed exactly once");
     check(first.status == (expectFailure ? Status::failed : Status::ok) && stillFailed == expectFailure &&
-          (!expectFailure || !first.message.empty()), "Rebuild returns the expected Result and failure state");
+          (!expectFailure || (!first.message.empty() && first.message.find(message) != std::u16string::npos)),
+          "Rebuild returns the expected Result and failure state");
+    check(fixture.hooks.rebuildAttempts == (expectFailure ? 2 : 1), "Rebuild attempts match explicit requests");
     check(recovered && painted > 0 && posted && closed && result.status == Status::ok && !result.failure,
           "Explicit recovery resumes painting and permits post and close");
+    if (verify) verify(firstCapabilities, firstHooks);
 }
 
 inline void frame(DesktopConfig config, const FrameFault& fault, bool handled) {
@@ -189,7 +218,8 @@ inline void frame(DesktopConfig config, const FrameFault& fault, bool handled) {
     const auto result = runDesktop(desktop);
     auto expected = [&](const RendererFailure& failure) {
         return failure.kind == fault.kind && !failure.message.empty() &&
-               (fault.message.empty() || failure.message == fault.message);
+               (fault.message.empty() || failure.message == fault.message) &&
+               (!fault.nativeCode || failure.nativeCode == *fault.nativeCode);
     };
     const bool failed = painted == 0 && result.status == Status::rendererFailed && result.failure && expected(*result.failure);
     if (!failed) {
@@ -204,11 +234,12 @@ inline void frame(DesktopConfig config, const FrameFault& fault, bool handled) {
               "Fault reaches onRendererFailed exactly once and permits post and close while failed");
 }
 
-inline void paints(DesktopConfig config, const Inject& inject,
-                   std::function<void(const RendererCapabilities&, const std::vector<RenderDiagnostic>&)> verify = {},
-                   bool clearZeroExtent = false) {
+enum class PaintInjection { atCreate, beforeRun, afterFirstPaint };
+
+inline void paints(DesktopConfig config, const Inject& inject, const VerifyPaint& verify,
+                   PaintInjection when = PaintInjection::atCreate) {
     Fixture fixture;
-    inject(fixture.hooks);
+    if (when == PaintInjection::atCreate) inject(fixture.hooks);
     int callbacks = 0, painted = 0;
     std::vector<RenderDiagnostic> events;
     config.onDiagnostic = [&](const RenderDiagnostic& event) { events.push_back(event); };
@@ -217,15 +248,27 @@ inline void paints(DesktopConfig config, const Inject& inject,
     checkOpened(created);
     Desktop& desktop = *created.desktop;
     const auto capabilities = desktop.capabilities();
-    if (clearZeroExtent) fixture.hooks.zeroSurfaceExtent = false;
+    if (when == PaintInjection::atCreate)
+        check(!fixture.hooks.zeroSurfaceExtentOnce, "Creation consumes the zero extent hook");
+    if (when == PaintInjection::beforeRun)
+        inject(fixture.hooks);
     Result posted{Status::failed, {}}, closed{Status::failed, {}};
+    Result warmup{Status::ok, {}};
     observePaint(desktop, [&] {
-        if (++painted == 1) closeAfterPostedWork(desktop, posted, closed);
+        ++painted;
+        if (when == PaintInjection::afterFirstPaint && painted == 1) {
+            inject(fixture.hooks);
+            warmup = fixture.label.setWritingMode(WritingMode::vertical);
+            if (!warmup) desktop.close();
+            return;
+        }
+        const int finalPaint = when == PaintInjection::afterFirstPaint ? 2 : 1;
+        if (painted == finalPaint) closeAfterPostedWork(desktop, posted, closed);
     });
     const auto result = runDesktop(desktop);
-    check(painted > 0 && callbacks == 0 && posted && closed && result.status == Status::ok && !result.failure,
+    check(painted > 0 && warmup && callbacks == 0 && posted && closed && result.status == Status::ok && !result.failure,
           "Renderer presents without entering failure and accepts post and close");
-    if (verify) verify(capabilities, events);
+    verify(capabilities, events, fixture.hooks);
 }
 
 struct Sweep {
@@ -246,7 +289,7 @@ struct Sweep {
         for (const auto& fault : faults) {
             row(fault.name, "create", [&] { startup(config, fault); });
             if (fault.rebuild)
-                row(fault.name, "rebuildRenderer", [&] { rebuild(config, fault.inject, true); });
+                row(fault.name, "rebuildRenderer", [&] { rebuild(config, fault.inject, true, false, fault.message); });
         }
     }
     void frameRows(const DesktopConfig& config, std::initializer_list<FrameFault> faults) {
@@ -257,32 +300,96 @@ struct Sweep {
     }
 };
 
-inline void openGL(Sweep& sweep, DesktopConfig config) {
-    sweep.startupRows(config, {
-        {"failContext33", set(&RendererTestHooks::failContext33, true), StartupKind::contextVersion, true},
-        {"fragmentShaderOverride", set(&RendererTestHooks::fragmentShaderOverride, "invalid shader"), StartupKind::shader, true},
-        {"startupResourceError", set(&RendererTestHooks::startupResourceError, "Injected resource failure"), StartupKind::resource, true},
+// Entry points for the matrices below:
+// - Failed create has no Desktop to run, rebuild, post to, or close. The same Ui
+//   must be reusable. Rebuild on a healthy or closed Desktop never reaches a hook.
+// - Run drives native paint. Runtime faults cover handled and unhandled run;
+//   handled rows post and close while failed. Recovery rows post and close after
+//   presentation. Post queues work and close requests shutdown; neither calls
+//   renderer startup or draw. Close can expose the Vulkan destruction diagnostic
+//   when run releases the retained instance.
+// - OpenGL context, shader, startup resource and extension flags are read at
+//   both context creations. Its frame, reset and misuse hooks require a draw.
+// - Vulkan rebuild retains the loader, instance, debug messenger and normally
+//   the surface. Loader/proc lookup, instance creation/extensions, validation
+//   layer and debug-utils filtering apply only at create. Surface creation
+//   applies at create and at rebuild after surface loss.
+// - Vulkan reselects a device and recreates device resources and the swapchain
+//   on rebuild. Atlas/frame resources are lazy: image, buffer, allocation,
+//   command pool, and fence faults apply on first paint and atlas restore,
+//   descriptor pool on paint alone. Query pools require the performance test
+//   seam to enable timing and have no ordinary desktop lifecycle entry point.
+//   The acquire/submit/present/fence-at-frame and diagnostic injection hooks
+//   require a draw. The runtime swapchain one-shot is installed after initial
+//   swapchain creation; the function-table fault covers all swapchain creations.
+// - failRebuildOnce is specific to rebuild. A startupResourceError at the
+//   Vulkan host boundary is Win32-only; Linux has no corresponding interception.
+//   Extension suppression requires the original capability, and Vulkan misuse
+//   needs active Khronos validation and debug utils.
+
+inline RendererCapabilities capabilitiesFor(const DesktopConfig& config) {
+    Fixture fixture;
+    auto created = fixture.open(config, false);
+    checkOpened(created);
+    return created.desktop->capabilities();
+}
+
+inline void rebuildOnce(Sweep& sweep, const DesktopConfig& config, std::u16string_view failureMessage = {}) {
+    const auto inject = set(&RendererTestHooks::failRebuildOnce, true);
+    sweep.row("failRebuildOnce", "create / run / paint / post / close", [&] {
+        paints(config, inject, [](const auto&, const auto&, const auto& hooks) {
+            check(hooks.failRebuildOnce, "Initial creation leaves the rebuild-only hook armed");
+        });
     });
-    sweep.row("failRebuildOnce", "rebuildRenderer", [&] { rebuild(config, set(&RendererTestHooks::failRebuildOnce, true), true); });
+    sweep.row("failRebuildOnce", "rebuildRenderer", [&] {
+        rebuild(config, inject, true, false, failureMessage, [](const auto&, const auto& hooks) {
+            check(!hooks.failRebuildOnce, "The first rebuild consumes the one-shot fault");
+        });
+    });
+}
+
+inline void openGL(Sweep& sweep, DesktopConfig config) {
+    rebuildOnce(sweep, config);
+    sweep.startupRows(config, {
+        {"failContext33", set(&RendererTestHooks::failContext33, true), StartupKind::contextVersion, true,
+         u"OpenGL 3.3 core", u"2.1", u"OpenGL 3.3 core is required"},
+        {"fragmentShaderOverride", set(&RendererTestHooks::fragmentShaderOverride, "invalid shader"), StartupKind::shader, true},
+        {"startupResourceError", set(&RendererTestHooks::startupResourceError, "Injected resource failure"),
+         StartupKind::resource, true, {}, {}, u"Injected resource failure"},
+    });
     sweep.frameRows(config, {
-        {"errorAtFrame (out of memory)", set(&RendererTestHooks::errorAtFrame, 1), FrameKind::frameError},
-        {"injectedError (invalid operation)", [](auto& hooks) { hooks.errorAtFrame = 1; hooks.injectedError = 0x0502; }, FrameKind::frameError},
-        {"resetAtFrame", set(&RendererTestHooks::resetAtFrame, 1), FrameKind::deviceReset},
-        {"contextLostAtFrame", set(&RendererTestHooks::contextLostAtFrame, 1), FrameKind::deviceReset},
+        {"errorAtFrame (out of memory)", set(&RendererTestHooks::errorAtFrame, 1), FrameKind::frameError,
+         {}, false, GL_OUT_OF_MEMORY},
+        {"injectedError (invalid operation)", [](auto& hooks) { hooks.errorAtFrame = 1; hooks.injectedError = GL_INVALID_OPERATION; },
+         FrameKind::frameError, {}, false, GL_INVALID_OPERATION},
+        {"resetAtFrame", set(&RendererTestHooks::resetAtFrame, 1), FrameKind::deviceReset, {}, false, GL_GUILTY_CONTEXT_RESET},
+        {"contextLostAtFrame", set(&RendererTestHooks::contextLostAtFrame, 1), FrameKind::deviceReset, {}, false, GL_CONTEXT_LOST},
     });
     config.debugContext = DebugContext::on;
-    sweep.row("hideRobustness", "create / run / paint / post / close", [&] {
-        paints(config, set(&RendererTestHooks::hideRobustness, true), [](const auto& caps, const auto&) {
-            check(!caps.resetDetection, "Hidden OpenGL robustness disables reset detection");
+    const auto baseline = capabilitiesFor(config);
+    for (const auto& [name, hook, capability] : {
+        std::tuple{"hideRobustness", &RendererTestHooks::hideRobustness, &RendererCapabilities::resetDetection},
+        std::tuple{"hideKhrDebug", &RendererTestHooks::hideKhrDebug, &RendererCapabilities::debugMessages},
+    }) {
+        if (!(baseline.*capability)) {
+            std::cout << "Unavailable: " << name << " requires the corresponding OpenGL capability\n";
+            continue;
+        }
+        const auto inject = set(hook, true);
+        auto verifyHidden = [&](const RendererCapabilities& caps) {
+            check(!(caps.*capability), "The injected extension filter disables the OpenGL capability");
+        };
+        sweep.row(name, "create / run / paint / post / close", [&] {
+            paints(config, inject, [&](const auto& caps, const auto&, const auto&) { verifyHidden(caps); });
         });
-    });
-    sweep.row("hideKhrDebug", "create / run / paint / post / close", [&] {
-        paints(config, set(&RendererTestHooks::hideKhrDebug, true), [](const auto& caps, const auto&) {
-            check(!caps.debugMessages, "Hidden OpenGL debug extension disables debug messages");
+        sweep.row(name, "rebuildRenderer", [&] {
+            rebuild(config, inject, false, false, {}, [&](const auto& caps, const auto&) { verifyHidden(caps); });
         });
-    });
+    }
     sweep.row("misuseOnce", "run / paint / post / close", [&] {
-        paints(config, set(&RendererTestHooks::misuseOnce, true));
+        paints(config, set(&RendererTestHooks::misuseOnce, true), [](const auto&, const auto&, const auto& hooks) {
+            check(!hooks.misuseOnce, "OpenGL consumes the API misuse hook");
+        }, PaintInjection::beforeRun);
     });
 }
 
@@ -298,131 +405,184 @@ inline const char* surfaceFunction(DesktopBackendKind backend) {
 inline void vulkan(Sweep& sweep, DesktopConfig config, const RendererCapabilities& baseline) {
     const char* surface = surfaceFunction(*config.backend);
     sweep.startupRows(config, {
-        {"hideVulkanLoader", set(&RendererTestHooks::hideVulkanLoader, true), StartupKind::renderBackendUnavailable},
-        {"hideInstanceProcAddr", set(&RendererTestHooks::hideInstanceProcAddr, true), StartupKind::contextCreation},
-        {"hidePhysicalDevices", set(&RendererTestHooks::hidePhysicalDevices, true), StartupKind::renderBackendUnavailable},
-        {"hideInstanceExtension", set(&RendererTestHooks::hideInstanceExtension, true), StartupKind::contextVersion},
-        {"apiVersionOverride", set(&RendererTestHooks::apiVersionOverride, (1u << 22) | (1u << 12)), StartupKind::contextVersion},
-        {"hideDynamicRendering", set(&RendererTestHooks::hideDynamicRendering, true), StartupKind::contextVersion},
-        {"hideSynchronization2", set(&RendererTestHooks::hideSynchronization2, true), StartupKind::contextVersion},
-        {"hideDeviceExtension", set(&RendererTestHooks::hideDeviceExtension, true), StartupKind::contextVersion},
-        {"hideSurfaceFormats", set(&RendererTestHooks::hideSurfaceFormats, true), StartupKind::contextVersion},
-        {"hidePresentQueue", set(&RendererTestHooks::hidePresentQueue, true), StartupKind::contextVersion},
-        {"vkCreateInstance (incompatible driver)", vkResult("vkCreateInstance", -9), StartupKind::renderBackendUnavailable},
-        {"vkCreateInstance", vkResult("vkCreateInstance", -3), StartupKind::contextCreation},
-        {surface, vkResult(surface, -1000000000), StartupKind::contextCreation},
-        {"vkGetPhysicalDeviceSurfaceSupportKHR", vkResult("vkGetPhysicalDeviceSurfaceSupportKHR", -3), StartupKind::contextCreation, true},
-        {"vkCreateDevice", vkResult("vkCreateDevice", -3), StartupKind::contextCreation, true},
-        {"vkCreateSwapchainKHR", vkResult("vkCreateSwapchainKHR", -3), StartupKind::contextCreation, true},
-        {"vkCreateShaderModule", vkResult("vkCreateShaderModule", -3), StartupKind::shader, true},
-        {"vkCreateGraphicsPipelines", vkResult("vkCreateGraphicsPipelines", -3), StartupKind::shader, true},
-        {"vkCreateSampler", vkResult("vkCreateSampler", -2), StartupKind::resource, true},
-        {"vkCreateDescriptorSetLayout", vkResult("vkCreateDescriptorSetLayout", -2), StartupKind::resource, true},
-        {"vkCreatePipelineLayout", vkResult("vkCreatePipelineLayout", -2), StartupKind::resource, true},
-        {"vkCreateImageView", vkResult("vkCreateImageView", -2), StartupKind::resource, true},
-        {"vkCreateSemaphore", vkResult("vkCreateSemaphore", -2), StartupKind::resource, true},
+        {"hideVulkanLoader", set(&RendererTestHooks::hideVulkanLoader, true), StartupKind::renderBackendUnavailable,
+         false, {}, {}, u"Vulkan loader unavailable"},
+        {"hideInstanceProcAddr", set(&RendererTestHooks::hideInstanceProcAddr, true), StartupKind::contextCreation,
+         false, {}, {}, u"Missing vkGetInstanceProcAddr"},
+        {"hidePhysicalDevices", set(&RendererTestHooks::hidePhysicalDevices, true), StartupKind::renderBackendUnavailable,
+         true, {}, {}, u"No Vulkan physical devices"},
+        {"hideInstanceExtension", set(&RendererTestHooks::hideInstanceExtension, true), StartupKind::contextVersion,
+         false, u"VK_KHR_surface", {}, u"VK_KHR_surface"},
+        {"apiVersionOverride", set(&RendererTestHooks::apiVersionOverride, VK_API_VERSION_1_1), StartupKind::contextVersion,
+         true, u"Vulkan 1.3", u"1.1", u"Vulkan 1.3"},
+        {"hideDynamicRendering", set(&RendererTestHooks::hideDynamicRendering, true), StartupKind::contextVersion,
+         true, u"dynamicRendering", {}, u"dynamicRendering"},
+        {"hideSynchronization2", set(&RendererTestHooks::hideSynchronization2, true), StartupKind::contextVersion,
+         true, u"synchronization2", {}, u"synchronization2"},
+        {"hideDeviceExtension", set(&RendererTestHooks::hideDeviceExtension, true), StartupKind::contextVersion,
+         true, u"VK_KHR_swapchain", {}, u"VK_KHR_swapchain"},
+        {"hideSurfaceFormats", set(&RendererTestHooks::hideSurfaceFormats, true), StartupKind::contextVersion,
+         true, u"B8G8R8A8_UNORM or R8G8B8A8_UNORM with SRGB_NONLINEAR", {}, u"SRGB_NONLINEAR"},
+        {"hidePresentQueue", set(&RendererTestHooks::hidePresentQueue, true), StartupKind::contextVersion,
+         true, u"present queue family", {}, u"present queue family"},
+        vkStartupFault("vkCreateInstance", VK_ERROR_INCOMPATIBLE_DRIVER, StartupKind::renderBackendUnavailable,
+                       false, u"VK_ERROR_INCOMPATIBLE_DRIVER", "vkCreateInstance (incompatible driver)"),
+        vkStartupFault("vkCreateInstance", VK_ERROR_INITIALIZATION_FAILED, StartupKind::contextCreation,
+                       false, u"VK_ERROR_INITIALIZATION_FAILED"),
+        vkStartupFault(surface, VK_ERROR_SURFACE_LOST_KHR, StartupKind::contextCreation, false, u"VK_ERROR_SURFACE_LOST_KHR"),
     });
-    sweep.row(surface, "rebuildRenderer after surface loss", [&] { rebuild(config, vkResult(surface, -1000000000), true, true); });
-    sweep.row("failRebuildOnce", "rebuildRenderer", [&] { rebuild(config, set(&RendererTestHooks::failRebuildOnce, true), true); });
+    for (const auto& [call, kind] : {
+        std::pair{"vkGetPhysicalDeviceSurfaceSupportKHR", StartupKind::contextCreation},
+        std::pair{"vkCreateDevice", StartupKind::contextCreation},
+        std::pair{"vkCreateSwapchainKHR", StartupKind::contextCreation},
+        std::pair{"vkCreateShaderModule", StartupKind::shader},
+        std::pair{"vkCreateGraphicsPipelines", StartupKind::shader},
+    }) sweep.startupRows(config, {vkStartupFault(call, VK_ERROR_INITIALIZATION_FAILED, kind, true,
+                                                 u"VK_ERROR_INITIALIZATION_FAILED")});
+    for (const char* call : {"vkCreateSampler", "vkCreateDescriptorSetLayout", "vkCreatePipelineLayout",
+                             "vkCreateImageView", "vkCreateSemaphore"}) {
+        sweep.startupRows(config, {vkStartupFault(call, VK_ERROR_OUT_OF_DEVICE_MEMORY, StartupKind::resource,
+                                                  true, u"VK_ERROR_OUT_OF_DEVICE_MEMORY")});
+    }
+    sweep.row(surface, "rebuildRenderer after surface loss", [&] {
+        rebuild(config, vkResult(surface, VK_ERROR_SURFACE_LOST_KHR), true, true, u"VK_ERROR_SURFACE_LOST_KHR");
+    });
+    rebuildOnce(sweep, config, u"vkCreateDevice: VK_ERROR_DEVICE_LOST");
     sweep.row("failImageCreationOnce", "rebuildRenderer / restore atlas", [&] {
-        rebuild(config, set(&RendererTestHooks::failImageCreationOnce, true), true);
+        rebuild(config, set(&RendererTestHooks::failImageCreationOnce, true), true, false, u"vkCreateImage: VK_ERROR_OUT_OF_DEVICE_MEMORY");
     });
     sweep.row("hideBufferMemoryTypes", "rebuildRenderer / restore atlas", [&] {
-        rebuild(config, set(&RendererTestHooks::hideBufferMemoryTypes, true), true);
+        rebuild(config, set(&RendererTestHooks::hideBufferMemoryTypes, true), true, false, u"No compatible Vulkan memory type");
     });
-    sweep.row("zeroSurfaceExtent", "rebuildRenderer", [&] {
-        rebuild(config, set(&RendererTestHooks::zeroSurfaceExtent, true), false);
+    sweep.row("zeroSurfaceExtentOnce", "rebuildRenderer", [&] {
+        rebuild(config, set(&RendererTestHooks::zeroSurfaceExtentOnce, true), false, false, {}, [](const auto&, const auto& hooks) {
+            check(!hooks.zeroSurfaceExtentOnce, "Rebuild consumes the zero extent hook");
+        });
     });
-    for (const char* call : {"vkCreateBuffer", "vkAllocateMemory", "vkCreateCommandPool", "vkCreateFence"}) {
-        sweep.row(call, "rebuildRenderer / restore atlas", [&] { rebuild(config, vkResult(call, -2), true); });
+    for (const char* call : {"vkCreateBuffer", "vkAllocateMemory", "vkCreateCommandPool", "vkCreateFence", "vkCreateImage"}) {
+        sweep.row(call, "rebuildRenderer / restore atlas", [&] {
+            const auto fault = vkStartupFault(call, VK_ERROR_OUT_OF_DEVICE_MEMORY, StartupKind::resource,
+                                              true, u"VK_ERROR_OUT_OF_DEVICE_MEMORY");
+            rebuild(config, fault.inject, true, false, fault.message);
+        });
     }
     sweep.frameRows(config, {
-        {"submitResultAtFrame (out of memory)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, -2}),
+        {"submitResultAtFrame (out of memory)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, VK_ERROR_OUT_OF_DEVICE_MEMORY}),
          FrameKind::frameError, u"vkQueueSubmit: VK_ERROR_OUT_OF_DEVICE_MEMORY"},
-        {"submitResultAtFrame (device lost)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, -4}),
-         FrameKind::deviceReset, u"vkQueueSubmit: VK_ERROR_DEVICE_LOST"},
-        {"submitResultAtFrame (unknown)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, -1234567}),
+        {"submitResultAtFrame (device lost)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, VK_ERROR_DEVICE_LOST}),
+         FrameKind::deviceReset, u"vkQueueSubmit: VK_ERROR_DEVICE_LOST", false, static_cast<unsigned>(VK_ERROR_DEVICE_LOST)},
+        {"submitResultAtFrame (unknown)", set(&RendererTestHooks::submitResultAtFrame, RendererTestHooks::FrameResult{1, unknownVkResult}),
          FrameKind::frameError, u"vkQueueSubmit: VkResult(-1234567)"},
         {"fenceResultAtFrame", set(&RendererTestHooks::fenceResultAtFrame, 1), FrameKind::deviceReset,
          u"vkWaitForFences: VK_ERROR_DEVICE_LOST"},
-        {"presentResultAtFrame (surface lost)", set(&RendererTestHooks::presentResultAtFrame, RendererTestHooks::FrameResult{1, -1000000000}),
+        {"presentResultAtFrame (surface lost)", set(&RendererTestHooks::presentResultAtFrame, RendererTestHooks::FrameResult{1, VK_ERROR_SURFACE_LOST_KHR}),
          FrameKind::presentFailed, u"vkQueuePresentKHR: VK_ERROR_SURFACE_LOST_KHR"},
-        {"acquireResultAtFrame (surface lost)", set(&RendererTestHooks::acquireResultAtFrame, RendererTestHooks::FrameResult{1, -1000000000}),
+        {"acquireResultAtFrame (surface lost)", set(&RendererTestHooks::acquireResultAtFrame, RendererTestHooks::FrameResult{1, VK_ERROR_SURFACE_LOST_KHR}),
          FrameKind::presentFailed, u"vkAcquireNextImageKHR: VK_ERROR_SURFACE_LOST_KHR"},
         {"swapchainCreateResultOnce", [](auto& hooks) {
-            hooks.acquireResultAtFrame = {1, -1000001004}; // VK_ERROR_OUT_OF_DATE_KHR
-            hooks.swapchainCreateResultOnce = -2; // VK_ERROR_OUT_OF_DEVICE_MEMORY
+            hooks.acquireResultAtFrame = {1, VK_ERROR_OUT_OF_DATE_KHR};
+            hooks.swapchainCreateResultOnce = VK_ERROR_OUT_OF_DEVICE_MEMORY;
         }, FrameKind::resourceFailed, u"vkCreateSwapchainKHR: VK_ERROR_OUT_OF_DEVICE_MEMORY"},
         {"hideBufferMemoryTypes", set(&RendererTestHooks::hideBufferMemoryTypes, true), FrameKind::resourceFailed,
          u"No compatible Vulkan memory type", true},
         {"failImageCreationOnce", set(&RendererTestHooks::failImageCreationOnce, true), FrameKind::resourceFailed,
          u"vkCreateImage: VK_ERROR_OUT_OF_DEVICE_MEMORY"},
-        {"vkCreateBuffer", vkResult("vkCreateBuffer", -2), FrameKind::resourceFailed},
-        {"vkAllocateMemory", vkResult("vkAllocateMemory", -2), FrameKind::resourceFailed},
-        {"vkCreateCommandPool", vkResult("vkCreateCommandPool", -2), FrameKind::resourceFailed},
-        {"vkCreateFence", vkResult("vkCreateFence", -2), FrameKind::resourceFailed},
-        {"vkCreateDescriptorPool", vkResult("vkCreateDescriptorPool", -2), FrameKind::resourceFailed},
-        {"vkCreateImageView", vkResult("vkCreateImageView", -2), FrameKind::resourceFailed},
-        {"vkCreateSemaphore", vkResult("vkCreateSemaphore", -2), FrameKind::resourceFailed},
-        {"vkAcquireNextImageKHR", vkResult("vkAcquireNextImageKHR", -1000000000), FrameKind::presentFailed},
+        {"vkAcquireNextImageKHR", vkResult("vkAcquireNextImageKHR", VK_ERROR_SURFACE_LOST_KHR), FrameKind::presentFailed,
+         u"vkAcquireNextImageKHR: VK_ERROR_SURFACE_LOST_KHR"},
         {"vkCreateSwapchainKHR", [](auto& hooks) {
-            hooks.acquireResultAtFrame = {1, -1000001004}; // VK_ERROR_OUT_OF_DATE_KHR
-            vkResult("vkCreateSwapchainKHR", -2)(hooks);
-        }, FrameKind::resourceFailed},
+            hooks.acquireResultAtFrame = {1, VK_ERROR_OUT_OF_DATE_KHR};
+            vkResult("vkCreateSwapchainKHR", VK_ERROR_OUT_OF_DEVICE_MEMORY)(hooks);
+        }, FrameKind::resourceFailed, u"vkCreateSwapchainKHR: VK_ERROR_OUT_OF_DEVICE_MEMORY"},
     });
-    constexpr int outOfDate = -1000001004, suboptimal = 1000001003, timeout = 2, notReady = 1;
-    for (const auto& [name, injection] : std::initializer_list<std::pair<const char*, Inject>>{
-        {"acquireResultAtFrame (timeout)", set(&RendererTestHooks::acquireResultAtFrame, RendererTestHooks::FrameResult{1, timeout})},
-        {"acquireResultAtFrame (not ready)", set(&RendererTestHooks::acquireResultAtFrame, RendererTestHooks::FrameResult{1, notReady})},
-        {"presentResultAtFrame (out of date)", set(&RendererTestHooks::presentResultAtFrame, RendererTestHooks::FrameResult{1, outOfDate})},
-        {"presentResultAtFrame (suboptimal)", set(&RendererTestHooks::presentResultAtFrame, RendererTestHooks::FrameResult{1, suboptimal})},
-        {"out of date twice", [](auto& hooks) {
-            hooks.acquireResultAtFrame = {1, outOfDate};
-            hooks.presentResultAtFrame = {1, outOfDate};
-        }},
-    }) sweep.row(name, "run / paint / post / close", [&] { paints(config, injection); });
-    sweep.row("zeroSurfaceExtent", "create / run / paint / post / close", [&] {
-        paints(config, set(&RendererTestHooks::zeroSurfaceExtent, true), {}, true);
+    for (const char* call : {"vkCreateBuffer", "vkAllocateMemory", "vkCreateCommandPool", "vkCreateFence",
+                             "vkCreateImage", "vkCreateDescriptorPool", "vkCreateImageView", "vkCreateSemaphore"}) {
+        const auto fault = vkStartupFault(call, VK_ERROR_OUT_OF_DEVICE_MEMORY, StartupKind::resource,
+                                          false, u"VK_ERROR_OUT_OF_DEVICE_MEMORY");
+        sweep.frameRows(config, {{call, fault.inject, FrameKind::resourceFailed, fault.message}});
+    }
+    for (const auto& [name, hook, result] : {
+        std::tuple{"acquireResultAtFrame (timeout)", &RendererTestHooks::acquireResultAtFrame, VK_TIMEOUT},
+        std::tuple{"acquireResultAtFrame (not ready)", &RendererTestHooks::acquireResultAtFrame, VK_NOT_READY},
+        std::tuple{"presentResultAtFrame (out of date)", &RendererTestHooks::presentResultAtFrame, VK_ERROR_OUT_OF_DATE_KHR},
+        std::tuple{"presentResultAtFrame (suboptimal)", &RendererTestHooks::presentResultAtFrame, VK_SUBOPTIMAL_KHR},
+    }) sweep.row(name, "run / paint / post / close", [&] {
+        paints(config, set(hook, RendererTestHooks::FrameResult{1, result}), [&](const auto&, const auto&, const auto& hooks) {
+            check((hooks.*hook).frame == 0, "Vulkan consumes the presentation hook before recovery");
+        }, PaintInjection::beforeRun);
     });
+    sweep.row("out of date twice", "run / paint / post / close", [&] {
+        int faultDraw = 0;
+        paints(config, [&](auto& hooks) {
+            // Warm up first so the fault draw starts with a current swapchain.
+            faultDraw = hooks.vulkanDrawAttempts + 1;
+            hooks.acquireResultAtFrame = {faultDraw, VK_ERROR_OUT_OF_DATE_KHR};
+            hooks.presentResultAtFrame = {faultDraw, VK_ERROR_OUT_OF_DATE_KHR};
+        }, [&](const auto&, const auto&, const auto& hooks) {
+            check(hooks.acquireResultAtFrame.frame == 0 && hooks.presentResultAtFrame.frame == 0,
+                  "The same draw consumes both out-of-date results");
+            check(hooks.vulkanDrawAttempts > faultDraw, "A later draw presents after both out-of-date results");
+        }, PaintInjection::afterFirstPaint);
+    });
+    sweep.row("zeroSurfaceExtentOnce", "create / run / paint / post / close", [&] {
+        paints(config, set(&RendererTestHooks::zeroSurfaceExtentOnce, true), [](const auto&, const auto&, const auto& hooks) {
+            check(hooks.compositeAlphaMask != 0, "An allocated swapchain replaces the deferred one");
+        });
+    });
+    sweep.row("zeroSurfaceExtentOnce", "run / paint / post / close", [&] {
+        paints(config, [](auto& hooks) {
+            hooks.acquireResultAtFrame = {hooks.vulkanDrawAttempts + 1, VK_ERROR_OUT_OF_DATE_KHR};
+            hooks.zeroSurfaceExtentOnce = true;
+        }, [](const auto&, const auto&, const auto& hooks) {
+            check(hooks.acquireResultAtFrame.frame == 0 && !hooks.zeroSurfaceExtentOnce,
+                  "The out-of-date swapchain encounters zero extent on the paint path");
+        }, PaintInjection::afterFirstPaint);
+    });
+    auto hasDiagnostic = [](const auto& events, std::string_view code) {
+        return std::any_of(events.begin(), events.end(), [&](const auto& event) { return event.code == code; });
+    };
     sweep.row("hideDebugUtils", "create / run / paint / post / close", [&] {
-        paints(config, set(&RendererTestHooks::hideDebugUtils, true), [](const auto& caps, const auto&) {
-            check(!caps.debugMessages, "Hidden debug utils disables debug messages");
+        paints(config, [](auto& hooks) {
+            hooks.hideDebugUtils = true;
+            hooks.diagnoseDestruction = true;
+        }, [&](const auto& caps, const auto& events, const auto&) {
+            check(!caps.debugMessages && !hasDiagnostic(events, "Isoduo.DestroyInstance"),
+                  "Hidden debug utils suppresses the destruction diagnostic");
         });
     });
     auto debug = config;
     debug.debugContext = DebugContext::on;
-    sweep.row("hideValidationLayer", "create / run / paint / post / close", [&] {
-        paints(debug, set(&RendererTestHooks::hideValidationLayer, true), [](const auto& caps, const auto& events) {
-            check(!caps.debugContext && std::any_of(events.begin(), events.end(), [](const auto& event) {
+    const auto debugBaseline = baseline.debugContext ? baseline : capabilitiesFor(debug);
+    if (debugBaseline.debugContext) sweep.row("hideValidationLayer", "create / run / paint / post / close", [&] {
+        paints(debug, set(&RendererTestHooks::hideValidationLayer, true), [](const auto& caps, const auto& events, const auto&) {
+            check(!caps.debugContext && !caps.debugMessages && std::any_of(events.begin(), events.end(), [](const auto& event) {
                 return event.nativeMessage == "VK_LAYER_KHRONOS_validation is unavailable";
             }), "Hidden validation layer emits the startup diagnostic");
         });
     });
-    if (baseline.debugMessages) {
+    else std::cout << "Unavailable: hideValidationLayer requires installed Khronos validation\n";
+    if (debugBaseline.debugMessages) {
         sweep.row("misuseOnce", "run / paint / post / close", [&] {
-            paints(config, set(&RendererTestHooks::misuseOnce, true), [](const auto&, const auto& events) {
-                check(std::any_of(events.begin(), events.end(), [](const auto& event) {
-                    return event.code == "VUID-vkCmdSetScissor-scissorCount-arraylength";
-                }), "Application receives the injected API misuse diagnostic");
-            });
+            paints(debug, set(&RendererTestHooks::misuseOnce, true), [&](const auto&, const auto& events, const auto&) {
+                check(hasDiagnostic(events, "VUID-vkCmdSetScissor-scissorCount-arraylength"),
+                      "Application receives the injected API misuse diagnostic");
+            }, PaintInjection::beforeRun);
         });
     } else {
         std::cout << "Unavailable: misuseOnce requires debug context and validation messages\n";
     }
 #ifdef _WIN32
     sweep.startupRows(config, {
-        {"startupResourceError", set(&RendererTestHooks::startupResourceError, "Injected resource failure"), StartupKind::resource},
+        {"startupResourceError", set(&RendererTestHooks::startupResourceError, "Injected resource failure"),
+         StartupKind::resource, false, {}, {}, u"Injected resource failure"},
     });
 #endif
     for (const auto& [name, injection, code] : {
         std::tuple<const char*, Inject, const char*>{"injectDebugMessage", set(&RendererTestHooks::injectDebugMessage, 1u), "Isoduo.TestMessage"},
         {"diagnoseDestruction", set(&RendererTestHooks::diagnoseDestruction, true), "Isoduo.DestroyInstance"},
     }) sweep.row(name, "create / run / paint / post / close", [&] {
-        paints(config, injection, [&](const auto&, const auto& events) {
-            check(std::any_of(events.begin(), events.end(), [&](const auto& event) {
-                return event.code == code;
-            }), "Application receives the injected debug utils diagnostic");
-        });
+        paints(config, injection, [&](const auto&, const auto& events, const auto&) {
+            check(hasDiagnostic(events, code), "Application receives the injected debug utils diagnostic");
+        }, std::string_view(name) == "diagnoseDestruction" ? PaintInjection::atCreate : PaintInjection::beforeRun);
     });
 }
 

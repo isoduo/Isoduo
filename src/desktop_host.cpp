@@ -197,11 +197,11 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         throw;
     }
 }
-std::unique_ptr<Renderer> DesktopHost::createRenderer(bool rebuilding) {
+std::unique_ptr<Renderer> DesktopHost::createRenderer() {
     if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession, debugContext_,
         [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
     return std::make_unique<Renderer>(window_, hooks_, debugContext_,
-        [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); }, rebuilding);
+        [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
 }
 Result DesktopHost::rebuildRenderer() {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
@@ -211,7 +211,7 @@ Result DesktopHost::rebuildRenderer() {
     if (hooks_) ++hooks_->rebuildAttempts;
     renderer_.reset();
     try {
-        renderer_ = createRenderer(true);
+        renderer_ = createRenderer();
         renderer_->restoreAtlas(text_.atlasPages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }

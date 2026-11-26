@@ -26,11 +26,11 @@ struct RendererTestHooks {
     FrameResult submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
     bool diagnoseDestruction = false;
     bool failImageCreationOnce = false;
-    bool zeroSurfaceExtent = false, hideBufferMemoryTypes = false;
+    bool zeroSurfaceExtentOnce = false, hideBufferMemoryTypes = false;
     bool hideValidationLayer = false, hideDebugUtils = false;
     unsigned injectDebugMessage = 0;
     int fenceResultAtFrame = 0, swapchainCreateResultOnce = 0;
-    int lastAcquire=0, lastPresent=0, retryTimers=0;
+    int lastAcquire=0, lastPresent=0, retryTimers=0, vulkanDrawAttempts=0;
     unsigned compositeAlphaMask=0;
     double presentMs=0;
     double acquireTimeoutMs=0, maxAcquireMs=0;
@@ -69,7 +69,7 @@ public:
     using Window = EglWindow&;
 #endif
     explicit Renderer(Window window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault,
-                      std::function<void(RenderDiagnostic)> sink = {}, bool rebuilding = false);
+                      std::function<void(RenderDiagnostic)> sink = {});
     virtual ~Renderer();
     virtual double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
     virtual Image readBack(const DrawList& list, int width, int height);
