@@ -68,7 +68,8 @@ public:
 #else
     using Window = EglWindow&;
 #endif
-    explicit Renderer(Window window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
+    explicit Renderer(Window window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault,
+                      std::function<void(RenderDiagnostic)> sink = {}, bool rebuilding = false);
     virtual ~Renderer();
     virtual double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
     virtual Image readBack(const DrawList& list, int width, int height);

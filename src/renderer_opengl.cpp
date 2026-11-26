@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <unordered_map>
+#include <utility>
 
 namespace isoduo::detail {
 namespace {
@@ -188,7 +189,8 @@ struct Renderer::Impl {
             self.sink(std::move(event));
         } catch (...) {}
     }
-    explicit Impl(Window handle, RendererTestHooks* test, DebugContext debug, std::function<void(RenderDiagnostic)> callback):window(handle), hooks(test), sink(std::move(callback)) {
+    explicit Impl(Window handle, RendererTestHooks* test, DebugContext debug, std::function<void(RenderDiagnostic)> callback,
+                  bool rebuilding):window(handle), hooks(test), sink(std::move(callback)) {
         try {
 #ifdef NDEBUG
             const bool debugEnabled=debug==DebugContext::on;
@@ -271,7 +273,10 @@ struct Renderer::Impl {
             if (hooks && !hooks->startupResourceError.empty())
                 throw StartupError{{StartupFailureKind::resource, {}, {}, to16(hooks->startupResourceError)}};
             scene=std::make_unique<Scene>(gl);
-            try { scene->init(hooks ? hooks->fragmentShaderOverride : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
+            auto fragment = hooks ? hooks->fragmentShaderOverride : std::string{};
+            if (rebuilding && hooks && std::exchange(hooks->failRebuildOnce, false)) fragment = "invalid shader";
+            try { scene->init(fragment); }
+            catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
             if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
         } catch (const StartupError&) { release(); throw; }
           catch (const std::exception& e) {
@@ -473,7 +478,8 @@ struct Renderer::Impl {
         if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frameError,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
-Renderer::Renderer(Window window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
+Renderer::Renderer(Window window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink,
+                   bool rebuilding):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink),rebuilding)){}
 Renderer::Renderer()=default;
 Renderer::~Renderer()=default;
 RenderDiagnostic frameDiagnostic(unsigned code) {

@@ -442,6 +442,14 @@ is converted to physical pixels at the requested scale. Both use the same
 component inventory and drivers. Native comparison uses the CPU reference and
 GPU backend; failures save CPU, GPU and difference images.
 
+Run `ctest --test-dir <build-dir> --output-on-failure -R ^renderer_fault_sweep_`
+to verify renderer startup, painting, and explicit recovery through the
+desktop API with the OpenGL and Vulkan backends. The demo cannot inject those
+faults. Run the sweep on Win32 with the hardware driver and lavapipe, and in
+GNOME Wayland and Xfce/Xorg sessions with lavapipe on Linux. The Linux driver
+also accepts `wayland` or `x11` in place of `auto` to select a session explicitly.
+Use a Debug build with Khronos validation installed for the Vulkan API misuse row.
+
 The Windows CTest `clipboard_contract` exercises native clipboard formats in a
 private window station. It requires Windows Secondary Logon to start the local
 worker and fails if it cannot establish isolation. The `serialized_contract`

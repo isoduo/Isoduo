@@ -164,14 +164,14 @@ struct Desktop::Impl {
          DesktopConfig config, RendererTestHooks* hooks)
         : claim(std::move(ownerClaim)), ui(ui), appearance(appearance), page(std::move(page)), scroll(scroll), config(std::move(config)), hooks(hooks) {}
     ~Impl() { release(); }
-    void createRenderer() {
+    void createRenderer(bool rebuilding = false) {
         if (config.renderBackend == RenderBackendKind::vulkan) {
             const auto size = window->geometry();
             renderer = createVulkanRenderer(window->reference(), hooks, size.width, size.height, vulkanSession, config.debugContext,
                 [this](RenderDiagnostic event){ diagnostics.push(std::move(event)); });
         } else {
             renderer = std::make_unique<Renderer>(window->renderWindow(), hooks, config.debugContext,
-                [this](auto event) { diagnostics.push(std::move(event)); });
+                [this](auto event) { diagnostics.push(std::move(event)); }, rebuilding);
         }
         caps = renderer->capabilities();
     }
@@ -779,7 +779,7 @@ Result Desktop::rebuildRenderer() {
     if (host.hooks) ++host.hooks->rebuildAttempts;
     host.renderer.reset();
     try {
-        host.createRenderer();
+        host.createRenderer(true);
         host.renderer->restoreAtlas(host.text.atlasPages());
     } catch (const StartupError& error) {
         host.renderer.reset();
