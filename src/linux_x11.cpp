@@ -50,7 +50,7 @@ public:
             int count = 0;
             std::unique_ptr<XVisualInfo, decltype(&XFree)> visual(
                 XGetVisualInfo(display_, VisualIDMask | VisualScreenMask, &match, &count), XFree);
-            if (!visual) throw StartupError{{StartupFailureKind::window, {}, {}, u"EGL visual unavailable on the X11 screen"}};
+            if (!visual) throw StartupError{{StartupFailureKind::window, {}, {}, u"Requested visual unavailable on the X11 screen"}};
             const auto root = RootWindow(display_, match.screen);
             auto* connection = XGetXCBConnection(display_);
             const auto colormap = xcb_generate_id(connection);
