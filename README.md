@@ -330,9 +330,15 @@ same controls with their values, focus and page selection preserved.
 
 The settings demo includes navigation, persistence, history, diagnostics and accessibility support; see its [README](examples/settings_demo/README.md).
 
-The Windows and X11 hosts support OpenGL 3.3 (default) and Vulkan 1.3. The Windows host exposes a UI Automation provider.
+The Windows, Wayland and X11 hosts support OpenGL 3.3 (default) and Vulkan 1.3. The Windows host exposes a UI Automation provider.
 The edit form and settings demo accept `--render-backend opengl|vulkan`. Vulkan requires a system loader,
 dynamic rendering, synchronization2, and a device that can present an RGBA8 or BGRA8 UNORM swapchain to the window.
+Verify Vulkan presentation on Windows, GNOME Wayland and Xfce/X11. Resize and cover the window, minimize
+and restore it, and confirm that drawing resumes at the new size. Run the renderer recovery tests on each
+host to check device loss, rebuilding and the first recovered frame. The demos open one desktop.
+[The multi-desktop test](tests/multi_desktop.cpp) exercises concurrent desktops and recovery in one
+while the other continues rendering.
+
 Applications can handle an unavailable Vulkan backend explicitly and retry with the same Ui:
 
 ```cpp
