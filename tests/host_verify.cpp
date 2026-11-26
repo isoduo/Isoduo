@@ -389,7 +389,7 @@ int demoCompare(const std::filesystem::path& evidence) {
         info.licenses.push_back({{"isoduo"},u"Isoduo",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
         settingsDemo::Demo demo(std::move(info));
-        DesktopConfig options; options.title=u"Demo comparison";
+        auto options = Fixture::options(); options.title = u"Demo comparison";
         DesktopHost host(demo.ui,*appearance,[&]{return demo.page();},demo.scroll,options,false,true);
         ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.forceScale(scale); host.clientSize(scale==1.f?960:640,scale==1.f?720:480);
         SendMessageW(host.window(),WM_SETFOCUS,0,0); host.pump();
@@ -4325,7 +4325,7 @@ int nativePresentationMatrix(const std::filesystem::path& folder) {
         report.appearance = appearance == &webAppearance() ? "web" : "material";
         try {
             presentationMatrix::run(editForm::defaultIds(), *appearance, [&](editForm::Form& form) {
-                DesktopConfig options; options.title = u"Presentation matrix";
+                auto options = Fixture::options(); options.title = u"Presentation matrix";
                 auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
                 return presentationMatrix::Driver{[host, &form](int width, int height, float scale, std::string_view reveal) {
                     return host->layout(width, height, scale, form.scroll, reveal);
@@ -4734,8 +4734,8 @@ int wmain(int argc, wchar_t** argv) {
         if (backendCheck) {
             Fixture fixture(webAppearance(), true);
             const auto renderer = fixture.host.rendererName();
-            std::cout << "OpenGL renderer: " << renderer << '\n';
-            if (renderer.find("llvmpipe") == std::string::npos) {
+            std::cout << (Fixture::renderBackend == RenderBackendKind::vulkan ? "Vulkan" : "OpenGL") << " renderer: " << renderer << '\n';
+            if (fixture.host.capabilities().renderBackend != Fixture::renderBackend || renderer.find("llvmpipe") == std::string::npos) {
                 std::cerr << "Expected Mesa llvmpipe\n";
                 return 1;
             }

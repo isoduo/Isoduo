@@ -1,40 +1,41 @@
 ﻿name: Render
 on: [push, pull_request]
 
+env:
+  MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
+  MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
+  GALLIUM_DRIVER: llvmpipe
+
 jobs:
   render:
     runs-on: windows-latest
     timeout-minutes: 60
-    env:
-      MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
-      MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
-      GALLIUM_DRIVER: llvmpipe
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
           toolset: '14.44'
+      - name: Install pinned Vulkan test tools
+        run: cmake -P cmake/InstallVulkanTools.cmake
       - name: Configure Release
-        run: cmake --preset windows-clang-cl-release
+        run: cmake --preset windows-clang-cl-release -C "${{ runner.temp }}/isoduo-vulkan-tools/tools.cmake" -DISODUO_REQUIRE_VULKAN_TESTS=ON
       - name: Build Release
         run: cmake --build --preset windows-clang-cl-release
       - name: Check startup failure without Mesa
         run: cmake -E env -- build/Release/isoduo_renderer_failure_tests.exe --gdi-version
+      - name: Test Vulkan startup before registering lavapipe
+        run: ctest --preset windows-clang-cl-release --no-tests=error -R '^vulkan_no_driver$'
       - name: Download, verify and install application-local Mesa DLLs
         run: cmake -DDESTINATION=build/Release -P cmake/InstallMesa.cmake
+      - name: Register lavapipe ICD
+        run: cmake -DKIND=Drivers "-DMANIFEST=build/Release/lvp_icd.x86_64.json" -P cmake/RegisterVulkanManifest.cmake
       - name: Verify llvmpipe backend
         run: cmake -E env -- build/Release/isoduo_host_verify.exe --backend-check
+      - name: Verify Vulkan uses lavapipe
+        run: cmake -E env -- build/Release/isoduo_host_verify.exe --render-backend vulkan --backend-check
       - name: Run full CTest suite
-        run: ctest --preset windows-clang-cl-release --timeout 900
-      - name: Configure Debug diagnostics
-        run: cmake --preset windows-clang-cl-debug
-      - name: Build Debug diagnostics
-        run: cmake --build --preset windows-clang-cl-debug --target isoduo_renderer_failure_tests isoduo_diagnostic_queue_tests isoduo_diagnostics_tests
-      - name: Install verified Mesa DLLs for Debug
-        run: cmake -E copy build/Release/opengl32.dll build/Release/libgallium_wgl.dll build/Debug
-      - name: Test Debug diagnostics
-        run: ctest --preset windows-clang-cl-debug --timeout 900 -R '^(renderer_failure|diagnostic_queue|diagnostics)$'
+        run: ctest --preset windows-clang-cl-release --timeout 900 -E '^vulkan_no_driver$'
       - name: Upload render evidence and CTest logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -43,5 +44,40 @@ jobs:
           path: |
             build/Release/evidence/
             build/Release/Testing/Temporary/
+          if-no-files-found: warn
+  validation:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: '14.44'
+      - name: Install pinned Vulkan test tools
+        run: cmake -P cmake/InstallVulkanTools.cmake
+      - name: Register Khronos validation layer
+        run: cmake -DKIND=ExplicitLayers "-DMANIFEST=${{ runner.temp }}/isoduo-vulkan-tools/sdk/Bin/VkLayer_khronos_validation.json" -P cmake/RegisterVulkanManifest.cmake
+      - name: Configure Debug validation
+        run: cmake --preset windows-clang-cl-debug -C "${{ runner.temp }}/isoduo-vulkan-tools/tools.cmake" -DISODUO_REQUIRE_VULKAN_TESTS=ON -DISODUO_TEST_VULKAN_VALIDATION=ON
+      - name: Build Debug render tests
+        run: cmake --build --preset windows-clang-cl-debug --target isoduo_vulkan_startup_tests isoduo_host_verify isoduo_settings_demo_web isoduo_renderer_failure_tests isoduo_diagnostic_queue_tests isoduo_diagnostics_tests
+      - name: Test Vulkan startup before registering lavapipe
+        run: ctest --preset windows-clang-cl-debug --no-tests=error -R '^vulkan_no_driver$'
+      - name: Install Mesa drivers
+        run: cmake -DDESTINATION=build/Debug -P cmake/InstallMesa.cmake
+      - name: Register lavapipe ICD
+        run: cmake -DKIND=Drivers "-DMANIFEST=build/Debug/lvp_icd.x86_64.json" -P cmake/RegisterVulkanManifest.cmake
+      - name: Test Debug diagnostics
+        run: ctest --preset windows-clang-cl-debug --timeout 900 -R '^(renderer_failure|diagnostic_queue|diagnostics)$'
+      - name: Test Vulkan with Khronos validation
+        run: ctest --preset windows-clang-cl-debug --timeout 900 --no-tests=error -L vulkan -E '^vulkan_no_driver$'
+      - name: Upload render evidence and CTest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-evidence
+          path: |
+            build/Debug/evidence/
             build/Debug/Testing/Temporary/
           if-no-files-found: warn
