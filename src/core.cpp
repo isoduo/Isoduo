@@ -432,28 +432,28 @@ Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opa
 }
 
 void detail::UiState::invalidateDrawings() {
-    for (auto& [id, field] : drawings_)
-        if (field.draw) field.content.pending = true;
+    for (auto& [id, area] : drawings_)
+        if (area.draw) area.content.pending = true;
 }
 
 void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure) {
     auto entry = drawings_.find(placement.id);
     if (entry == drawings_.end() || removalPending(placement.id)) return;
-    auto& field = entry->second;
+    auto& area = entry->second;
     const auto bounds = placement.bounds;
 #ifndef NDEBUG
-    if (bounds.h == 0 && !field.diagnosedHeight) {
-        field.diagnosedHeight = true;
+    if (bounds.h == 0 && !area.diagnosedHeight) {
+        area.diagnosedHeight = true;
         auto message = placement.id + " needs layout::drawingArea with a positive height";
         diagnosticMessages.push_back(message);
         outputDiagnostic(message);
     }
 #endif
-    if (!field.draw || stopped_ || rendererFailed_) return;
+    if (!area.draw || stopped_ || rendererFailed_) return;
     DipSize size{bounds.w / scale, bounds.h / scale};
-    if (field.scale != scale || field.content.size != size) field.content.pending = true;
+    if (area.scale != scale || area.content.size != size) area.content.pending = true;
     auto visible = intersect(bounds, placement.clip);
-    if (windowHidden_ || !field.content.pending || visible.w <= 0 || visible.h <= 0) return;
+    if (windowHidden_ || !area.content.pending || visible.w <= 0 || visible.h <= 0) return;
 
     DrawingEnvironment env;
     env.motionPreference_ = motionPreference();
@@ -469,21 +469,21 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     Result result;
     drawing_ = true;
     try {
-        result = field.draw(env);
+        result = area.draw(env);
     } catch (...) {
         result.status = Status::failed;
     }
     drawing_ = false;
-    field.scale = scale;
-    field.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
-    field.pixels.clear();
+    area.scale = scale;
+    area.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
+    area.primitives.clear();
     if (!result) {
         auto message = placement.id + " drawing failed";
         diagnosticMessages.push_back(message);
         outputDiagnostic(message);
         return;
     }
-    field.content.commands = std::move(*commands);
+    area.content.commands = std::move(*commands);
     commands.reset();
     // Preserve the original corners when a rounded shape extends beyond the clip.
     // Leave integer headroom for edge differences and translation into client coordinates.
@@ -504,25 +504,25 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
                 auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
                 layout.x = std::round(double(r.x) * scale);
                 layout.y = std::round(double(r.y) * scale);
-                field.pixels.push_back({rect, visibleRect, 0, command.color, command.opacity, std::move(layout)});
+                area.primitives.push_back({rect, visibleRect, 0, command.color, command.opacity, std::move(layout)});
             } else {
                 int radius = std::min({edge(command.radius), rect.w / 2, rect.h / 2});
-                field.pixels.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});
+                area.primitives.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});
             }
         }
     };
-    flatten(flatten, field.content.commands, {0, 0, bounds.w, bounds.h});
+    flatten(flatten, area.content.commands, {0, 0, bounds.w, bounds.h});
 }
 
 Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)> draw) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_); !r) return r;
-        auto& field = ui_->drawings_.at(id_);
-        field.draw = std::move(draw);
-        if (field.draw) field.content.pending = true;
+        auto& area = ui_->drawings_.at(id_);
+        area.draw = std::move(draw);
+        if (area.draw) area.content.pending = true;
         else {
-            field.content = {};
-            field.pixels.clear();
+            area.content = {};
+            area.primitives.clear();
         }
         ui_->invalidate();
         return {};
@@ -531,9 +531,9 @@ Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)
 Result DrawingAreaHandle::onFrame(std::function<Result(const FrameInfo&)> callback) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_); !r) return r;
-        auto& field = ui_->drawings_.at(id_);
-        field.frame = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
-        if (!field.frame) field.admitted = field.request = 0;
+        auto& area = ui_->drawings_.at(id_);
+        area.frame = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
+        if (!area.frame) area.admitted = area.request = 0;
         if (ui_->scheduleFrames) ui_->scheduleFrames();
         return {};
     });
@@ -541,10 +541,10 @@ Result DrawingAreaHandle::onFrame(std::function<Result(const FrameInfo&)> callba
 Result DrawingAreaHandle::requestFrame() const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_, true); !r) return r;
-        auto& field = ui_->drawings_.at(id_);
-        if (!field.frame) return {Status::invalidValue, u"No frame callback registered"};
-        if (!field.request) {
-            field.request = ++ui_->nextRequest_;
+        auto& area = ui_->drawings_.at(id_);
+        if (!area.frame) return {Status::invalidValue, u"No frame callback registered"};
+        if (!area.request) {
+            area.request = ++ui_->nextRequest_;
             if (ui_->scheduleFrames) ui_->scheduleFrames();
         }
         return {};
@@ -553,8 +553,8 @@ Result DrawingAreaHandle::requestFrame() const {
 Result DrawingAreaHandle::cancelFrame() const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_, true); !r) return r;
-        auto& field = ui_->drawings_.at(id_);
-        field.admitted = field.request = 0;
+        auto& area = ui_->drawings_.at(id_);
+        area.admitted = area.request = 0;
         if (ui_->scheduleFrames) ui_->scheduleFrames();
         return {};
     });
@@ -562,9 +562,9 @@ Result DrawingAreaHandle::cancelFrame() const {
 Result DrawingAreaHandle::requestRedraw() const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_, true); !r) return r;
-        auto& field = ui_->drawings_.at(id_);
-        if (field.draw && !field.content.pending) {
-            field.content.pending = true;
+        auto& area = ui_->drawings_.at(id_);
+        if (area.draw && !area.content.pending) {
+            area.content.pending = true;
             ui_->invalidate();
         }
         return {};
@@ -575,8 +575,8 @@ Result DrawingAreaHandle::enable(bool enabled) const {
         if (auto r = ui_->configurationAccess(id_); !r) return r;
         if (ui_->find(id_)->enabled != enabled) {
             ui_->enable(id_, enabled);
-            auto& field = ui_->drawings_.at(id_);
-            field.content.pending = bool(field.draw);
+            auto& area = ui_->drawings_.at(id_);
+            area.content.pending = bool(area.draw);
             ui_->invalidate();
         }
         return {};
@@ -1385,10 +1385,10 @@ Result detail::UiState::dispatchFrames() {
     if (dispatchingFrames_) return {Status::busy, u"Frame in progress"};
     if (!framesReady()) return {};
     std::vector<std::pair<std::uint64_t, Id>> batch;
-    for (auto& [id, field] : drawings_) {
-        if (!field.request || !semanticBounds_.contains(id)) continue;
-        field.admitted = std::exchange(field.request, 0);
-        batch.emplace_back(field.admitted, id);
+    for (auto& [id, area] : drawings_) {
+        if (!area.request || !semanticBounds_.contains(id)) continue;
+        area.admitted = std::exchange(area.request, 0);
+        batch.emplace_back(area.admitted, id);
     }
     std::sort(batch.begin(), batch.end());
     dispatchingFrames_ = true;
