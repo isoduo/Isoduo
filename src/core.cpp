@@ -354,9 +354,36 @@ detail::UiState::~UiState() {
 }
 namespace {
 bool validDrawingRect(DipRect rect) {
-    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) &&
-           std::isfinite(rect.h) && rect.w >= 0 && rect.h >= 0;
+    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) && std::isfinite(rect.h)
+        && rect.w >= 0 && rect.h >= 0;
 }
+detail::DrawingTextLayout layoutDrawingText(TextMeasure& measure, int bodySize, float scale,
+        std::u16string_view text, DrawingTextStyle style, std::optional<float> width) {
+    detail::DrawingTextLayout layout;
+    layout.pixels = style.size == DrawingTextSize::caption ? std::max(1, bodySize * 7 / 8) : bodySize;
+    layout.lineHeight = measure.lineHeight(layout.pixels);
+    const int limit = std::numeric_limits<int>::max();
+    const int wrapWidth = width ? static_cast<int>(std::min<double>(limit, std::round(double(*width) * scale))) : limit;
+    layout.face = {style.bold, style.italic};
+    layout.lines = detail::wrapStyled(measure, text, layout.pixels, wrapWidth, layout.face);
+    for (const auto& line : layout.lines)
+        layout.width = std::max(layout.width, measure.measure(line, layout.pixels, layout.face).width);
+    return layout;
+}
+}
+Query<DipSize> DrawingEnvironment::measureText(std::u16string_view text, DrawingTextStyle style, std::optional<float> width) const {
+    if (commands_.expired()) return {Status::notFound, u"Drawing has finished", {}};
+    if (!validMultiLine(text) || (width && (!std::isfinite(*width) || *width < 0)))
+        return {Status::invalidValue, u"Invalid drawing text or wrap width", {}};
+    auto layout = layoutDrawingText(*measure_, textSize_, scale_, text, style, width);
+    return {Status::ok, {}, DipSize{layout.width / scale_, float(layout.lines.size()) * layout.lineHeight / scale_}};
+}
+Result DrawingEnvironment::drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style, Color color, unsigned char opacity) const {
+    auto commands = commands_.lock();
+    if (!commands) return {Status::notFound, u"Drawing has finished"};
+    if (!validMultiLine(text) || !validDrawingRect(rect)) return {Status::invalidValue, u"Invalid drawing text or rectangle"};
+    commands->push_back({DrawingCommandKind::drawText, rect, color, opacity, 0, {}, std::u16string(text), style});
+    return {};
 }
 Result DrawingEnvironment::clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const {
     auto commands = commands_.lock();
@@ -396,7 +423,7 @@ Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opa
     return {};
 }
 
-void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale) {
+void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure) {
     auto entry = drawings_.find(placement.id);
     if (entry == drawings_.end() || removalPending(placement.id)) return;
     auto& field = entry->second;
@@ -416,6 +443,8 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     if (!field.content.pending || visible.w <= 0 || visible.h <= 0) return;
 
     DrawingEnvironment env;
+    env.measure_ = &measure;
+    env.textSize_ = placement.textSize;
     env.size_ = size;
     env.scale_ = scale;
     env.palette_ = effectivePalette(appearance);
@@ -440,6 +469,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
         return;
     }
     field.content.commands = std::move(*commands);
+    commands.reset();
     // Preserve the original corners when a rounded shape extends beyond the clip.
     // Leave integer headroom for edge differences and translation into client coordinates.
     auto edge = [scale](double dip) {
@@ -455,6 +485,11 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
             if (visibleRect.w <= 0 || visibleRect.h <= 0) continue;
             if (command.kind == DrawingCommandKind::clip) {
                 visit(visit, command.children, visibleRect);
+            } else if (command.kind == DrawingCommandKind::drawText) {
+                auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
+                layout.x = std::round(double(r.x) * scale);
+                layout.y = std::round(double(r.y) * scale);
+                field.pixels.push_back({rect, visibleRect, 0, command.color, command.opacity, std::move(layout)});
             } else {
                 int radius = std::min({edge(command.radius), rect.w / 2, rect.h / 2});
                 field.pixels.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});

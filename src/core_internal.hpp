@@ -18,6 +18,14 @@
 namespace isoduo {
 using Id = std::string;
 namespace detail {
+struct DrawingTextLayout {
+    std::vector<std::u16string> lines;
+    int pixels = 0, lineHeight = 0;
+    double x = 0, y = 0;
+    FontStyle face{};
+    float width = 0;
+};
+std::vector<std::u16string> wrapStyled(TextMeasure&, std::u16string_view, int pixels, int width, FontStyle);
 struct TextHit { unsigned offset = 0; bool upstream = false; };
 // A component as the framework keeps it: the application's configuration plus its component type (#96). The public
 // ComponentConfig names no type; Ui::add_x sets it, and a component created as data (the UiState constructor,
@@ -81,7 +89,7 @@ public:
     RadioGroupHandle addRadioGroup(Component control, std::vector<OptionItem> options);
     SliderHandle addSlider(Component control, SliderRange range);
     DrawingAreaHandle addDrawingArea(Component control);
-    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale);
+    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure);
     ProgressHandle addProgress(Component control);
     DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
     TabsHandle addTabs(Component control, std::vector<TabPage> pages);
@@ -635,16 +643,17 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
-    struct DrawingFill {
+    struct DrawingPixel {
         Rect rect, clip;
         int radius;
         Color color;
         unsigned char opacity;
+        std::optional<DrawingTextLayout> text{};
     };
     struct DrawingField {
         std::function<Result(const DrawingEnvironment&)> draw;
         DrawingContent content;
-        std::vector<DrawingFill> pixels;
+        std::vector<DrawingPixel> pixels;
         float scale = 0;
         bool diagnosedHeight = false;
     };

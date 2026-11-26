@@ -570,7 +570,14 @@ struct DipSize {
     float w = 0, h = 0;
     bool operator==(const DipSize&) const = default;
 };
-enum class DrawingCommandKind { fillRect, roundedRect, clip };
+class TextMeasure;
+enum class DrawingTextSize { body, caption };
+struct DrawingTextStyle {
+    DrawingTextSize size = DrawingTextSize::body;
+    bool bold = false, italic = false;
+    bool operator==(const DrawingTextStyle&) const = default;
+};
+enum class DrawingCommandKind { fillRect, roundedRect, clip, drawText };
 struct DrawingCommand {
     DrawingCommandKind kind;
     DipRect rect;
@@ -578,6 +585,8 @@ struct DrawingCommand {
     unsigned char opacity = 255;
     float radius = 0;
     std::vector<DrawingCommand> children{};
+    std::u16string text{};
+    DrawingTextStyle style{};
     bool operator==(const DrawingCommand&) const = default;
 };
 enum class DrawingStatus { none, drawn, failed };
@@ -597,10 +606,16 @@ public:
     bool enabled() const { return enabled_; }
     Result clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const;
     Result roundedRect(DipRect rect, float radius, Color color, unsigned char opacity = 255) const;
+    Query<DipSize> measureText(std::u16string_view text, DrawingTextStyle style = {},
+                               std::optional<float> wrapWidth = {}) const;
+    Result drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style,
+                    Color color, unsigned char opacity = 255) const;
     Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
 private:
     friend class detail::UiState;
     DrawingEnvironment() = default;
+    TextMeasure* measure_ = nullptr;
+    int textSize_ = 0;
     DipSize size_;
     float scale_ = 1;
     Palette palette_;
