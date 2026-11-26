@@ -476,7 +476,6 @@ void frameMutations() {
     a.onFrame([&](const FrameInfo&) {
         if (++attempts > 1) return Result{};
         a.requestRedraw();
-        a.onFrame([&](const FrameInfo&) { ++attempts; return Result{}; });
         a.requestFrame();
         return Result{Status::failed, {}};
     });
@@ -497,6 +496,19 @@ void frameMutations() {
     ui.simulateFrame(0ms);
     test::check(attempts == 2 && !*ui.animating() && ui.diagnostics().size() == diagnostics + 1,
                 "explicit request reuses the callback after a failure");
+    int replacements = 0;
+    a.onFrame([&](const FrameInfo&) {
+        a.onFrame([&](const FrameInfo&) { ++replacements; return Result{}; });
+        a.requestFrame();
+        return Result{Status::failed, {}};
+    });
+    a.requestFrame();
+    ui.simulateFrame(0ms);
+    ui.simulateFrame(0ms);
+    test::check(replacements == 0 && !*ui.animating(), "failure withdraws the replacement callback's continuation");
+    a.requestFrame();
+    ui.simulateFrame(0ms);
+    test::check(replacements == 1, "a later explicit request invokes the replacement");
     a.onFrame([&](const FrameInfo&) { return b.remove(); });
     a.requestFrame();
     b.requestFrame();
