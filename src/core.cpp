@@ -1399,7 +1399,7 @@ Result detail::UiState::dispatchFrames() {
             it->second.request = std::exchange(it->second.admitted, 0);
             continue;
         }
-        std::weak_ptr<void> lifetime = componentLifetime(id);
+        std::weak_ptr<void> lifetime = componentLifetimes_.at(id);
         auto callback = it->second.frame;
         it->second.admitted = 0;
         try {
