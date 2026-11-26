@@ -20,6 +20,7 @@ struct RendererTestHooks {
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
     std::pair<int, int> submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
+    bool diagnoseDestruction = false;
     bool failImageCreationOnce = false;
     bool zeroSurfaceExtent = false, hideBufferMemoryTypes = false;
     bool hideValidationLayer = false, hideDebugUtils = false;

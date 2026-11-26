@@ -172,6 +172,23 @@ int failures(DesktopConfig config) {
             !caps.renderer.empty() && !caps.vendor.empty() && caps.resetDetection, "VK04 Vulkan capabilities");
         std::cout << utf8FromUtf16(caps.renderer) << " / " << utf8FromUtf16(caps.vendor) << " / " << utf8FromUtf16(caps.version) << '\n';
     }
+    {
+        bool delivered = false;
+        auto options = config;
+        options.onDiagnostic = [&](const RenderDiagnostic& event) {
+            if (event.code == "Isoduo.DestroyInstance") delivered = true;
+        };
+        RendererTestHooks hooks;
+        hooks.diagnoseDestruction = true;
+#ifdef _WIN32
+        auto result = DesktopHost::createForTest(ui, webAppearance(), page, scroll, options, &hooks);
+#else
+        auto result = LinuxDesktopTest::create(ui, webAppearance(), page, scroll, options, &hooks);
+#endif
+        check(bool(result.desktop), "Create shutdown diagnostic fixture");
+        result.desktop.reset();
+        check(delivered, "Deliver the Vulkan instance destruction diagnostic");
+    }
     RendererTestHooks broken;
     broken.hideInstanceProcAddr = true;
     auto missingSymbol = create(broken);
