@@ -129,7 +129,7 @@ struct VulkanSession {
     VkSurfaceKHR surface{};
     VkDevice device{};
     PFN_vkDestroyDevice destroyDevice{};
-    PFN_vkDestroyInstance destroyInstance{};
+    std::function<std::remove_pointer_t<PFN_vkDestroyInstance>> destroyInstance;
     PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices{};
     PFN_vkGetPhysicalDeviceProperties getPhysicalDeviceProperties{};
     PFN_vkGetPhysicalDeviceFeatures2 getPhysicalDeviceFeatures2{};
@@ -309,6 +309,16 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     auto create = s.function<PFN_vkCreateInstance>("vkCreateInstance");
     check("vkCreateInstance", invoke(hooks, "vkCreateInstance", [&]{ return create(&info, nullptr, &s.instance); }));
     s.destroyInstance = s.function<PFN_vkDestroyInstance>("vkDestroyInstance");
+    if (hooks && hooks->diagnoseDestruction && s.debugUtils) {
+        s.destroyInstance = [real=s.destroyInstance, validation](auto instance, auto allocator) {
+            VkDebugUtilsMessengerCallbackDataEXT data{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT};
+            data.pMessageIdName = "Isoduo.DestroyInstance";
+            data.pMessage = "Instance destruction diagnostic";
+            validation.pfnUserCallback(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+                VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT, &data, validation.pUserData);
+            real(instance, allocator);
+        };
+    }
     if (s.debugUtils) {
     s.destroyMessenger = s.function<PFN_vkDestroyDebugUtilsMessengerEXT>("vkDestroyDebugUtilsMessengerEXT");
     auto createMessenger = s.function<PFN_vkCreateDebugUtilsMessengerEXT>("vkCreateDebugUtilsMessengerEXT");

@@ -226,6 +226,7 @@ struct Desktop::Impl {
             discarded.swap(posted);
             preferences.reset();
         }
+        diagnostics.drain();
     }
     Result post(std::function<void()> work) {
         if (!work) return {Status::invalidValue, u"No work to post"};
