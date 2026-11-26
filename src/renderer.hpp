@@ -11,6 +11,7 @@ namespace isoduo::detail {
 #ifndef _WIN32
 class EglWindow;
 #endif
+struct VulkanSession;
 struct RendererTestHooks {
     bool failContext33 = false, failRebuildOnce = false, hideRobustness = false, hideKhrDebug = false, misuseOnce = false;
     std::optional<std::uint32_t> apiVersionOverride;
@@ -18,6 +19,10 @@ struct RendererTestHooks {
     bool hideDynamicRendering = false, hideSynchronization2 = false;
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
+    std::pair<int, int> submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
+    bool hideValidationLayer = false, hideDebugUtils = false;
+    unsigned injectDebugMessage = 0;
+    int fenceResultAtFrame = 0, swapchainCreateResultOnce = 0;
     int lastAcquire=0, lastPresent=0, retryTimers=0;
     unsigned compositeAlphaMask=0;
     double presentMs=0;
