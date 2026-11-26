@@ -13,25 +13,96 @@ class SurfaceRenderer final : public Renderer {
     VkQueue presentQueue{};
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR getCaps =
         d.session.function<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
-    PFN_vkCreateSwapchainKHR create = d.api.load<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
+    std::function<std::remove_pointer_t<PFN_vkCreateSwapchainKHR>> create = d.api.load<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
     PFN_vkDestroySwapchainKHR destroy = d.api.load<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
     PFN_vkGetSwapchainImagesKHR images = d.api.load<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
-    PFN_vkAcquireNextImageKHR acquire = d.api.load<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
-    PFN_vkQueuePresentKHR present = d.api.load<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
+    std::function<std::remove_pointer_t<PFN_vkAcquireNextImageKHR>> acquire = d.api.load<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
+    std::function<std::remove_pointer_t<PFN_vkQueuePresentKHR>> present = d.api.load<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
     std::unique_ptr<Swapchain> chain;
     VkPresentModeKHR presentMode;
     bool dirty = true;
     VkPipeline pipeline{};
+    int frameNumber = 0;
+    VkResult injectedResult(int result) {
+        d.simulatedLoss = result == VK_ERROR_DEVICE_LOST;
+        return static_cast<VkResult>(result);
+    }
+    void installHooks() {
+        if (!d.hooks) return;
+        auto wait = d.api.WaitForFences;
+        d.api.WaitForFences = [this, wait](auto... args) {
+            auto result = wait(args...);
+            if (result == VK_SUCCESS && frameNumber && d.hooks->fenceResultAtFrame == frameNumber) {
+                d.hooks->fenceResultAtFrame = 0;
+                d.simulatedLoss = true;
+                return VK_ERROR_DEVICE_LOST;
+            }
+            return result;
+        };
+        auto acquireImage = acquire;
+        acquire = [this, acquireImage](auto... args) {
+            auto &fault = d.hooks->acquireResultAtFrame;
+            if (fault.first != frameNumber) return acquireImage(args...);
+            fault.first = 0;
+            return injectedResult(fault.second);
+        };
+        auto show = present;
+        present = [this, show](auto... args) {
+            auto &fault = d.hooks->presentResultAtFrame;
+            if (fault.first != frameNumber) return show(args...);
+            fault.first = 0;
+            if (fault.second == VK_SUBOPTIMAL_KHR) {
+                auto actual = show(args...);
+                if (actual != VK_SUCCESS) return actual;
+            }
+            return injectedResult(fault.second);
+        };
+        auto createChain = create;
+        create = [this, createChain](auto... args) {
+            int fault = std::exchange(d.hooks->swapchainCreateResultOnce, 0);
+            return fault ? injectedResult(fault) : createChain(args...);
+        };
+        auto scissor = d.api.CmdSetScissor;
+        d.api.CmdSetScissor = [this, scissor](auto cmd, auto first, auto count, auto rect) {
+            if (d.session.validationEnabled && std::exchange(d.hooks->misuseOnce,false)) {
+                d.session.testingScissorCount = true;
+                scissor(cmd, first, 0, rect);
+                d.session.testingScissorCount = false;
+            }
+            if (d.hooks->injectDebugMessage && d.session.debugUtils) {
+                auto send=d.session.function<PFN_vkSubmitDebugUtilsMessageEXT>("vkSubmitDebugUtilsMessageEXT");
+                VkDebugUtilsMessengerCallbackDataEXT message{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT};
+                message.pMessageIdName="Isoduo.TestMessage";
+                message.pMessage="Injected diagnostic";
+                message.messageIdNumber=177;
+                for (auto n=std::exchange(d.hooks->injectDebugMessage,0u); n; --n)
+                    send(d.session.instance,VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
+                         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT,&message);
+            }
+            scissor(cmd, first, count, rect);
+        };
+        auto submit = d.api.QueueSubmit;
+        d.api.QueueSubmit = [this, submit](auto queue, auto count, auto infos, auto fence) {
+            auto &fault = d.hooks->submitResultAtFrame;
+            if (frameNumber && fault.first == frameNumber) {
+                fault.first = 0;
+                return injectedResult(fault.second);
+            }
+            return submit(queue, count, infos, fence);
+        };
+    }
     void presentationResult(const char *call, VkResult result, bool rebuilding = false) {
         if (result == VK_SUCCESS)
             return;
         if (!d.running)
             d.checked(call, result, Kind::contextCreation);
+        if (result == VK_ERROR_SURFACE_LOST_KHR) d.session.surfaceLost = true;
         auto kind = RendererFailureKind::presentFailed;
         if (result == VK_ERROR_DEVICE_LOST)
             kind = RendererFailureKind::deviceReset;
         else if (rebuilding && (result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY))
             kind = RendererFailureKind::resourceFailed;
+        d.diagnostic(call,result,kind);
         throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))}, {}};
     }
     void rebuild(VkExtent2D desired) {
@@ -76,7 +147,9 @@ class SurfaceRenderer final : public Renderer {
             true);
         next->objects.keep(next->handle, destroy, d.device);
         auto handles = enumerate<VkImage>("vkGetSwapchainImagesKHR", [&](uint32_t *n, VkImage *out) {
-            return images(d.device, next->handle, n, out);
+            auto status=images(d.device, next->handle, n, out);
+            if (status!=VK_INCOMPLETE) presentationResult("vkGetSwapchainImagesKHR",status,true);
+            return status;
         });
         VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         for (auto handle : handles) {
@@ -90,23 +163,41 @@ class SurfaceRenderer final : public Renderer {
 
   public:
     SurfaceRenderer(VulkanWindow window, RendererTestHooks *hooks, VkExtent2D initial,
-                    VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR) : d(window, true, hooks), presentMode(mode) {
+                    std::shared_ptr<Session> session, VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR)
+        : d(window, true, hooks, std::move(session)), presentMode(mode) {
         d.api.GetDeviceQueue(d.device, *d.selected.presentQueue, 0, &presentQueue);
         pipeline = d.selected.format.format == VK_FORMAT_R8G8B8A8_UNORM ? d.rgbaPipeline
                                                                         : d.createPipeline(d.selected.format.format);
         if (initial.width && initial.height)
             rebuild(initial);
+        installHooks();
         d.running = true;
     }
-    ~SurfaceRenderer() override { d.api.DeviceWaitIdle(d.device); }
+    ~SurfaceRenderer() override {
+        if (d.api.DeviceWaitIdle(d.device)==VK_ERROR_DEVICE_LOST)
+            d.diagnostic("vkDeviceWaitIdle",VK_ERROR_DEVICE_LOST,RendererFailureKind::deviceReset);
+    }
     void resized() override { dirty = true; }
     RendererCapabilities capabilities() const override { return d.caps; }
     std::string name() const override { return utf8FromUtf16(d.caps.renderer) + " / " + utf8FromUtf16(d.caps.version); }
-    void restoreAtlas(
-        const std::vector<const AtlasPage *> &) override { /* Frame recording uploads current CPU pages before use. */ }
+    void restoreAtlas(const std::vector<const AtlasPage*>& pages) override {
+        // Allocation failures here are explicit rebuild failures, before the UI unfreezes.
+        d.running=false;
+        for (const auto* page : pages) {
+            if (page->pixels.empty()) continue;
+            auto buffer=d.buffer(d.resources,page->pixels.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            void* mapped{};
+            d.checked("vkMapMemory",d.api.MapMemory(d.device,buffer.memory,0,page->pixels.size(),0,&mapped));
+            std::memcpy(mapped,page->pixels.data(),page->pixels.size());
+            d.api.UnmapMemory(d.device,buffer.memory);
+            d.restored.push_back({page,page->pixels,buffer});
+        }
+        d.running=true;
+    }
     Image readBack(const DrawList &list, int width, int height) override { return readPixels(d, list, width, height); }
     double draw(const DrawList &list, int width, int height, bool measure, bool offscreen, double *submission,
                 std::chrono::steady_clock::time_point *displayed) override {
+        ++frameNumber;
         auto start = std::chrono::steady_clock::now();
         if (offscreen) {
             CommandFrame frame(d, measure);

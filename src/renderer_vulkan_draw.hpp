@@ -40,7 +40,7 @@ struct DeviceCommands {
     PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
     PFN_vkCmdClearAttachments CmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
     PFN_vkCmdSetViewport CmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
-    PFN_vkCmdSetScissor CmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
+    std::function<std::remove_pointer_t<PFN_vkCmdSetScissor>> CmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
     PFN_vkCmdBindPipeline CmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
     PFN_vkCmdPushConstants CmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
@@ -69,10 +69,10 @@ struct DeviceCommands {
         load<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines");
     PFN_vkDestroyPipeline DestroyPipeline = load<PFN_vkDestroyPipeline>("vkDestroyPipeline");
     PFN_vkGetDeviceQueue GetDeviceQueue = load<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
-    PFN_vkQueueSubmit QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
+    std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
     PFN_vkCreateFence CreateFence = load<PFN_vkCreateFence>("vkCreateFence");
     PFN_vkDestroyFence DestroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
-    PFN_vkWaitForFences WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
+    std::function<std::remove_pointer_t<PFN_vkWaitForFences>> WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
     PFN_vkDeviceWaitIdle DeviceWaitIdle = load<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle");
     PFN_vkQueueWaitIdle QueueWaitIdle = load<PFN_vkQueueWaitIdle>("vkQueueWaitIdle");
     PFN_vkCreateSemaphore CreateSemaphore = load<PFN_vkCreateSemaphore>("vkCreateSemaphore");
@@ -108,8 +108,13 @@ struct Texture {
     VkExtent2D extent;
 };
 struct Drawing {
-    Session session;
+    std::shared_ptr<Session> owner;
+    Session &session;
     Selection selected;
+    struct DeviceOwner {
+        Session& session;
+        ~DeviceOwner() { session.destroyDevice(std::exchange(session.device, {}), nullptr); }
+    } deviceOwner{session};
     DeviceCommands api;
     VkDevice device;
     VkQueue queue{};
@@ -121,12 +126,20 @@ struct Drawing {
     PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
     PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
     Resources resources;
+    // Whole CPU pages uploaded while rebuilding; the next full-page copy can
+    // use these buffers even when a frame interleaves several atlas pages.
+    struct RestoredPage {
+        const AtlasPage* page;
+        std::vector<unsigned char> pixels;
+        Buffer staging;
+    };
+    std::vector<RestoredPage> restored;
     VkSampler sampler{};
     VkDescriptorSetLayout descriptors{};
     VkPipelineLayout layout{};
     VkPipeline rgbaPipeline{};
-    Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks)
-        : selected(initialize(session, window, testHooks, surface)), api{session}, device(session.device),
+    Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks, std::shared_ptr<Session> retained = {})
+        : owner(retained ? std::move(retained) : std::make_shared<Session>()), session(*owner), selected(initialize(session, window, testHooks, surface)), api{session}, device(session.device),
           hooks(testHooks) {
         api.GetDeviceQueue(device, *selected.graphicsQueue, 0, &queue);
         session.function<PFN_vkGetPhysicalDeviceMemoryProperties>("vkGetPhysicalDeviceMemoryProperties")(
@@ -145,8 +158,18 @@ struct Drawing {
                                      std::to_string(VK_API_VERSION_PATCH(version)) + " " + driver.driverInfo);
         caps.vendor = utf16FromUtf8(driver.driverName);
         caps.renderer = utf16FromUtf8(props.properties.deviceName);
+        if (session.previousDevice && session.previousDevice!=selected.physical && session.sink) {
+            RenderDiagnostic event;
+            event.backend=u"Vulkan";
+            event.severity=DiagnosticSeverity::info;
+            event.nativeMessage=std::string("Renderer rebuilt on ")+props.properties.deviceName;
+            session.sink(std::move(event));
+        }
+        session.previousDevice=selected.physical;
         caps.renderBackend = RenderBackendKind::vulkan;
         caps.resetDetection = true;
+        caps.debugContext = session.validationEnabled;
+        caps.debugMessages = caps.debugContext && session.validationMessenger;
         VkSamplerCreateInfo sample{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         sample.addressModeU = sample.addressModeV = sample.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         sampler = make<VkSampler>(resources, "vkCreateSampler", api.CreateSampler, sample, api.DestroySampler);
@@ -166,6 +189,45 @@ struct Drawing {
                                         api.DestroyPipelineLayout);
         rgbaPipeline = createPipeline(VK_FORMAT_R8G8B8A8_UNORM);
     }
+    bool simulatedLoss = false;
+    std::string faultReport() {
+        if (!selected.faultExtension || simulatedLoss) return {};
+        if (std::string_view(selected.faultExtension)==VK_KHR_DEVICE_FAULT_EXTENSION_NAME) {
+            auto get=api.load<PFN_vkGetDeviceFaultReportsKHR>("vkGetDeviceFaultReportsKHR");
+            uint32_t count=0;
+            if (get(device,0,&count,nullptr)!=VK_SUCCESS || !count) return {};
+            std::vector<VkDeviceFaultInfoKHR> reports(count,{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR});
+            auto result=get(device,0,&count,reports.data());
+            std::string detail;
+            if (result==VK_SUCCESS || result==VK_INCOMPLETE)
+                for (uint32_t i=0;i<count;++i) detail+=std::string(reports[i].description)+"\n";
+            return detail;
+        }
+        auto get=api.load<PFN_vkGetDeviceFaultInfoEXT>("vkGetDeviceFaultInfoEXT");
+        VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+        if (get(device,&counts,nullptr)!=VK_SUCCESS) return {};
+        std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+        std::vector<VkDeviceFaultVendorInfoEXT> vendors(counts.vendorInfoCount);
+        VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+        info.pAddressInfos=addresses.data();
+        info.pVendorInfos=vendors.data();
+        counts.vendorBinarySize=0;
+        auto result=get(device,&counts,&info);
+        return result==VK_SUCCESS || result==VK_INCOMPLETE ? info.description : "";
+    }
+    void diagnostic(const char* call,VkResult result,RendererFailureKind kind) {
+        if (!session.sink) return;
+        RenderDiagnostic event;
+        event.backend=u"Vulkan";
+        event.severity=DiagnosticSeverity::error;
+        event.nativeCode=uint32_t(result);
+        event.nativeMessage=std::string(call)+": "+resultName(result);
+        if (kind==RendererFailureKind::deviceReset) {
+            event.kind=DiagnosticKind::deviceReset;
+            event.backendDetail=faultReport();
+        }
+        session.sink(std::move(event));
+    }
     void checked(const char *call, VkResult result, Kind failure = Kind::resource) {
         if (running && result != VK_SUCCESS) {
             auto kind =
@@ -174,6 +236,7 @@ struct Drawing {
                 (std::string_view(call) == "vkQueueSubmit" || std::string_view(call) == "vkWaitForFences" ||
                  std::string_view(call) == "vkEndCommandBuffer" || std::string_view(call) == "vkBeginCommandBuffer"))
                 kind = RendererFailureKind::frameError;
+            diagnostic(call,result,kind);
             throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))},
                              {}};
         }
