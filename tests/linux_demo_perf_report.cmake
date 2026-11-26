@@ -14,3 +14,10 @@ endfunction()
 check(list-hold-down 0 FAIL)
 check(list-hold-down 20 PASS)
 check(slider-drag-text-size 0 REPORT)
+
+file(WRITE "${samples}" "1200 1 2 3 unknown 0\n")
+execute_process(COMMAND "${VERIFY}" summarize typing 0 -1 0 0 0
+  INPUT_FILE "${samples}" OUTPUT_VARIABLE report RESULT_VARIABLE result)
+if(NOT result EQUAL 0 OR NOT report MATCHES "status\tFAIL" OR NOT report MATCHES "steady\t1\tunknown\tunknown\tunknown\tunknown\tunknown")
+  message(FATAL_ERROR "Unsupported timestamp should give an unknown frame time: ${report}")
+endif()
