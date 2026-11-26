@@ -149,7 +149,7 @@ private:
     std::string reveal_;                        // focus target to scroll into view on the next arrange
     enum class Drag { none, text, thumb, slider } drag_ = Drag::none;
     std::optional<ThumbGrab> thumbGrab_;
-    static constexpr UINT postedWorkMessage = WM_APP + 47;  // Desktop::post wakes the window thread
+    static constexpr UINT postedWorkMessage_ = WM_APP + 47;  // Desktop::post wakes the window thread
     std::mutex postMutex_;                      // guards postWindow_ and posted_
     HWND postWindow_ = nullptr;                 // set while the host accepts posted work
     std::vector<std::function<void()>> posted_;

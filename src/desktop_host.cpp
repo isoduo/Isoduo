@@ -255,7 +255,7 @@ Result DesktopHost::post(std::function<void()> work) {
     if (!postWindow_) return {Status::notFound, u"Desktop window is closed"};
     posted_.push_back(std::move(work));
     // One wake-up message serves everything queued before it is handled.
-    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage, 0, 0)) {
+    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage_, 0, 0)) {
         posted_.clear();
         return {Status::failed, u"Unable to wake the desktop thread"};
     }
@@ -624,7 +624,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
-    case postedWorkMessage:
+    case postedWorkMessage_:
         runPosted(); return 0;
     case WM_APP+45:
         ui_.semantics().dispatchEvents(); return 0;
