@@ -474,6 +474,7 @@ struct Renderer::Impl {
     }
 };
 Renderer::Renderer(Window window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
+Renderer::Renderer()=default;
 Renderer::~Renderer()=default;
 RenderDiagnostic frameDiagnostic(unsigned code) {
     RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;

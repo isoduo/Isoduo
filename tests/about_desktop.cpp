@@ -39,14 +39,14 @@ void verifyAbout() {
         test::check(tree.get({"about.framework"})->value.find(isoduo::frameworkVersion) != std::u16string::npos, "framework version");
         test::check(tree.get({"about.renderer"})->value == u"Renderer: " + caps.version + u" — " + caps.renderer, "renderer capabilities");
         auto notices = isoduo::thirdPartyNotices();
-        test::check(info.licenses.size() == 6 && notices.size() == 4, "six license entries");
+        test::check(info.licenses.size() == 7 && notices.size() == 5, "seven license entries");
         test::check(normalized(info.licenses[0].text) == licenseFile(ISODUO_SOURCE_DIR "/LICENSE"), "framework license matches source");
-        test::check(normalized(info.licenses[5].text) == licenseFile(ISODUO_SOURCE_DIR "/examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT"), "JSON license matches source");
+        test::check(normalized(info.licenses[6].text) == licenseFile(ISODUO_SOURCE_DIR "/examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT"), "JSON license matches source");
         for (std::size_t i = 0; i < info.licenses.size(); ++i) {
             test::check(bool(demo.licenses.select(info.licenses[i].id)), "select license");
             auto text = tree.get({"about.license_text"});
             test::check(text && text->value == info.licenses[i].text, "selected full text");
-            if (i >= 1 && i <= 4) test::check(text->value == notices[i-1].text, "framework notice text");
+            if (i >= 1 && i <= 5) test::check(text->value == notices[i-1].text, "framework notice text");
         }
     }
 }

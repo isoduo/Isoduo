@@ -21,21 +21,23 @@ int main() {
     isoduo::RenderDiagnostic large; large.nativeMessage=std::string(5000,'x');
     bounded.recordFailure(large);
     if (bounded.firstFailure()->nativeMessage.size()>4096) return EXIT_FAILURE;
-    isoduo::Diagnostics details(1);
-    isoduo::RenderDiagnostic sample; sample.backend=u"OpenGL"; sample.nativeMessage="line\nUTF-8: \xc3\xa9";
-    sample.backendDetail="future-format"; sample.componentId="button\t1"; sample.operationId="op";
-    sample.nativeCode=123; sample.sourceTime=std::chrono::system_clock::time_point(std::chrono::seconds(42));
-    sample.receivedAt=std::chrono::system_clock::time_point(std::chrono::milliseconds(42456));
-    sample.uiEnvironment=&details;
-    details.record(sample);
-    std::stringstream detailStream; if (!details.save(detailStream)) return EXIT_FAILURE;
-    auto detailLoaded=isoduo::Diagnostics::load(detailStream);
-    if (detailLoaded.incomplete || detailLoaded.records.size()!=1) return EXIT_FAILURE;
-    auto copy=detailLoaded.records[0];
-    if (copy.receivedAt != sample.receivedAt || copy.uiEnvironment != nullptr) return EXIT_FAILURE;
-    if (copy.backend!=sample.backend || copy.nativeMessage!=sample.nativeMessage || copy.componentId!=sample.componentId || copy.operationId!=sample.operationId || copy.nativeCode!=sample.nativeCode || copy.sourceTime!=sample.sourceTime || copy.backendDetail!=sample.backendDetail || !copy.backendDetailUninterpreted) return EXIT_FAILURE;
-    auto corrupted=detailStream.str(); corrupted[corrupted.find("future") == std::string::npos ? 18 : corrupted.find("future")]='X';
-    std::istringstream bad(corrupted); if (!isoduo::Diagnostics::load(bad).incomplete) return EXIT_FAILURE;
+    for (auto backend : {u"OpenGL",u"Vulkan"}) {
+        isoduo::Diagnostics details(1);
+        isoduo::RenderDiagnostic sample; sample.backend=backend; sample.nativeMessage="line\nUTF-8: \xc3\xa9";
+        sample.backendDetail="future-format"; sample.componentId="button\t1"; sample.operationId="op";
+        sample.nativeCode=123; sample.sourceTime=std::chrono::system_clock::time_point(std::chrono::seconds(42));
+        sample.receivedAt=std::chrono::system_clock::time_point(std::chrono::milliseconds(42456));
+        sample.uiEnvironment=&details;
+        details.record(sample);
+        std::stringstream detailStream; if (!details.save(detailStream)) return EXIT_FAILURE;
+        auto detailLoaded=isoduo::Diagnostics::load(detailStream);
+        if (detailLoaded.incomplete || detailLoaded.records.size()!=1) return EXIT_FAILURE;
+        auto copy=detailLoaded.records[0];
+        if (copy.receivedAt != sample.receivedAt || copy.uiEnvironment != nullptr) return EXIT_FAILURE;
+        if (copy.backend!=sample.backend || copy.nativeMessage!=sample.nativeMessage || copy.componentId!=sample.componentId || copy.operationId!=sample.operationId || copy.nativeCode!=sample.nativeCode || copy.sourceTime!=sample.sourceTime || copy.backendDetail!=sample.backendDetail || !copy.backendDetailUninterpreted) return EXIT_FAILURE;
+        auto corrupted=detailStream.str(); corrupted[corrupted.find("future") == std::string::npos ? 18 : corrupted.find("future")]='X';
+        std::istringstream bad(corrupted); if (!isoduo::Diagnostics::load(bad).incomplete) return EXIT_FAILURE;
+    }
     std::stringstream stream;
     if (!log.save(stream)) return EXIT_FAILURE;
     auto loaded = isoduo::Diagnostics::load(stream);

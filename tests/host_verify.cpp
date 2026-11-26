@@ -140,7 +140,8 @@ struct Fixture {
             throw std::runtime_error("X04 client size mismatch: expected " + std::to_string(expectedWidth) + "x" +
                 std::to_string(expectedHeight) + ", got " + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
     }
-    static DesktopConfig options() { DesktopConfig o; o.title = u"Isoduo host verification"; return o; }
+    static inline RenderBackendKind renderBackend = RenderBackendKind::openGL;
+    static DesktopConfig options() { DesktopConfig o; o.renderBackend=renderBackend; o.title = u"Isoduo host verification"; return o; }
     void settle() { host.pump(); host.paint(); }
     void post(UINT msg, WPARAM w, LPARAM l) { PostMessageW(host.window(), msg, w, l); }
     void key(WPARAM vk, bool repeat = false) { post(WM_KEYDOWN, vk, keyLparam(vk, repeat, false)); host.pump(); }
@@ -178,9 +179,9 @@ void atlasNative(const Appearance& appearance, Report& report) {
     report.check("GA01", f.host.rasterizations()==before, "100 repeated frames reuse rasterized glyphs");
     auto clears=f.host.atlasClears();
     f.host.forceScale(1.5f); f.host.paint();
-    bool forward=f.host.atlasClears()==clears+1 && f.host.compareLegacy(960,720,1.5f);
+    bool forward=f.host.atlasClears()==clears+1 && f.host.compareLegacy(960,720,1.5f) && f.host.compareGpu(960,720,1.5f);
     f.host.forceScale(1.f); f.host.paint();
-    report.check("GA02", forward && f.host.atlasClears()==clears+2 && f.host.compareLegacy(960,720,1.f), "scale changes clear once and retain S1 pixels");
+    report.check("GA02", forward && f.host.atlasClears()==clears+2 && f.host.compareLegacy(960,720,1.f) && f.host.compareGpu(960,720,1.f), "scale changes clear once and retain S1 pixels");
     f.host.configureAtlas(64,1);
     bool same=f.host.compareLegacy(960,720,1.f);
     report.check("GA03-CPU", same && f.host.atlasBatches()>0 && f.host.atlasPeakPages()<=1, "small atlas batches retain S1 pixels within one page");
@@ -189,7 +190,7 @@ void atlasNative(const Appearance& appearance, Report& report) {
     f.form.ui.setPresentation(settings); f.host.paint();
     auto previous=f.host.atlasClears(); settings.textSize=24;
     bool changed=bool(f.form.ui.setPresentation(settings)); f.host.paint();
-    bool invalidated=f.host.atlasClears()==previous+1 && f.host.compareLegacy(960,720,1.f);
+    bool invalidated=f.host.atlasClears()==previous+1 && f.host.compareLegacy(960,720,1.f) && f.host.compareGpu(960,720,1.f);
     detail::Text text;
     auto oldLayout=text.shape(u"Station",18);
     detail::RecordingCanvas oldCanvas(300,80,{0,0,0});
@@ -388,7 +389,7 @@ int demoCompare(const std::filesystem::path& evidence) {
         info.licenses.push_back({{"isoduo"},u"Isoduo",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
         settingsDemo::Demo demo(std::move(info));
-        DesktopConfig options; options.title=u"Demo comparison";
+        auto options = Fixture::options(); options.title = u"Demo comparison";
         DesktopHost host(demo.ui,*appearance,[&]{return demo.page();},demo.scroll,options,false,true);
         ShowWindow(host.window(),SW_SHOWNOACTIVATE); host.forceScale(scale); host.clientSize(scale==1.f?960:640,scale==1.f?720:480);
         SendMessageW(host.window(),WM_SETFOCUS,0,0); host.pump();
@@ -4324,7 +4325,7 @@ int nativePresentationMatrix(const std::filesystem::path& folder) {
         report.appearance = appearance == &webAppearance() ? "web" : "material";
         try {
             presentationMatrix::run(editForm::defaultIds(), *appearance, [&](editForm::Form& form) {
-                DesktopConfig options; options.title = u"Presentation matrix";
+                auto options = Fixture::options(); options.title = u"Presentation matrix";
                 auto host = std::make_shared<DesktopHost>(form.ui, *appearance, [&form] { return form.page(); }, form.scroll, options, false, true);
                 return presentationMatrix::Driver{[host, &form](int width, int height, float scale, std::string_view reveal) {
                     return host->layout(width, height, scale, form.scroll, reveal);
@@ -4381,6 +4382,23 @@ int trialScreenshots(const std::filesystem::path& folder, Report* report) {
 }
 
 // A fresh process is used for each run so startup age and warmup share one origin.
+std::string frameStatistics(const detail::PerfSummary& sample) {
+    if (!std::isfinite(sample.maximum)) return "unknown\tunknown\tunknown\tunknown\tunknown";
+    std::ostringstream out;
+    out << sample.p50 << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
+    return out.str();
+}
+std::string timingColumns(DesktopHost& host, const detail::RendererTestHooks& timing, bool warm) {
+    std::ostringstream out;
+    out << '\t' << (host.capabilities().renderBackend == RenderBackendKind::vulkan ? "vulkan" : "opengl")
+        << '\t' << timing.acquireTimeoutMs << '\t' << timing.maxAcquireMs << '\t' << timing.acquireCalls << '\t' << timing.acquireTimeouts << '\t';
+    const auto gpu = host.gpuSamples().summary(warm);
+    if (!gpu.count) out << "n/a";
+    else if (!std::isfinite(gpu.maximum)) out << "unknown";
+    else out << gpu.maximum;
+    return out.str();
+}
+
 int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario, const std::wstring& appearance,
              bool large, int delay, int durationMs) {
     if (scenario!=L"startup" && scenario!=L"list-hold-down" && scenario!=L"typing" && scenario!=L"idle")
@@ -4389,7 +4407,8 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
     if (delay<0 || durationMs<0) throw std::runtime_error("Invalid perf duration or delay");
     const auto& selectedAppearance=appearance==L"web" ? webAppearance() : materialAppearance();
     editForm::Form form(editForm::defaultIds(),true);
-    DesktopHost host(form.ui,selectedAppearance,[&]{return form.page();},form.scroll,Fixture::options());
+    detail::RendererTestHooks timing;
+    DesktopHost host(form.ui,selectedAppearance,[&]{return form.page();},form.scroll,Fixture::options(),false,false,&timing);
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
     host.perfEnable(delay,offscreen);
     auto previousProc=reinterpret_cast<WNDPROC>(GetWindowLongPtrW(host.window(),GWLP_WNDPROC));
@@ -4430,7 +4449,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
-    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\n";
+    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_execution_max_ms\n";
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
         out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.rendererName() << '\t' << windowsBuild() << '\t'
 #ifdef NDEBUG
@@ -4438,7 +4457,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.overBudget << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << '\n';
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << timingColumns(host,timing,phase) << '\n';
     }
     if(!out) throw std::runtime_error("Cannot write perf report");
     SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previousProc)); x04OriginalProcs.erase(host.window());
@@ -4469,7 +4488,8 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
         while(document.items.size()<100) { int n=int(document.items.size())+1; auto id=std::to_string(1000+n); document.items.push_back({OptionValue{"T"+id},u"Performance item",u""}); }
         document.nextItemId=1101; form.loadDocument(document);
     }
-    DesktopHost host(form.ui,selectedAppearance,[&]{return form.page();},form.scroll,Fixture::options());
+    detail::RendererTestHooks timing;
+    DesktopHost host(form.ui,selectedAppearance,[&]{return form.page();},form.scroll,Fixture::options(),false,false,&timing);
     const bool offscreen=large && (GetSystemMetrics(SM_CXSCREEN)<3840 || GetSystemMetrics(SM_CYSCREEN)<2160);
     if (sliderDrag && offscreen) throw std::runtime_error("slider-drag-text-size needs real mouse input, so it cannot run offscreen");
     host.perfEnable(delay,offscreen);
@@ -4565,7 +4585,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
     if (sliderDrag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
     auto stagesWarm=host.perfBreakdown().summary(true), stagesSteady=host.perfBreakdown().summary(false);
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/reportFile);
-    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus";
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_execution_max_ms";
     if (sliderDrag) for (const char* stage : {"layout","list","gpu"}) for (const char* column : {"p50","p95","p99","max"}) out << '\t' << stage << '_' << column << "_ms";
     out << '\n';
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
@@ -4575,7 +4595,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << v.p50 << '\t' << v.p95 << '\t' << v.p99 << '\t' << v.maximum << '\t' << v.overBudget << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (sliderDrag?"REPORT":ok?"PASS":"FAIL");
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (sliderDrag?"REPORT":ok?"PASS":"FAIL") << timingColumns(host,timing,phase);
         if (sliderDrag) {
             const auto& stages=phase?stagesWarm:stagesSteady;
             for (const auto* stage : {&stages.layout,&stages.list,&stages.gpu}) out << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
@@ -4607,7 +4627,11 @@ int wmain(int argc, wchar_t** argv) {
         std::wstring perf, perfAppearance=L"web";
         for (int i = 1; i < argc; ++i) {
             std::wstring arg = argv[i];
-            if (arg == L"--demo-perf" && i+1<argc) { demoPerf=true; perf=argv[++i]; }
+            if (arg == L"--render-backend" && i+1<argc) {
+                std::wstring_view value(argv[++i]);
+                if (value == L"vulkan") Fixture::renderBackend=RenderBackendKind::vulkan;
+                else if (value != L"opengl") throw std::runtime_error("Unknown render backend");
+            } else if (arg == L"--demo-perf" && i+1<argc) { demoPerf=true; perf=argv[++i]; }
             else if (arg == L"--perf" && i+1<argc) perf=argv[++i];
             else if (arg == L"--demo-perf-font") demoPerfFont=true;
             else if (arg == L"--perf-appearance" && i+1<argc) perfAppearance=argv[++i];
@@ -4729,8 +4753,8 @@ int wmain(int argc, wchar_t** argv) {
         if (backendCheck) {
             Fixture fixture(webAppearance(), true);
             const auto renderer = fixture.host.rendererName();
-            std::cout << "OpenGL renderer: " << renderer << '\n';
-            if (renderer.find("llvmpipe") == std::string::npos) {
+            std::cout << (Fixture::renderBackend == RenderBackendKind::vulkan ? "Vulkan" : "OpenGL") << " renderer: " << renderer << '\n';
+            if (fixture.host.capabilities().renderBackend != Fixture::renderBackend || renderer.find("llvmpipe") == std::string::npos) {
                 std::cerr << "Expected Mesa llvmpipe\n";
                 return 1;
             }
@@ -4747,10 +4771,14 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
-        if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
+        if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
             throw std::runtime_error("Invalid verification options");
         return ime ? runIme(evidence) : hoverOnly ? runHover(evidence) : focusOnly ? runFocus(evidence) : dpi ? runDpi(evidence) : clipboardOnly ? runClipboard(evidence, repeat) : x02Only ? runX02(evidence) : x04Only ? runX04(evidence) : x04ClippedOnly ? runX04Clipped(evidence) : x04ExecutingOnly ? runX04Executing(evidence) : x04DisabledOnly ? runX04Disabled(evidence) : x04SelectionOnly ? runX04Selection(evidence) : run(evidence);
+    } catch (const detail::StartupError& e) {
+        if (Fixture::renderBackend==RenderBackendKind::vulkan && (e.failure.kind==StartupFailureKind::renderBackendUnavailable ||
+            e.failure.kind==StartupFailureKind::contextVersion)) return 77;
+        std::cerr << "Renderer startup failed\n"; return 1;
     } catch (const std::exception& e) {
         std::cerr << "host verification error: " << e.what() << '\n';
         return 1;

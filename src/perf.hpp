@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 namespace isoduo::detail {
 struct PerfSummary { size_t count=0, overBudget=0; double p50=0, p95=0, p99=0, maximum=0; };
@@ -12,6 +13,10 @@ public:
     PerfSummary summary(bool warm) const {
         auto values = warm ? warm_ : steady_; PerfSummary result; result.count=values.size();
         if (values.empty()) return result;
+        if (std::any_of(values.begin(), values.end(), [](double v){ return !std::isfinite(v); })) {
+            result.p50=result.p95=result.p99=result.maximum=std::numeric_limits<double>::quiet_NaN();
+            return result;
+        }
         std::sort(values.begin(), values.end());
         auto percentile=[&](double p) { return values[static_cast<size_t>(std::ceil(p*values.size()))-1]; };
         result.p50=percentile(.50); result.p95=percentile(.95); result.p99=percentile(.99); result.maximum=values.back();
@@ -35,6 +40,6 @@ public:
 inline bool idlePass(int presents, int paints, double cpuMs) { return presents==0 && paints==0 && cpuMs<=20; }
 inline bool startupPass(double firstPresentMs) { return firstPresentMs>=0 && firstPresentMs<=1000; }
 inline bool activePerfPass(const PerfSummary& steady, bool injectedDelay) {
-    return steady.count>0 && (injectedDelay ? steady.overBudget>0 : steady.overBudget==0);
+    return std::isfinite(steady.maximum) && steady.count>0 && (injectedDelay ? steady.overBudget>0 : steady.overBudget==0);
 }
 }

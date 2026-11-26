@@ -1,0 +1,12 @@
+file(MAKE_DIRECTORY "${OUT}")
+execute_process(COMMAND "${DATA}" "${OUT}" COMMAND_ERROR_IS_FATAL ANY)
+foreach(stage vert frag)
+  set(module "${OUT}/draw.${stage}.spv")
+  if(MODE STREQUAL "validate")
+    execute_process(COMMAND "${TOOL}" --target-env vulkan1.3 "${module}" COMMAND_ERROR_IS_FATAL ANY)
+  else()
+    execute_process(COMMAND "${TOOL}" --target-env vulkan1.3 -o "${OUT}/generated.spv" "${SOURCE}/draw.${stage}"
+                    COMMAND_ERROR_IS_FATAL ANY)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files "${module}" "${OUT}/generated.spv" COMMAND_ERROR_IS_FATAL ANY)
+  endif()
+endforeach()

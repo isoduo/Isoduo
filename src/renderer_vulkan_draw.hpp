@@ -1,0 +1,379 @@
+// Private device commands and draw resources used by both Vulkan targets.
+#pragma once
+#include "vulkan_shaders/draw_vert.inc"
+#include "vulkan_shaders/draw_frag.inc"
+
+struct DeviceCommands {
+    Session &session;
+    RendererTestHooks* hooks;
+    template <class F> Command<F> loadResult(const char* name) {
+        return resultCommand(load<F>(name), hooks, name);
+    }
+    template <class F> F load(const char *name) {
+        auto address = session.getDeviceProcAddr(session.device, name);
+        if (!address)
+            throw StartupError{{Kind::contextCreation, {}, {}, utf16FromUtf8(name)}};
+        return reinterpret_cast<F>(address);
+    }
+    Command<PFN_vkCreateBuffer> createBuffer = loadResult<PFN_vkCreateBuffer>("vkCreateBuffer");
+    PFN_vkDestroyBuffer destroyBuffer = load<PFN_vkDestroyBuffer>("vkDestroyBuffer");
+    std::function<std::remove_pointer_t<PFN_vkGetBufferMemoryRequirements>> getBufferMemoryRequirements =
+        load<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
+    Command<PFN_vkAllocateMemory> allocateMemory = loadResult<PFN_vkAllocateMemory>("vkAllocateMemory");
+    PFN_vkFreeMemory freeMemory = load<PFN_vkFreeMemory>("vkFreeMemory");
+    PFN_vkBindBufferMemory bindBufferMemory = load<PFN_vkBindBufferMemory>("vkBindBufferMemory");
+    PFN_vkMapMemory mapMemory = load<PFN_vkMapMemory>("vkMapMemory");
+    PFN_vkUnmapMemory unmapMemory = load<PFN_vkUnmapMemory>("vkUnmapMemory");
+    Command<PFN_vkCreateImage> createImage = loadResult<PFN_vkCreateImage>("vkCreateImage");
+    PFN_vkDestroyImage destroyImage = load<PFN_vkDestroyImage>("vkDestroyImage");
+    PFN_vkGetImageMemoryRequirements getImageMemoryRequirements =
+        load<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements");
+    PFN_vkBindImageMemory bindImageMemory = load<PFN_vkBindImageMemory>("vkBindImageMemory");
+    Command<PFN_vkCreateImageView> createImageView = loadResult<PFN_vkCreateImageView>("vkCreateImageView");
+    PFN_vkDestroyImageView destroyImageView = load<PFN_vkDestroyImageView>("vkDestroyImageView");
+    Command<PFN_vkCreateCommandPool> createCommandPool = loadResult<PFN_vkCreateCommandPool>("vkCreateCommandPool");
+    PFN_vkDestroyCommandPool destroyCommandPool = load<PFN_vkDestroyCommandPool>("vkDestroyCommandPool");
+    PFN_vkAllocateCommandBuffers allocateCommandBuffers =
+        load<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
+    PFN_vkBeginCommandBuffer beginCommandBuffer = load<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer");
+    PFN_vkEndCommandBuffer endCommandBuffer = load<PFN_vkEndCommandBuffer>("vkEndCommandBuffer");
+    PFN_vkCmdPipelineBarrier2 cmdPipelineBarrier2 = load<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2");
+    PFN_vkCmdBeginRendering cmdBeginRendering = load<PFN_vkCmdBeginRendering>("vkCmdBeginRendering");
+    PFN_vkCmdEndRendering cmdEndRendering = load<PFN_vkCmdEndRendering>("vkCmdEndRendering");
+    PFN_vkCmdCopyBufferToImage cmdCopyBufferToImage = load<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
+    PFN_vkCmdCopyImage cmdCopyImage = load<PFN_vkCmdCopyImage>("vkCmdCopyImage");
+    PFN_vkCmdCopyImageToBuffer cmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
+    PFN_vkCmdClearAttachments cmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
+    PFN_vkCmdSetViewport cmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
+    std::function<std::remove_pointer_t<PFN_vkCmdSetScissor>> cmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
+    PFN_vkCmdBindPipeline cmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
+    PFN_vkCmdBindDescriptorSets cmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
+    PFN_vkCmdPushConstants cmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
+    Command<PFN_vkCreateQueryPool> createQueryPool = loadResult<PFN_vkCreateQueryPool>("vkCreateQueryPool");
+    PFN_vkDestroyQueryPool destroyQueryPool = load<PFN_vkDestroyQueryPool>("vkDestroyQueryPool");
+    PFN_vkCmdResetQueryPool cmdResetQueryPool = load<PFN_vkCmdResetQueryPool>("vkCmdResetQueryPool");
+    PFN_vkCmdWriteTimestamp2 cmdWriteTimestamp2 = load<PFN_vkCmdWriteTimestamp2>("vkCmdWriteTimestamp2");
+    PFN_vkGetQueryPoolResults getQueryPoolResults = load<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
+    PFN_vkCmdDraw cmdDraw = load<PFN_vkCmdDraw>("vkCmdDraw");
+    Command<PFN_vkCreateSampler> createSampler = loadResult<PFN_vkCreateSampler>("vkCreateSampler");
+    PFN_vkDestroySampler destroySampler = load<PFN_vkDestroySampler>("vkDestroySampler");
+    Command<PFN_vkCreateDescriptorSetLayout> createDescriptorSetLayout =
+        loadResult<PFN_vkCreateDescriptorSetLayout>("vkCreateDescriptorSetLayout");
+    PFN_vkDestroyDescriptorSetLayout destroyDescriptorSetLayout =
+        load<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout");
+    Command<PFN_vkCreateDescriptorPool> createDescriptorPool = loadResult<PFN_vkCreateDescriptorPool>("vkCreateDescriptorPool");
+    PFN_vkDestroyDescriptorPool destroyDescriptorPool = load<PFN_vkDestroyDescriptorPool>("vkDestroyDescriptorPool");
+    PFN_vkAllocateDescriptorSets allocateDescriptorSets =
+        load<PFN_vkAllocateDescriptorSets>("vkAllocateDescriptorSets");
+    PFN_vkUpdateDescriptorSets updateDescriptorSets = load<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets");
+    Command<PFN_vkCreatePipelineLayout> createPipelineLayout = loadResult<PFN_vkCreatePipelineLayout>("vkCreatePipelineLayout");
+    PFN_vkDestroyPipelineLayout destroyPipelineLayout = load<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout");
+    Command<PFN_vkCreateShaderModule> createShaderModule = loadResult<PFN_vkCreateShaderModule>("vkCreateShaderModule");
+    PFN_vkDestroyShaderModule destroyShaderModule = load<PFN_vkDestroyShaderModule>("vkDestroyShaderModule");
+    Command<PFN_vkCreateGraphicsPipelines> createGraphicsPipelines =
+        loadResult<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines");
+    PFN_vkDestroyPipeline destroyPipeline = load<PFN_vkDestroyPipeline>("vkDestroyPipeline");
+    PFN_vkGetDeviceQueue getDeviceQueue = load<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
+    std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> queueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
+    Command<PFN_vkCreateFence> createFence = loadResult<PFN_vkCreateFence>("vkCreateFence");
+    PFN_vkDestroyFence destroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
+    std::function<std::remove_pointer_t<PFN_vkWaitForFences>> waitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
+    PFN_vkDeviceWaitIdle deviceWaitIdle = load<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle");
+    PFN_vkQueueWaitIdle queueWaitIdle = load<PFN_vkQueueWaitIdle>("vkQueueWaitIdle");
+    Command<PFN_vkCreateSemaphore> createSemaphore = loadResult<PFN_vkCreateSemaphore>("vkCreateSemaphore");
+    PFN_vkDestroySemaphore destroySemaphore = load<PFN_vkDestroySemaphore>("vkDestroySemaphore");
+};
+
+// Handles are released in reverse creation order at the enclosing frame or device boundary.
+struct Resources {
+    std::vector<std::function<void()>> cleanup;
+    ~Resources() {
+        for (auto i = cleanup.rbegin(); i != cleanup.rend(); ++i)
+            (*i)();
+    }
+    Resources() = default;
+    Resources(const Resources &) = delete;
+    template <class T, class F> T keep(T handle, F destroy, VkDevice device) {
+        cleanup.emplace_back([=] { destroy(device, handle, nullptr); });
+        return handle;
+    }
+};
+struct Push {
+    float rect[4], tint[4], screen[2], atlas[2], radius;
+    int kind;
+};
+
+struct Buffer {
+    VkBuffer handle;
+    VkDeviceMemory memory;
+};
+struct Texture {
+    VkImage image;
+    VkImageView view;
+    VkExtent2D extent;
+};
+struct Drawing {
+    std::shared_ptr<Session> owner;
+    Session &session;
+    Selection selected;
+    struct DeviceOwner {
+        Session& session;
+        ~DeviceOwner() { session.destroyDevice(std::exchange(session.device, {}), nullptr); }
+    } deviceOwner{session};
+    DeviceCommands api;
+    VkDevice device;
+    VkQueue queue{};
+    VkPhysicalDeviceMemoryProperties memory{};
+    RendererTestHooks *hooks;
+    RendererCapabilities caps;
+    bool running = false;
+    float timestampPeriod{};
+    PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
+    PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
+    Resources resources;
+    // Restored images remain copy sources while the corresponding CPU page is unchanged.
+    struct RestoredPage {
+        const AtlasPage* page;
+        std::vector<unsigned char> pixels;
+        VkImage image;
+    };
+    std::vector<RestoredPage> restored;
+    VkSampler sampler{};
+    VkDescriptorSetLayout descriptors{};
+    VkPipelineLayout layout{};
+    VkPipeline rgbaPipeline{};
+    Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks, std::shared_ptr<Session> retained = {})
+        : owner(retained ? std::move(retained) : std::make_shared<Session>()), session(*owner), selected(initialize(session, window, testHooks, surface)), api{session,testHooks}, device(session.device),
+          hooks(testHooks) {
+        api.getDeviceQueue(device, *selected.graphicsQueue, 0, &queue);
+        session.function<PFN_vkGetPhysicalDeviceMemoryProperties>("vkGetPhysicalDeviceMemoryProperties")(
+            selected.physical, &memory);
+        VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 props{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &driver};
+        session.function<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2")(selected.physical,
+                                                                                               &props);
+        timestampPeriod = props.properties.limits.timestampPeriod;
+        if (session.debugUtils) {
+            beginLabel = api.load<PFN_vkCmdBeginDebugUtilsLabelEXT>("vkCmdBeginDebugUtilsLabelEXT");
+            endLabel = api.load<PFN_vkCmdEndDebugUtilsLabelEXT>("vkCmdEndDebugUtilsLabelEXT");
+        }
+        auto version = props.properties.apiVersion;
+        caps.version = utf16FromUtf8("Vulkan " + versionString(version) + "." +
+                                     std::to_string(VK_API_VERSION_PATCH(version)) + " " + driver.driverInfo);
+        caps.vendor = utf16FromUtf8(driver.driverName);
+        caps.renderer = utf16FromUtf8(props.properties.deviceName);
+        if (session.previousDevice && session.previousDevice!=selected.physical && session.sink) {
+            RenderDiagnostic event;
+            event.backend=u"Vulkan";
+            event.severity=DiagnosticSeverity::info;
+            event.nativeMessage=std::string("Renderer rebuilt on ")+props.properties.deviceName;
+            session.sink(std::move(event));
+        }
+        session.previousDevice=selected.physical;
+        caps.renderBackend = RenderBackendKind::vulkan;
+        caps.resetDetection = true;
+        caps.debugContext = session.validationEnabled;
+        caps.debugMessages = caps.debugContext && session.validationMessenger;
+        VkSamplerCreateInfo sample{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        sample.addressModeU = sample.addressModeV = sample.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        sampler = make<VkSampler>(resources, "vkCreateSampler", api.createSampler, sample, api.destroySampler);
+        VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                             VK_SHADER_STAGE_FRAGMENT_BIT, &sampler};
+        VkDescriptorSetLayoutCreateInfo set{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        set.bindingCount = 1;
+        set.pBindings = &binding;
+        descriptors = make<VkDescriptorSetLayout>(resources, "vkCreateDescriptorSetLayout",
+                                                  api.createDescriptorSetLayout, set, api.destroyDescriptorSetLayout);
+        VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Push)};
+        VkPipelineLayoutCreateInfo pipeline{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        pipeline.setLayoutCount = pipeline.pushConstantRangeCount = 1;
+        pipeline.pSetLayouts = &descriptors;
+        pipeline.pPushConstantRanges = &range;
+        layout = make<VkPipelineLayout>(resources, "vkCreatePipelineLayout", api.createPipelineLayout, pipeline,
+                                        api.destroyPipelineLayout);
+        rgbaPipeline = createPipeline(VK_FORMAT_R8G8B8A8_UNORM);
+    }
+    bool simulatedLoss = false;
+    std::string faultReport() {
+        if (!selected.faultExtension || simulatedLoss) return {};
+        if (std::string_view(selected.faultExtension)==VK_KHR_DEVICE_FAULT_EXTENSION_NAME) {
+            auto get=api.load<PFN_vkGetDeviceFaultReportsKHR>("vkGetDeviceFaultReportsKHR");
+            uint32_t count=0;
+            if (get(device,0,&count,nullptr)!=VK_SUCCESS || !count) return {};
+            std::vector<VkDeviceFaultInfoKHR> reports(count,{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR});
+            auto result=get(device,0,&count,reports.data());
+            std::string detail;
+            if (result==VK_SUCCESS || result==VK_INCOMPLETE)
+                for (uint32_t i=0;i<count;++i) detail+=std::string(reports[i].description)+"\n";
+            return detail;
+        }
+        auto get=api.load<PFN_vkGetDeviceFaultInfoEXT>("vkGetDeviceFaultInfoEXT");
+        VkDeviceFaultCountsEXT counts{VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT};
+        if (get(device,&counts,nullptr)!=VK_SUCCESS) return {};
+        std::vector<VkDeviceFaultAddressInfoEXT> addresses(counts.addressInfoCount);
+        std::vector<VkDeviceFaultVendorInfoEXT> vendors(counts.vendorInfoCount);
+        VkDeviceFaultInfoEXT info{VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT};
+        info.pAddressInfos=addresses.data();
+        info.pVendorInfos=vendors.data();
+        counts.vendorBinarySize=0;
+        auto result=get(device,&counts,&info);
+        return result==VK_SUCCESS || result==VK_INCOMPLETE ? info.description : "";
+    }
+    void diagnostic(const char* call,VkResult result,RendererFailureKind kind) {
+        if (!session.sink) return;
+        RenderDiagnostic event;
+        event.backend=u"Vulkan";
+        event.severity=DiagnosticSeverity::error;
+        event.nativeCode=uint32_t(result);
+        event.nativeMessage=std::string(call)+": "+resultName(result);
+        if (kind==RendererFailureKind::deviceReset) {
+            event.kind=DiagnosticKind::deviceReset;
+            event.backendDetail=faultReport();
+        }
+        session.sink(std::move(event));
+    }
+    void checked(const char *call, VkResult result, Kind failure = Kind::resource) {
+        if (running && result != VK_SUCCESS) {
+            auto kind =
+                result == VK_ERROR_DEVICE_LOST ? RendererFailureKind::deviceReset : RendererFailureKind::resourceFailed;
+            if (kind != RendererFailureKind::deviceReset &&
+                (std::string_view(call) == "vkQueueSubmit" || std::string_view(call) == "vkWaitForFences" ||
+                 std::string_view(call) == "vkEndCommandBuffer" || std::string_view(call) == "vkBeginCommandBuffer"))
+                kind = RendererFailureKind::frameError;
+            diagnostic(call,result,kind);
+            throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))},
+                             {}};
+        }
+        if (result != VK_SUCCESS)
+            throw StartupError{{failure, {}, {}, utf16FromUtf8(std::string(call) + ": " + resultName(result))}};
+    }
+    template <class T, class F, class Info, class D>
+    T make(Resources &owner, const char *name, F create, const Info &info, D destroy, Kind failure = Kind::resource) {
+        T handle{};
+        checked(name, create(device, &info, nullptr, &handle), failure);
+        return owner.keep(handle, destroy, device);
+    }
+    VkPipeline createPipeline(VkFormat format) {
+        Resources modules;
+        auto module = [&](const auto &bytes) {
+            VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            info.codeSize = sizeof(bytes);
+            info.pCode = bytes;
+            return make<VkShaderModule>(modules, "vkCreateShaderModule", api.createShaderModule, info,
+                                        api.destroyShaderModule, Kind::shader);
+        };
+        VkPipelineShaderStageCreateInfo stages[2]{};
+        stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[0].module = module(draw_vert);
+        stages[1].module = module(draw_frag);
+        stages[0].pName = stages[1].pName = "main";
+        VkPipelineVertexInputStateCreateInfo vertices{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        viewport.viewportCount = viewport.scissorCount = 1;
+        VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        raster.lineWidth = 1;
+        VkPipelineMultisampleStateCreateInfo samples{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        samples.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineColorBlendAttachmentState attachment{};
+        attachment.blendEnable = VK_TRUE;
+        attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        attachment.dstColorBlendFactor = attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        attachment.colorWriteMask = 15;
+        VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        blend.attachmentCount = 1;
+        blend.pAttachments = &attachment;
+        VkDynamicState dynamic[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo states{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        states.dynamicStateCount = 2;
+        states.pDynamicStates = dynamic;
+        VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachmentFormats = &format;
+        VkGraphicsPipelineCreateInfo info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, &rendering};
+        info.stageCount = 2;
+        info.pStages = stages;
+        info.layout = layout;
+        info.pVertexInputState = &vertices;
+        info.pInputAssemblyState = &assembly;
+        info.pViewportState = &viewport;
+        info.pRasterizationState = &raster;
+        info.pMultisampleState = &samples;
+        info.pColorBlendState = &blend;
+        info.pDynamicState = &states;
+        VkPipeline pipeline{};
+        checked("vkCreateGraphicsPipelines",
+                api.createGraphicsPipelines(device, {}, 1, &info, nullptr, &pipeline),
+                Kind::shader);
+        return resources.keep(pipeline, api.destroyPipeline, device);
+    }
+    VkDeviceMemory allocate(Resources &owner, VkMemoryRequirements req, VkMemoryPropertyFlags flags) {
+        for (uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            if (!(req.memoryTypeBits & (1u << i)) || (memory.memoryTypes[i].propertyFlags & flags) != flags)
+                continue;
+            VkMemoryAllocateInfo info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            info.allocationSize = req.size;
+            info.memoryTypeIndex = i;
+            return make<VkDeviceMemory>(owner, "vkAllocateMemory", api.allocateMemory, info, api.freeMemory);
+        }
+        if (running)
+            throw FrameError{{RendererFailureKind::resourceFailed, 0, u"No compatible Vulkan memory type"}, {}};
+        throw StartupError{{Kind::resource, {}, {}, u"No compatible Vulkan memory type"}};
+    }
+    Buffer buffer(Resources &owner, VkDeviceSize bytes, VkBufferUsageFlags usage) {
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = bytes;
+        info.usage = usage;
+        auto handle = make<VkBuffer>(owner, "vkCreateBuffer", api.createBuffer, info, api.destroyBuffer);
+        VkMemoryRequirements req{};
+        api.getBufferMemoryRequirements(device, handle, &req);
+        auto mem = allocate(owner, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        std::iter_swap(owner.cleanup.end() - 1, owner.cleanup.end() - 2);
+        checked("vkBindBufferMemory", api.bindBufferMemory(device, handle, mem, 0));
+        return {handle, mem};
+    }
+    Texture texture(Resources &owner, VkExtent2D extent, VkFormat format, VkImageUsageFlags usage) {
+        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = format;
+        info.extent = {extent.width, extent.height, 1};
+        info.mipLevels = info.arrayLayers = 1;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.usage = usage;
+        auto image = make<VkImage>(owner, "vkCreateImage", api.createImage, info, api.destroyImage);
+        VkMemoryRequirements req{};
+        api.getImageMemoryRequirements(device, image, &req);
+        auto mem = allocate(owner, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        std::iter_swap(owner.cleanup.end() - 1, owner.cleanup.end() - 2);
+        checked("vkBindImageMemory", api.bindImageMemory(device, image, mem, 0));
+        return {image, view(owner, image, format), extent};
+    }
+    VkImageView view(Resources &owner, VkImage image, VkFormat format) {
+        VkImageViewCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        info.image = image;
+        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        info.format = format;
+        info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        return make<VkImageView>(owner, "vkCreateImageView", api.createImageView, info, api.destroyImageView);
+    }
+    void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout before, VkImageLayout after) {
+        VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        b.srcStageMask = b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        b.srcAccessMask =
+            before == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+        b.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+        b.oldLayout = before;
+        b.newLayout = after;
+        b.image = image;
+        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dep.imageMemoryBarrierCount = 1;
+        dep.pImageMemoryBarriers = &b;
+        api.cmdPipelineBarrier2(cmd, &dep);
+    }
+};

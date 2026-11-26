@@ -1,6 +1,6 @@
 #pragma once
 // Native desktop host: one native window that arranges `page` with `appearance`, paints it
-// through OpenGL and routes native keyboard, pointer, clipboard and IME input into `ui`.
+// through the selected rendering backend and routes native keyboard, pointer, clipboard and IME input into `ui`.
 // Requires ISODUO_BUILD_DESKTOP; core and layout never depend on it.
 #include "isoduo/layout.hpp"
 #include "isoduo/diagnostics.hpp"
@@ -22,13 +22,14 @@ struct NativeWindow {
     unsigned long windowId = 0;
 };
 #endif
+enum class RenderBackendKind { openGL, vulkan };
 enum class DebugContext { buildDefault, on, off };
 enum class RendererFailureKind { frameError, deviceReset, presentFailed, resourceFailed };
 struct RendererFailure { RendererFailureKind kind; std::uint32_t nativeCode = 0; std::u16string message; };
-enum class StartupFailureKind { window, contextVersion, contextCreation, shader, resource };
+enum class StartupFailureKind { window, contextVersion, contextCreation, shader, resource, renderBackendUnavailable };
 // backend is the backend that failed; it is empty when automatic selection found no native desktop session.
 struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; std::optional<DesktopBackendKind> backend = std::nullopt; };
-struct RendererCapabilities { std::u16string version, vendor, renderer; bool debugContext = false, debugMessages = false, resetDetection = false; };
+struct RendererCapabilities { std::u16string version, vendor, renderer; bool debugContext = false, debugMessages = false, resetDetection = false; RenderBackendKind renderBackend = RenderBackendKind::openGL; };
 enum class CloseDecision { close, keepOpen };
 class Desktop;
 struct CreateResult;
@@ -47,6 +48,7 @@ struct DesktopConfig {
     bool platformAccessibilityEnabled = true;
     // Empty selects automatically: on Linux the login session decides. An explicit backend never falls back.
     std::optional<DesktopBackendKind> backend;
+    RenderBackendKind renderBackend = RenderBackendKind::openGL;
 };
 struct CreateResult;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };

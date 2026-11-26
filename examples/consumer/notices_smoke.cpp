@@ -9,10 +9,10 @@ int main() {
     auto* volatile desktopEntry = &isoduo::runDesktop;
     if (!desktopEntry) return 5;
     const auto notices = isoduo::thirdPartyNotices();
-    if (notices.size() != 4) return 1;
+    if (notices.size() != 5) return 1;
     std::ifstream input(ISODUO_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
     const std::string file((std::istreambuf_iterator<char>(input)), {});
-    const std::u16string_view names[] = {u"FreeType", u"HarfBuzz", u"Khronos OpenGL headers", u"Unicode Character Database (Vertical_Orientation)"};
+    const std::u16string_view names[] = {u"FreeType", u"HarfBuzz", u"Khronos OpenGL headers", u"Unicode Character Database (Vertical_Orientation)", u"Khronos Vulkan headers"};
     const std::string separator = "========================================================================\n";
     auto pos = file.find(separator);
     for (std::size_t i = 0; i < notices.size(); ++i) {

@@ -2,6 +2,7 @@
 // Internal host type shared by runDesktop and the native verification driver.
 #include "isoduo/desktop.hpp"
 #include "renderer.hpp"
+#include "core_internal.hpp"
 #include "desktop_paint.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
@@ -37,6 +38,8 @@ public:
     DesktopHost(const DesktopHost&) = delete;
     DesktopHost& operator=(const DesktopHost&) = delete;
 
+    static DesktopHost& fromDesktop(Desktop&);
+    std::function<void()> onPresented;  // Native frame verification observer.
     HWND window() const { return window_; }
     void attach(HWND window) { window_ = window; }  // from WM_NCCREATE, before CreateWindowExW returns
     int run();                              // GetMessage loop until WM_QUIT
@@ -68,8 +71,9 @@ public:
     unsigned atlasPeakPages() const { return text_.atlasPeakPages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
     void perfEnable(int delayMs=0, bool offscreen=false) { perfEnabled_=true; perfDelay_=delayMs; perfOffscreen_=offscreen; }
-    void perfReset() { perfSamples_.clear(); perfBreakdown_.clear(); }
+    void perfReset() { perfSamples_.clear(); gpuSamples_.clear(); perfBreakdown_.clear(); }
     const PerfSamples& perfSamples() const { return perfSamples_; }
+    const PerfSamples& gpuSamples() const { return gpuSamples_; }
     const PerfBreakdown& perfBreakdown() const { return perfBreakdown_; }
     int paintMessages() const { return paintMessages_; }
     double firstPresentMs() const { return firstPresentMs_; }
@@ -98,6 +102,9 @@ public:
     LRESULT message(UINT msg, WPARAM w, LPARAM l);
 
 private:
+    DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,
+                ScrollState& scroll, const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks);
+    HostClaim claim_;
     Ui& ui_;
     std::unique_ptr<UiaBridge> uia_;
     const Appearance& appearance_;
@@ -111,6 +118,7 @@ private:
     std::u16string requestedFont_;
     bool fontConfigured_ = false;
     ShapedMeasure measure_{text_};
+    std::shared_ptr<VulkanSession> vulkanSession;
     std::unique_ptr<Renderer> renderer_;
     std::unique_ptr<WindowsClipboard> clipboard_;
     Frame frame_;
@@ -122,7 +130,7 @@ private:
     int perfDelay_=0, paintMessages_=0;
     double firstPresentMs_=-1, inputPresentMs_=0;
     std::chrono::steady_clock::time_point inputTime_{};
-    PerfSamples perfSamples_;
+    PerfSamples perfSamples_, gpuSamples_;
     PerfBreakdown perfBreakdown_;
     int frames_ = 0;
     bool failed_ = false;
@@ -132,6 +140,8 @@ private:
     std::function<CloseDecision()> closeCallback_;
     std::thread::id owner_ = std::this_thread::get_id();
     RendererTestHooks* hooks_ = nullptr;
+    RenderBackendKind renderBackend_ = RenderBackendKind::openGL;
+    std::unique_ptr<Renderer> createRenderer();
     DebugContext debugContext_ = DebugContext::buildDefault;
     RendererCapabilities capabilities_;
     std::optional<RendererFailure> rendererFailure_;
