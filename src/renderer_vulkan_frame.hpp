@@ -93,44 +93,44 @@ struct CommandFrame {
     explicit CommandFrame(Drawing &drawing, bool measure = false) : d(drawing) {
         VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         poolInfo.queueFamilyIndex = *d.selected.graphicsQueue;
-        auto pool = d.make<VkCommandPool>(objects, "vkCreateCommandPool", d.api.CreateCommandPool, poolInfo,
-                                          d.api.DestroyCommandPool);
+        auto pool = d.make<VkCommandPool>(objects, "vkCreateCommandPool", d.api.createCommandPool, poolInfo,
+                                          d.api.destroyCommandPool);
         VkCommandBufferAllocateInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
         info.commandPool = pool;
         info.commandBufferCount = 1;
-        d.checked("vkAllocateCommandBuffers", d.api.AllocateCommandBuffers(d.device, &info, &cmd));
+        d.checked("vkAllocateCommandBuffers", d.api.allocateCommandBuffers(d.device, &info, &cmd));
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        d.checked("vkBeginCommandBuffer", d.api.BeginCommandBuffer(cmd, &begin));
+        d.checked("vkBeginCommandBuffer", d.api.beginCommandBuffer(cmd, &begin));
         if (measure && d.selected.timestampBits) {
             VkQueryPoolCreateInfo pool{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
             pool.queryType = VK_QUERY_TYPE_TIMESTAMP;
             pool.queryCount = 2;
             timestamps =
-                d.make<VkQueryPool>(objects, "vkCreateQueryPool", d.api.CreateQueryPool, pool, d.api.DestroyQueryPool);
-            d.api.CmdResetQueryPool(cmd, timestamps, 0, 2);
-            d.api.CmdWriteTimestamp2(cmd, VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, timestamps, 0);
+                d.make<VkQueryPool>(objects, "vkCreateQueryPool", d.api.createQueryPool, pool, d.api.destroyQueryPool);
+            d.api.cmdResetQueryPool(cmd, timestamps, 0, 2);
+            d.api.cmdWriteTimestamp2(cmd, VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, timestamps, 0);
         }
         VkFenceCreateInfo f{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        fence = d.make<VkFence>(objects, "vkCreateFence", d.api.CreateFence, f, d.api.DestroyFence);
+        fence = d.make<VkFence>(objects, "vkCreateFence", d.api.createFence, f, d.api.destroyFence);
     }
     double gpuMilliseconds() {
         if (!timestamps)
             return std::numeric_limits<double>::quiet_NaN();
         uint64_t values[2]{};
-        d.checked("vkGetQueryPoolResults", d.api.GetQueryPoolResults(d.device, timestamps, 0, 2, sizeof(values), values,
+        d.checked("vkGetQueryPoolResults", d.api.getQueryPoolResults(d.device, timestamps, 0, 2, sizeof(values), values,
                                                                      sizeof(uint64_t), VK_QUERY_RESULT_64_BIT));
         auto mask = UINT64_MAX >> (64 - d.selected.timestampBits);
         return double((values[1] - values[0]) & mask) * d.timestampPeriod / 1e6;
     }
     void copyMemory(Buffer buffer, unsigned char *bytes, size_t size, bool upload) {
         void *mapped{};
-        d.checked("vkMapMemory", d.api.MapMemory(d.device, buffer.memory, 0, size, 0, &mapped));
+        d.checked("vkMapMemory", d.api.mapMemory(d.device, buffer.memory, 0, size, 0, &mapped));
         if (upload)
             std::memcpy(mapped, bytes, size);
         else
             std::memcpy(bytes, mapped, size);
-        d.api.UnmapMemory(d.device, buffer.memory);
+        d.api.unmapMemory(d.device, buffer.memory);
     }
     void record(const DrawList &list, Texture target, VkPipeline pipeline, bool opaque = false) {
         auto &api = d.api;
@@ -143,21 +143,21 @@ struct CommandFrame {
         VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         poolInfo.maxSets = poolInfo.poolSizeCount = 1;
         poolInfo.pPoolSizes = &count;
-        auto pool = d.make<VkDescriptorPool>(objects, "vkCreateDescriptorPool", api.CreateDescriptorPool, poolInfo,
-                                             api.DestroyDescriptorPool);
+        auto pool = d.make<VkDescriptorPool>(objects, "vkCreateDescriptorPool", api.createDescriptorPool, poolInfo,
+                                             api.destroyDescriptorPool);
         VkDescriptorSetAllocateInfo alloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         alloc.descriptorPool = pool;
         alloc.descriptorSetCount = 1;
         alloc.pSetLayouts = &d.descriptors;
         VkDescriptorSet set{};
-        d.checked("vkAllocateDescriptorSets", api.AllocateDescriptorSets(d.device, &alloc, &set));
+        d.checked("vkAllocateDescriptorSets", api.allocateDescriptorSets(d.device, &alloc, &set));
         VkDescriptorImageInfo sampled{d.sampler, atlas.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         write.dstSet = set;
         write.descriptorType = count.type;
         write.descriptorCount = 1;
         write.pImageInfo = &sampled;
-        api.UpdateDescriptorSets(d.device, 1, &write, 0, nullptr);
+        api.updateDescriptorSets(d.device, 1, &write, 0, nullptr);
         auto upload = [&](int index, VkImageLayout before) {
             auto &region = batch.uploads[index];
             d.barrier(cmd, atlas.image, before, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -172,7 +172,7 @@ struct CommandFrame {
                 api.cmdCopyImage(cmd, region.restored, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                  atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy);
             } else {
-                api.CmdCopyBufferToImage(cmd, staging.handle, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+                api.cmdCopyBufferToImage(cmd, staging.handle, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
             }
             d.barrier(cmd, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         };
@@ -188,12 +188,12 @@ struct CommandFrame {
         render.renderArea.extent = target.extent;
         render.layerCount = render.colorAttachmentCount = 1;
         render.pColorAttachments = &attachment;
-        api.CmdBeginRendering(cmd, &render);
+        api.cmdBeginRendering(cmd, &render);
         VkViewport viewport{0, 0, float(target.extent.width), float(target.extent.height), 0, 1};
-        api.CmdSetViewport(cmd, 0, 1, &viewport);
-        api.CmdSetScissor(cmd, 0, 1, &render.renderArea);
-        api.CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-        api.CmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, d.layout, 0, 1, &set, 0, nullptr);
+        api.cmdSetViewport(cmd, 0, 1, &viewport);
+        api.cmdSetScissor(cmd, 0, 1, &render.renderArea);
+        api.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        api.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, d.layout, 0, 1, &set, 0, nullptr);
         const Rect bounds{0, 0, int(target.extent.width), int(target.extent.height)};
         bool emptyClip = false;
         for (size_t i = 0; i < list.commands.size(); ++i) {
@@ -210,21 +210,21 @@ struct CommandFrame {
                 clear.clearValue.color = {
                     {c.color.r / 255.f, c.color.g / 255.f, c.color.b / 255.f, opaque ? 1.f : c.color.a / 255.f}};
                 VkClearRect rect{render.renderArea, 0, 1};
-                api.CmdClearAttachments(cmd, 1, &clear, 1, &rect);
+                api.cmdClearAttachments(cmd, 1, &clear, 1, &rect);
             } else if (c.type == Type::clip) {
                 auto clip = intersect(bounds, c.rect);
                 emptyClip = clip.w <= 0 || clip.h <= 0;
                 if (!emptyClip) {
                     VkRect2D rect{{clip.x, clip.y}, {uint32_t(clip.w), uint32_t(clip.h)}};
-                    api.CmdSetScissor(cmd, 0, 1, &rect);
+                    api.cmdSetScissor(cmd, 0, 1, &rect);
                 }
             } else if (c.type == Type::fill || c.type == Type::rounded || c.type == Type::glyph) {
                 if (batch.uploadAt[i] >= 0) {
-                    api.CmdEndRendering(cmd);
+                    api.cmdEndRendering(cmd);
                     upload(batch.uploadAt[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
                     d.barrier(cmd, target.image, attachment.imageLayout, attachment.imageLayout);
                     attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-                    api.CmdBeginRendering(cmd, &render);
+                    api.cmdBeginRendering(cmd, &render);
                 }
                 auto &glyph = batch.glyphs[i];
                 auto r = glyph.rect;
@@ -238,17 +238,17 @@ struct CommandFrame {
                        c.type == Type::glyph     ? 2
                        : c.type == Type::rounded ? 1
                                                  : 0};
-                api.CmdPushConstants(cmd, d.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                api.cmdPushConstants(cmd, d.layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                                      sizeof(p), &p);
-                api.CmdDraw(cmd, 6, 1, 0, 0);
+                api.cmdDraw(cmd, 6, 1, 0, 0);
             }
         }
-        api.CmdEndRendering(cmd);
+        api.cmdEndRendering(cmd);
     }
     void submit(VkSemaphore acquired = {}, VkSemaphore complete = {}) {
         if (timestamps)
-            d.api.CmdWriteTimestamp2(cmd, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, timestamps, 1);
-        d.checked("vkEndCommandBuffer", d.api.EndCommandBuffer(cmd));
+            d.api.cmdWriteTimestamp2(cmd, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, timestamps, 1);
+        d.checked("vkEndCommandBuffer", d.api.endCommandBuffer(cmd));
         // Gate the starting timestamp on image availability as well as the draw.
         VkPipelineStageFlags stage = timestamps ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -259,9 +259,9 @@ struct CommandFrame {
         info.pWaitDstStageMask = &stage;
         info.signalSemaphoreCount = complete ? 1 : 0;
         info.pSignalSemaphores = &complete;
-        d.checked("vkQueueSubmit", d.api.QueueSubmit(d.queue, 1, &info, fence));
+        d.checked("vkQueueSubmit", d.api.queueSubmit(d.queue, 1, &info, fence));
     }
-    void wait() { d.checked("vkWaitForFences", d.api.WaitForFences(d.device, 1, &fence, VK_TRUE, UINT64_MAX)); }
+    void wait() { d.checked("vkWaitForFences", d.api.waitForFences(d.device, 1, &fence, VK_TRUE, UINT64_MAX)); }
 };
 Image readPixels(Drawing &d, const DrawList &list, int width, int height) {
     CommandFrame frame(d);
@@ -275,7 +275,7 @@ Image readPixels(Drawing &d, const DrawList &list, int width, int height) {
     VkBufferImageCopy copy{};
     copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     copy.imageExtent = {extent.width, extent.height, 1};
-    d.api.CmdCopyImageToBuffer(frame.cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer.handle, 1, &copy);
+    d.api.cmdCopyImageToBuffer(frame.cmd, image.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer.handle, 1, &copy);
     VkMemoryBarrier2 host{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
     host.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
     host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -284,7 +284,7 @@ Image readPixels(Drawing &d, const DrawList &list, int width, int height) {
     VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dep.memoryBarrierCount = 1;
     dep.pMemoryBarriers = &host;
-    d.api.CmdPipelineBarrier2(frame.cmd, &dep);
+    d.api.cmdPipelineBarrier2(frame.cmd, &dep);
     frame.submit();
     frame.wait();
     frame.copyMemory(buffer, result.pixels.data(), result.pixels.size(), false);

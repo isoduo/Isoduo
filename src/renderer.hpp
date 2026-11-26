@@ -19,7 +19,11 @@ struct RendererTestHooks {
     bool hideDynamicRendering = false, hideSynchronization2 = false;
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
-    std::pair<int, int> submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
+    struct FrameResult {
+        int frame = 0;
+        int result = 0;
+    };
+    FrameResult submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
     bool diagnoseDestruction = false;
     bool failImageCreationOnce = false;
     bool zeroSurfaceExtent = false, hideBufferMemoryTypes = false;
