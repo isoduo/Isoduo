@@ -196,7 +196,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL diagnosticMessage(VkDebugUtilsMessageSeverityFlag
     event.backendDetail = event.code + " type=" + std::to_string(type);
     if (data->cmdBufLabelCount && data->pCmdBufLabels[0].pLabelName) event.componentId=data->pCmdBufLabels[0].pLabelName;
 #ifdef ISODUO_TEST_VULKAN_VALIDATION
-    if (event.severity == DiagnosticSeverity::error && !(session.testingScissorCount &&
+    const bool layerMessage = type & (VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT);
+    if (layerMessage && event.severity == DiagnosticSeverity::error && !(session.testingScissorCount &&
         event.code == "VUID-vkCmdSetScissor-scissorCount-arraylength")) {
         std::fprintf(stderr,"Vulkan validation error: %s\n",event.nativeMessage.c_str());
         std::fflush(stderr);
