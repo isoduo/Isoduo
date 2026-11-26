@@ -415,6 +415,32 @@ void drawingText() {
         {1,2,20,24}, {1,2,3}, 128, 0, {}, u"abc\nd", style}}, "original text command survives clipping and wrapping");
 }
 
+void retainedFrameDuringDraw() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "chart"});
+    auto root = layout::scroll(layout::drawingArea(area, 100));
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    auto place = [&] { return arrange(root, ui, webAppearance(), measure, 100, 40, 1, scroll); };
+    auto frame = place();
+    bool scrolled = false;
+    area.onDraw([&](const DrawingEnvironment&) {
+        scrolled = frame.scrollTo(ui, scroll, 10);
+        return Result{};
+    });
+    place();
+    test::check(!scrolled && scroll.offset == 0, "retained frame cannot scroll during drawing");
+    test::check(frame.scrollTo(ui, scroll, 10), "retained frame can scroll after drawing");
+}
+
+void drawingConfig() {
+    Ui ui;
+    for (auto config : {ComponentConfig{.id = "a", .checked = true}, ComponentConfig{.id = "a", .visibleLines = 1},
+                        ComponentConfig{.id = "a", .verticalDigits = 1}, ComponentConfig{.id = "a", .value = u"x"}})
+        test::check(ui.addDrawingArea(config).status == Status::invalidValue, "reject foreign drawing area options");
+    test::check(bool(ui.addDrawingArea({.id = "a", .label = u"A", .enabled = false})), "invalid config reserves no ID");
+}
+
 void frameMutations() {
     using namespace std::chrono_literals;
     Ui ui;
@@ -449,6 +475,7 @@ void frameMutations() {
     a.onFrame([&](const FrameInfo&) {
         if (++attempts > 1) return Result{};
         a.requestRedraw();
+        a.onFrame([&](const FrameInfo&) { ++attempts; return Result{}; });
         a.requestFrame();
         return Result{Status::failed, {}};
     });
@@ -472,15 +499,20 @@ void frameMutations() {
     a.onFrame([&](const FrameInfo&) { return b.remove(); });
     a.requestFrame();
     b.requestFrame();
-    ui.simulateFrame(0ms);
+    auto button = *ui.addButton({.id = "advance"});
+    button.bind([&] { return ui.simulateFrame(0ms); });
+    button.invoke();
     test::check(calls == 2 && !b.describe(), "removal withdraws a later callback");
     Status worker{};
     std::thread([&] { worker = a.requestFrame().status; }).join();
     test::check(worker == Status::wrongThread, "wrong thread cannot schedule");
-    a.onFrame([](const FrameInfo&) -> Result { throw 1; });
+    before = draws;
+    a.onFrame([&](const FrameInfo&) -> Result { a.requestRedraw(); throw 1; });
     a.requestFrame();
     test::check(ui.simulateFrame(0ms).status == Status::failed && a.requestFrame().status == Status::failed,
                 "exception stops UI");
+    place();
+    test::check(draws == before, "stopped UI skips pending drawing");
 }
 
 void applicationFrames() {
@@ -527,7 +559,7 @@ void applicationFrames() {
 }
 
 int main() {
-    const test::Case cases[] = {{"frame mutations", frameMutations}, {"application frames", applicationFrames}, {"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
+    const test::Case cases[] = {{"retained frame during draw", retainedFrameDuringDraw}, {"drawing config", drawingConfig}, {"frame mutations", frameMutations}, {"application frames", applicationFrames}, {"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
         {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
