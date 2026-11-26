@@ -240,6 +240,7 @@ int failures(DesktopConfig config) {
     const char* surfaceCall = config.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
 #endif
     inject(surfaceCall, -1000000000, StartupFailureKind::contextCreation, "VK_ERROR_SURFACE_LOST_KHR");
+    inject("vkGetPhysicalDeviceSurfaceSupportKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
     inject("vkCreateDevice", -4, StartupFailureKind::contextCreation, "VK_ERROR_DEVICE_LOST");
     inject("vkCreateDevice", -123456, StartupFailureKind::contextCreation, "VkResult(-123456)");
     return 0;

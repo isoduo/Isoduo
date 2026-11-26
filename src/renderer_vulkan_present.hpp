@@ -13,10 +13,10 @@ class SurfaceRenderer final : public Renderer {
     VkQueue presentQueue{};
     std::function<std::remove_pointer_t<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>> getCaps =
         d.session.function<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
-    std::function<std::remove_pointer_t<PFN_vkCreateSwapchainKHR>> create = d.api.load<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
+    std::function<std::remove_pointer_t<PFN_vkCreateSwapchainKHR>> create = d.api.loadResult<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
     PFN_vkDestroySwapchainKHR destroy = d.api.load<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
     PFN_vkGetSwapchainImagesKHR images = d.api.load<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
-    std::function<std::remove_pointer_t<PFN_vkAcquireNextImageKHR>> acquire = d.api.load<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
+    std::function<std::remove_pointer_t<PFN_vkAcquireNextImageKHR>> acquire = d.api.loadResult<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
     std::function<std::remove_pointer_t<PFN_vkQueuePresentKHR>> present = d.api.load<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
     std::unique_ptr<Swapchain> chain;
     VkPresentModeKHR presentMode;
@@ -152,7 +152,7 @@ class SurfaceRenderer final : public Renderer {
         info.clipped = VK_TRUE;
         presentationResult(
             "vkCreateSwapchainKHR",
-            invoke(d.hooks, "vkCreateSwapchainKHR", [&] { return create(d.device, &info, nullptr, &next->handle); }),
+            create(d.device, &info, nullptr, &next->handle),
             true);
         next->objects.keep(next->handle, destroy, d.device);
         auto handles = enumerate<VkImage>("vkGetSwapchainImagesKHR", [&](uint32_t *n, VkImage *out) {
@@ -257,9 +257,7 @@ class SurfaceRenderer final : public Renderer {
                 uint32_t index{};
                 constexpr uint64_t timeoutNs = 100000000;
                 auto beforeAcquire = std::chrono::steady_clock::now();
-                auto result = invoke(d.hooks, "vkAcquireNextImageKHR", [&] {
-                    return acquire(d.device, chain->handle, timeoutNs, ready, {}, &index);
-                });
+                auto result = acquire(d.device, chain->handle, timeoutNs, ready, {}, &index);
                 auto elapsed = std::chrono::steady_clock::now() - beforeAcquire;
                 acquireTime += elapsed;
                 if (d.hooks) {
