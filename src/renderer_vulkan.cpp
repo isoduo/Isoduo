@@ -79,7 +79,7 @@ std::string resultName(VkResult result) {
     default: return "VkResult(" + std::to_string(static_cast<int>(result)) + ")";
     }
 }
-[[noreturn]] void unavailable(const char* reason) {
+[[noreturn]] void unavailable(const std::string& reason) {
     throw StartupError{{Kind::renderBackendUnavailable, {}, {}, utf16FromUtf8(reason)}};
 }
 void check(const char* call, VkResult result) {
@@ -117,9 +117,9 @@ struct VulkanSession {
     VkPhysicalDevice previousDevice{};
     bool surfaceLost = false;
 #ifdef _WIN32
-    HMODULE library = LoadLibraryExW(L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    HMODULE library{};
 #else
-    void* library = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+    void* library{};
 #endif
     bool debugUtils = false;
     PFN_vkGetInstanceProcAddr lookup{};
@@ -156,14 +156,19 @@ struct VulkanSession {
         if (!fn) throw StartupError{{Kind::contextCreation, {}, {}, utf16FromUtf8(std::string("Missing Vulkan function: ") + name)}};
         return reinterpret_cast<F>(fn);
     }
-    void load() {
-        if (!library) unavailable("Vulkan loader unavailable");
+    void load(RendererTestHooks* hooks) {
+        bool absent = hooks && hooks->hideVulkanLoader;
 #ifdef _WIN32
+        library = LoadLibraryExW(absent ? L"isoduo-test-absent.dll" : L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!library) unavailable("Vulkan loader unavailable: Win32 error " + std::to_string(GetLastError()));
         lookup = reinterpret_cast<PFN_vkGetInstanceProcAddr>(GetProcAddress(library, "vkGetInstanceProcAddr"));
 #else
+        library = dlopen(absent ? "isoduo-test-absent.so" : "libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (!library) unavailable(std::string("Vulkan loader unavailable: ") + dlerror());
         lookup = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(library, "vkGetInstanceProcAddr"));
 #endif
-        if (!lookup) unavailable("Missing vkGetInstanceProcAddr");
+        if (hooks && hooks->hideInstanceProcAddr) lookup = nullptr;
+        if (!lookup) throw StartupError{{Kind::contextCreation, {}, {}, u"Missing vkGetInstanceProcAddr"}};
     }
     void loadInstanceFunctions(bool surfaceNeeded) {
         getPhysicalDeviceProperties = function<PFN_vkGetPhysicalDeviceProperties>("vkGetPhysicalDeviceProperties");
@@ -441,7 +446,6 @@ void createDevice(Session& s, const Selection& selected, RendererTestHooks* hook
 }
 namespace {
 Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* hooks, bool surfaceNeeded) {
-    if (hooks && hooks->hideVulkanLoader) unavailable("Vulkan loader unavailable");
     std::vector<VkPhysicalDevice> devices;
     if (session.instance) {
         if (session.device) session.destroyDevice(std::exchange(session.device, {}), nullptr);
@@ -458,7 +462,7 @@ Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* h
             };
         else session.createDevice = session.function<PFN_vkCreateDevice>("vkCreateDevice");
     } else {
-        session.load();
+        session.load(hooks);
         devices = createInstance(session, window, hooks, surfaceNeeded);
     }
     if (surfaceNeeded && !session.surface) createSurface(session, window, hooks);
