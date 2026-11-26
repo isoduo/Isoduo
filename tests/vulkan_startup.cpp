@@ -88,26 +88,27 @@ int failures(DesktopConfig config) {
     loader.hideVulkanLoader = true;
     auto absent = create(loader);
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
-#ifdef _WIN32
+#ifndef _WIN32
+    config.backend = absent.backend;
+    if (config.backend == DesktopBackendKind::x11) {
+        auto base = create({});
+        if (base.kind == StartupFailureKind::contextVersion ||
+            (base.kind == StartupFailureKind::renderBackendUnavailable &&
+             base.message.find(u"not connected") == base.message.npos)) return 77;
+        check(base.kind == StartupFailureKind::renderBackendUnavailable, "X11 backend handoff");
+    } else
+#endif
     {
         auto result = Desktop::create(ui, webAppearance(), page, scroll, config);
         if (result.failure && (result.failure->kind == StartupFailureKind::contextVersion ||
             (result.failure->kind == StartupFailureKind::renderBackendUnavailable &&
              result.failure->message.find(u"not connected") == result.failure->message.npos))) return 77;
-        check(bool(result.desktop), "Win32 Vulkan creates a drawable desktop");
+        check(bool(result.desktop), "Vulkan creates a drawable desktop");
         auto caps = result.desktop->capabilities();
         check(caps.renderBackend == RenderBackendKind::vulkan && caps.version.starts_with(u"Vulkan ") &&
             !caps.renderer.empty() && !caps.vendor.empty() && caps.resetDetection, "VK04 Vulkan capabilities");
         std::cout << utf8FromUtf16(caps.renderer) << " / " << utf8FromUtf16(caps.vendor) << " / " << utf8FromUtf16(caps.version) << '\n';
     }
-#else
-    auto base = create({});
-    std::cout << utf8FromUtf16(base.message) << '\n';
-    if (base.kind == StartupFailureKind::contextVersion || (base.kind == StartupFailureKind::renderBackendUnavailable &&
-        base.message.find(u"not connected") == base.message.npos)) return 77;
-    check(base.kind == StartupFailureKind::renderBackendUnavailable && base.message.find(u"not connected") != base.message.npos,
-          "VK03 qualified device reaches native backend handoff");
-#endif
     auto requirement = [&](RendererTestHooks hooks, std::u16string_view required, std::u16string_view actual = {}) {
         auto failure = create(hooks);
         check(failure.kind == StartupFailureKind::contextVersion && failure.required == required &&
@@ -140,13 +141,19 @@ int failures(DesktopConfig config) {
     inject("vkCreateInstance", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
 #ifdef _WIN32
     presentation(config);
-    inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
-    inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+#else
+    if (config.backend == DesktopBackendKind::wayland)
+#endif
+    {
+        inject("vkCreateSwapchainKHR", -3, StartupFailureKind::contextCreation, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateShaderModule", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateGraphicsPipelines", -3, StartupFailureKind::shader, "VK_ERROR_INITIALIZATION_FAILED");
+        inject("vkCreateSampler", -2, StartupFailureKind::resource, "VK_ERROR_OUT_OF_DEVICE_MEMORY");
+    }
+#ifdef _WIN32
     const char* surfaceCall = "vkCreateWin32SurfaceKHR";
 #else
-    const char* surfaceCall = base.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
+    const char* surfaceCall = config.backend == DesktopBackendKind::wayland ? "vkCreateWaylandSurfaceKHR" : "vkCreateXcbSurfaceKHR";
 #endif
     inject(surfaceCall, -1000000000, StartupFailureKind::contextCreation, "VK_ERROR_SURFACE_LOST_KHR");
     inject("vkCreateDevice", -4, StartupFailureKind::contextCreation, "VK_ERROR_DEVICE_LOST");

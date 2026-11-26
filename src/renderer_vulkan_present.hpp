@@ -19,6 +19,7 @@ class SurfaceRenderer final : public Renderer {
     PFN_vkAcquireNextImageKHR acquire = d.api.load<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
     PFN_vkQueuePresentKHR present = d.api.load<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
     std::unique_ptr<Swapchain> chain;
+    VkPresentModeKHR presentMode;
     bool dirty = true;
     VkPipeline pipeline{};
     int frameNumber = 0;
@@ -80,7 +81,7 @@ class SurfaceRenderer final : public Renderer {
         info.compositeAlpha = static_cast<VkCompositeAlphaFlagBitsKHR>(caps.supportedCompositeAlpha &
                                                                        (~caps.supportedCompositeAlpha + 1));
         next->forceOpaque = info.compositeAlpha != VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        info.presentMode = presentMode;
         info.clipped = VK_TRUE;
         presentationResult(
             "vkCreateSwapchainKHR",
@@ -101,7 +102,8 @@ class SurfaceRenderer final : public Renderer {
     }
 
   public:
-    SurfaceRenderer(VulkanWindow window, RendererTestHooks *hooks, VkExtent2D initial) : d(window, true, hooks) {
+    SurfaceRenderer(VulkanWindow window, RendererTestHooks *hooks, VkExtent2D initial,
+                    VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR) : d(window, true, hooks), presentMode(mode) {
         d.api.GetDeviceQueue(d.device, *d.selected.presentQueue, 0, &presentQueue);
         pipeline = d.selected.format.format == VK_FORMAT_R8G8B8A8_UNORM ? d.rgbaPipeline
                                                                         : d.createPipeline(d.selected.format.format);
