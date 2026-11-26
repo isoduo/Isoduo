@@ -21,6 +21,8 @@ struct RendererTestHooks {
     int lastAcquire=0, lastPresent=0, retryTimers=0;
     unsigned compositeAlphaMask=0;
     double presentMs=0;
+    double acquireTimeoutMs=0, maxAcquireMs=0;
+    unsigned acquireCalls=0, acquireTimeouts=0;
     std::string fragmentShaderOverride;
     std::string startupResourceError;
     int errorAtFrame = 0, resetAtFrame = 0;
