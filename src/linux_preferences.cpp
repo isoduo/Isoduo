@@ -16,11 +16,12 @@ MotionPreference gnomeMotion(GVariant* enabled, GVariant* reduced) {
         std::string_view(g_variant_get_string(reduced, nullptr)) == "reduce") return MotionPreference::reduce;
     return MotionPreference::noPreference;
 }
-MotionPreference xfceMotion(GVariant* enabled) {
-    if (enabled && ((g_variant_is_of_type(enabled, G_VARIANT_TYPE_BOOLEAN) && !g_variant_get_boolean(enabled)) ||
-                    (g_variant_is_of_type(enabled, G_VARIANT_TYPE_INT32) && g_variant_get_int32(enabled) == 0)))
-        return MotionPreference::off;
-    return MotionPreference::noPreference;
+std::optional<MotionPreference> xfceMotion(GVariant* enabled) {
+    if (enabled && g_variant_is_of_type(enabled, G_VARIANT_TYPE_BOOLEAN))
+        return g_variant_get_boolean(enabled) ? MotionPreference::noPreference : MotionPreference::off;
+    if (enabled && g_variant_is_of_type(enabled, G_VARIANT_TYPE_INT32))
+        return g_variant_get_int32(enabled) ? MotionPreference::noPreference : MotionPreference::off;
+    return std::nullopt;
 }
 
 namespace {
@@ -60,13 +61,13 @@ Bus xfceBus() {
     if (!std::getenv("DBUS_SESSION_BUS_ADDRESS") && !std::getenv("XDG_RUNTIME_DIR")) return {nullptr, g_object_unref};
     return {g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr), g_object_unref};
 }
-MotionPreference readXfceMotion() {
+std::optional<MotionPreference> readXfceMotion() {
     auto bus = xfceBus();
-    if (!bus) return MotionPreference::noPreference;
+    if (!bus) return std::nullopt;
     Variant reply(g_dbus_connection_call_sync(bus.get(), xfconfService, xfconfPath,
         xfconfService, "GetProperty", g_variant_new("(ss)", xfceChannel, xfceAnimationsKey),
         G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 250, nullptr, nullptr), g_variant_unref);
-    if (!reply) return MotionPreference::noPreference;
+    if (!reply) return std::nullopt;
     GVariant* property = nullptr;
     g_variant_get(reply.get(), "(v)", &property);
     Variant value(property, g_variant_unref);

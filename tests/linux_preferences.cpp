@@ -18,10 +18,11 @@ int main() {
     test::check(gnomeMotion(nullptr, reduced.get()) == MotionPreference::reduce, "Reduced motion alone");
     test::check(xfceMotion(disabled.get()) == MotionPreference::off && xfceMotion(zero.get()) == MotionPreference::off,
                 "Xfce disables animations through either supported setting type");
+    test::check(xfceMotion(enabled.get()) == MotionPreference::noPreference, "Xfce enables animations");
     // A missing settings service or schema is a valid desktop state.
     ::setenv("XDG_CURRENT_DESKTOP", "XFCE", 1);
     ::setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/isoduo-session-bus", 1);
     const auto preferences = isoduo::detail::readLinuxDesktopPreferences();
-    test::check(preferences.motion == MotionPreference::noPreference && !preferences.keyboardCues,
+    test::check(!preferences.motion && !preferences.keyboardCues,
         "Absent desktop settings leave both choices to the framework");
 }

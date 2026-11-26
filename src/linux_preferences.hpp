@@ -10,13 +10,13 @@ typedef struct _GVariant GVariant;
 
 namespace isoduo::detail {
 struct LinuxDesktopPreferences {
-    MotionPreference motion = MotionPreference::noPreference;
+    std::optional<MotionPreference> motion;
     std::optional<bool> keyboardCues;
 };
 
 // Decode the values returned by the desktop settings services. Missing keys pass nullptr.
 MotionPreference gnomeMotion(GVariant* enabled, GVariant* reduced);
-MotionPreference xfceMotion(GVariant* enabled);
+std::optional<MotionPreference> xfceMotion(GVariant* enabled);
 
 // Missing values leave the shared UI's normal motion and focus rules in effect.
 LinuxDesktopPreferences readLinuxDesktopPreferences();
