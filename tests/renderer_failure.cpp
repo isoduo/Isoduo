@@ -3,6 +3,7 @@
 #include "edit_form.hpp"
 #include "isoduo/fonts.hpp"
 #include "renderer_failure_checks.hpp"
+#include "renderer_fault_sweep.hpp"
 #include <iostream>
 #include <algorithm>
 #include <stdexcept>
@@ -333,7 +334,7 @@ static void zeroExtentRecovery(DesktopConfig config) {
         auto failed = desktop.rebuildRenderer();
         check(failed.status == Status::failed && failed.message == u"vkCreateImage: VK_ERROR_OUT_OF_DEVICE_MEMORY" &&
               desktop.rendererFailed(), "Atlas image allocation must succeed before recovery completes");
-        hooks.zeroSurfaceExtent = true;
+        hooks.zeroSurfaceExtentOnce = true;
         recovered = desktop.rebuildRenderer() && !desktop.rendererFailed();
         desktop.close();
     };
@@ -399,6 +400,12 @@ static void vulkanPresentation(DesktopConfig config) {
 }
 int main(int argc, char** argv) {
     try {
+        if (argc == 4 && std::string_view(argv[1]) == "--fault-sweep" &&
+            std::string_view(argv[2]) == "--render-backend") {
+            DesktopConfig config;
+            config.renderBackend = test::rendererFaultSweep::renderBackend(argv[3]);
+            return test::rendererFaultSweep::run(config);
+        }
         if (argc == 3 && std::string_view(argv[1]) == "--render-backend" && std::string_view(argv[2]) == "vulkan") {
             editForm::Form form;
             RendererTestHooks hooks;
