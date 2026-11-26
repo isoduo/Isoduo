@@ -134,7 +134,7 @@ struct VulkanSession {
     VkDevice device{};
     PFN_vkDestroyDevice destroyDevice{};
     std::function<std::remove_pointer_t<PFN_vkDestroyInstance>> destroyInstance;
-    PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices{};
+    Command<PFN_vkEnumeratePhysicalDevices> enumeratePhysicalDevices;
     Command<PFN_vkGetPhysicalDeviceProperties> getPhysicalDeviceProperties;
     Command<PFN_vkGetPhysicalDeviceFeatures2> getPhysicalDeviceFeatures2;
     Command<PFN_vkEnumerateDeviceExtensionProperties> enumerateDeviceExtensionProperties;
@@ -258,6 +258,13 @@ const char* platformExtension(VulkanWindow window) {
     return window.backend == DesktopBackendKind::wayland ? VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME : VK_KHR_XCB_SURFACE_EXTENSION_NAME;
 #endif
 }
+std::vector<VkPhysicalDevice> enumerateDevices(Session& s) {
+    auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices", [&](uint32_t* count, VkPhysicalDevice* out) {
+        return s.enumeratePhysicalDevices(s.instance, count, out);
+    });
+    if (devices.empty()) unavailable("No Vulkan physical devices");
+    return devices;
+}
 std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, RendererTestHooks* hooks, bool surfaceNeeded = true) {
     auto getVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(s.lookup(nullptr, "vkEnumerateInstanceVersion"));
     uint32_t version = VK_API_VERSION_1_0;
@@ -354,10 +361,12 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     check("vkCreateDebugUtilsMessengerEXT", createMessenger(s.instance, &validation, nullptr, &s.validationMessenger));
     }
     s.enumeratePhysicalDevices = s.function<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
-    if (hooks && hooks->hidePhysicalDevices) s.enumeratePhysicalDevices = [](VkInstance, uint32_t* count, VkPhysicalDevice*) { *count = 0; return VK_SUCCESS; };
-    auto devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices",
-        [&](uint32_t* n, VkPhysicalDevice* out){ return s.enumeratePhysicalDevices(s.instance, n, out); });
-    if (devices.empty()) unavailable("No Vulkan physical devices");
+    if (hooks) s.enumeratePhysicalDevices = [real=s.enumeratePhysicalDevices,hooks](auto instance, auto count, auto out) {
+        if (!hooks->hidePhysicalDevices) return real(instance, count, out);
+        *count = 0;
+        return VK_SUCCESS;
+    };
+    auto devices = enumerateDevices(s);
     if (missingExtension) throw StartupError{missing(missingExtension)};
     s.loadInstanceFunctions(surfaceNeeded, hooks);
     return devices;
@@ -492,10 +501,9 @@ Selection initialize(Session& session, VulkanWindow window, RendererTestHooks* h
         if (session.surfaceLost && session.surface)
             session.destroySurfaceKHR(session.instance, std::exchange(session.surface, {}), nullptr);
         session.surfaceLost = false;
-        devices = enumerate<VkPhysicalDevice>("vkEnumeratePhysicalDevices", [&](auto n, auto out) {
-            return session.enumeratePhysicalDevices(session.instance, n, out);
-        });
-        if (devices.empty()) unavailable("No Vulkan physical devices");
+        devices = enumerateDevices(session);
+        // Refresh test dispatch overrides so selection faults can be armed for this rebuild alone.
+        if (hooks) session.loadInstanceFunctions(surfaceNeeded, hooks);
         if (hooks && std::exchange(hooks->failRebuildOnce, false))
             session.createDevice = [](VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*) {
                 return VK_ERROR_DEVICE_LOST;

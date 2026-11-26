@@ -73,7 +73,7 @@ if(ISODUO_BUILD_TESTS)
   # Requires a display. Keep it opt-in and runnable on both desktop sessions.
   add_executable(isoduo_linux_desktop_native tests/linux_desktop_native.cpp)
   isoduo_target(isoduo_linux_desktop_native)
-  target_include_directories(isoduo_linux_desktop_native PRIVATE src)
+  target_include_directories(isoduo_linux_desktop_native PRIVATE src third_party)
   target_link_libraries(isoduo_linux_desktop_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb Isoduo::AppearanceMaterial)
   foreach(backend IN ITEMS opengl vulkan)
     add_test(NAME renderer_fault_sweep_${backend}
