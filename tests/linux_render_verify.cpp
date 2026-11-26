@@ -372,6 +372,28 @@ bool verifyPresentationMatrix(DesktopConfig config, const Appearance& appearance
     }
 }
 
+void verifyRecovery(DesktopConfig config) {
+    for (bool surfaceLost : {false,true}) {
+        Ui ui;
+        ScrollState scroll;
+        RendererTestHooks hooks;
+        if (surfaceLost) hooks.presentResultAtFrame={1,-1000000000};
+        else hooks.fenceResultAtFrame=1;
+        bool rebuilt=false, compared=false;
+        config.onRendererFailed=[&](Desktop& desktop,const RendererFailure& failure) {
+            check(failure.kind==(surfaceLost ? RendererFailureKind::presentFailed : RendererFailureKind::deviceReset),
+                  "VK08 classifies late fence and lost surface");
+            rebuilt=bool(desktop.rebuildRenderer());
+            check(rebuilt,"Explicit Vulkan rebuild");
+        };
+        auto desktop=openDesktop(ui,webAppearance(),[]{return layout::column({});},scroll,config,&hooks);
+        LinuxDesktopTest::observeFrames(*desktop,[&](const auto&,const auto&) {
+            compared=LinuxDesktopTest::compareDrawList(*desktop,test::layeredDrawList(),8,6).passed;
+            desktop->close();
+        });
+        check(desktop->run().status==Status::ok && rebuilt && compared,"VK08 recovered frame matches CPU");
+    }
+}
 void diagnostics(DesktopConfig config, bool receiver) {
     Ui ui;
     ScrollState scroll;
@@ -434,6 +456,7 @@ int main(int argc, char** argv) {
         config.title = u"Isoduo render verification";
         config.width = width;
         config.height = height;
+        if (mode == "recovery") { verifyRecovery(config); return 0; }
         if (mode == "diagnostics" || mode == "no-receiver") {
             diagnostics(config, mode == "diagnostics");
             return 0;
