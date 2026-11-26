@@ -2738,7 +2738,8 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
             // Search the actual V03 geometry for every edge/input pair. Preparation
             // sets an offset, while the scroll under test enters through Win32 messages.
             for (int input = 0; input < 3; ++input) for (bool partial : {true, false}) {
-                h.progressHalf.focus(); f.settle();
+                // A preceding scrollbar press can leave the focused button in pointer mode.
+                h.progressHalf.focus(); f.tap(VK_RIGHT); f.settle();
                 auto geometry = f.host.frame();
                 auto* anchor = geometry.find(h.progressHalf);
                 auto bar = geometry.regions.front();
@@ -3303,6 +3304,8 @@ void x04NormalMatrix(const Appearance& appearance, Report& report) {
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui);
             f.x04Size(size.first, size.second, scale); f.host.observePaint(true);
+            // Normal paint assumes an uncovered client, regardless of desktop stacking order.
+            f.host.coveredSource([] { return false; });
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baselineContext(f.form);
                 bool modal = entry.page == "modal";
