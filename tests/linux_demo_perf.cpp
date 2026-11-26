@@ -43,7 +43,7 @@ double monotonicMs(std::chrono::steady_clock::time_point time) {
     return std::chrono::duration<double, std::milli>(time.time_since_epoch()).count();
 }
 
-int run(char** argv) {
+int run(char** argv, bool vulkan) {
     const std::string_view backend = argv[1], appearance = argv[2], scenario = argv[3];
     if (backend != "wayland" && backend != "x11") throw std::invalid_argument("Expected wayland or x11");
     if (appearance != "web" && appearance != "material") throw std::invalid_argument("Expected web or material");
@@ -52,6 +52,7 @@ int run(char** argv) {
     if (!list && !typing && !slider && !animation && scenario != "startup")
         throw std::invalid_argument("Unknown performance scenario");
     DesktopConfig config;
+    if (vulkan) config.renderBackend = RenderBackendKind::vulkan;
     config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
     config.width = parseNumber(argv[4], 1, 8192);
     config.height = parseNumber(argv[5], 1, 8192);
@@ -88,7 +89,10 @@ int run(char** argv) {
             std::cout << "frame\t" << monotonicMs(sample.presented) << '\t'
                       << sample.geometry.width << '\t' << sample.geometry.height << '\t'
                       << sample.geometry.scale << '\t' << sample.layoutMs << '\t'
-                      << sample.listMs << '\t' << sample.submissionMs << '\t' << sample.gpuMs
+                      << sample.listMs << '\t' << sample.submissionMs << '\t';
+            if (std::isfinite(sample.gpuMs)) std::cout << sample.gpuMs;
+            else std::cout << "unknown";
+            std::cout
                       << '\t' << sample.delayMs << '\t' << sample.focused << '\n';
             std::cout << "arrangements\t" << std::exchange(arrangements, 0) << '\n';
             if (list) {
@@ -122,8 +126,15 @@ int summarize(char** argv) {
     PerfBreakdown stages;
     double age, layout, list, submit, gpu, injected;
     while (std::cin >> age) {
-        if (!(std::cin >> layout >> list >> submit >> gpu >> injected))
+        std::string timestamp;
+        if (!(std::cin >> layout >> list >> submit >> timestamp >> injected))
             throw std::invalid_argument("Incomplete performance sample");
+        if (timestamp == "unknown") gpu = std::numeric_limits<double>::quiet_NaN();
+        else {
+            const auto result = std::from_chars(timestamp.data(), timestamp.data()+timestamp.size(), gpu);
+            if (result.ec != std::errc{} || result.ptr != timestamp.data()+timestamp.size() || !std::isfinite(gpu))
+                throw std::invalid_argument("Invalid GPU sample");
+        }
         samples.add(age, layout + list + submit + gpu + injected);
         stages.add(age, layout, list, submit + gpu);
     }
@@ -145,10 +156,15 @@ int summarize(char** argv) {
     for (bool warm : {true, false}) {
         const auto sample = samples.summary(warm);
         const auto phase = stages.summary(warm);
-        std::cout << (warm ? "warmup" : "steady") << '\t' << sample.count << '\t' << sample.p50
-                  << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
-        for (auto* stage : {&phase.layout, &phase.list, &phase.gpu})
-            std::cout << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+        std::cout << (warm ? "warmup" : "steady") << '\t' << sample.count;
+        if (std::isfinite(sample.maximum))
+            std::cout << '\t' << sample.p50 << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
+        else std::cout << "\tunknown\tunknown\tunknown\tunknown\tunknown";
+        for (auto* stage : {&phase.layout, &phase.list, &phase.gpu}) {
+            if (std::isfinite(stage->maximum))
+                std::cout << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
+            else std::cout << "\tunknown\tunknown\tunknown\tunknown";
+        }
         std::cout << '\n';
     }
     return 0;
@@ -161,9 +177,9 @@ int main(int argc, char** argv) {
         if (argc == 5 && std::string_view(argv[1]) == "seed")
             return seed(argv[2], parseNumber(argv[3], 20, 100), utf16FromUtf8(argv[4]));
         if (argc == 8 && std::string_view(argv[1]) == "summarize") return summarize(argv);
-        if (argc == 8) return run(argv);
+        if (argc == 8 || (argc == 9 && std::string_view(argv[8]) == "--vulkan")) return run(argv,argc == 9);
         std::cerr << "Usage: isoduo_linux_demo_perf seed DIRECTORY ITEM_COUNT FONT\n"
-                     "       isoduo_linux_demo_perf BACKEND APPEARANCE SCENARIO WIDTH HEIGHT DELAY_MS DIRECTORY\n"
+                     "       isoduo_linux_demo_perf BACKEND APPEARANCE SCENARIO WIDTH HEIGHT DELAY_MS DIRECTORY [--vulkan]\n"
                      "       isoduo_linux_demo_perf summarize SCENARIO DELAY_MS STARTUP_MS PRESENTS REDRAWS CPU_MS\n"
                      "       stdin sample columns: age_ms layout_ms list_ms submission_ms gpu_ms injected_ms\n";
         return 2;
