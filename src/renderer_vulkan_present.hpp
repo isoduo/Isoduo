@@ -136,7 +136,9 @@ class SurfaceRenderer final : public Renderer {
                 auto ready = d.make<VkSemaphore>(frame.objects, "vkCreateSemaphore", d.api.CreateSemaphore, info,
                                                  d.api.DestroySemaphore);
                 uint32_t index{};
-                auto result = acquire(d.device, chain->handle, 100000000, ready, {}, &index);
+                auto result = invoke(d.hooks, "vkAcquireNextImageKHR", [&] {
+                    return acquire(d.device, chain->handle, 100000000, ready, {}, &index);
+                });
                 if (d.hooks)
                     d.hooks->lastAcquire = result;
                 if (result == VK_TIMEOUT || result == VK_NOT_READY)
