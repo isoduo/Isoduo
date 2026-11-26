@@ -38,6 +38,8 @@ public:
     DesktopHost(const DesktopHost&) = delete;
     DesktopHost& operator=(const DesktopHost&) = delete;
 
+    static DesktopHost& fromDesktop(Desktop&);
+    std::function<void()> onPresented;  // Native frame verification observer.
     HWND window() const { return window_; }
     void attach(HWND window) { window_ = window; }  // from WM_NCCREATE, before CreateWindowExW returns
     int run();                              // GetMessage loop until WM_QUIT
