@@ -1,6 +1,11 @@
 ﻿# Trial only: do not require this check until 20 consecutive first-attempt passes.
 name: UIA trial
 on: [push, pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   uia:
     runs-on: windows-latest
