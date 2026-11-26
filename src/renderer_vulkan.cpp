@@ -502,12 +502,8 @@ std::unique_ptr<Renderer> createVulkanRenderer(VulkanWindow window, RendererTest
     if (!retained) retained = std::make_shared<Session>();
     retained->debug = debug;
     retained->sink = std::move(sink);
-    if (window.backend == DesktopBackendKind::wayland)
-        return std::make_unique<SurfaceRenderer>(window, hooks, VkExtent2D{uint32_t(width), uint32_t(height)}, retained,
-                                                 VK_PRESENT_MODE_MAILBOX_KHR);
-    Session session;
-    initialize(session, window, hooks, true);
-    unavailable("Vulkan drawing is not connected to this native desktop backend yet");
+    const auto mode = window.backend == DesktopBackendKind::wayland ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
+    return std::make_unique<SurfaceRenderer>(window, hooks, VkExtent2D{uint32_t(width), uint32_t(height)}, retained, mode);
 }
 #endif
 }
