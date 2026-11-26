@@ -198,7 +198,7 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
     }
 }
 std::unique_ptr<Renderer> DesktopHost::createRenderer() {
-    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession, debugContext_,
+    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession_, debugContext_,
         [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
     return std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
 }
@@ -296,7 +296,7 @@ void DesktopHost::release() {
     ImmAssociateContext(window_, inputContext_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
     renderer_.reset();
-    vulkanSession.reset();
+    vulkanSession_.reset();
     DestroyWindow(window_);
     window_ = nullptr;
     claim_.release();

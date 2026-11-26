@@ -266,8 +266,8 @@ struct Drawing {
         stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
         stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        stages[0].module = module(draw_vert);
-        stages[1].module = module(draw_frag);
+        stages[0].module = module(drawVert);
+        stages[1].module = module(drawFrag);
         stages[0].pName = stages[1].pName = "main";
         VkPipelineVertexInputStateCreateInfo vertices{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
         VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};

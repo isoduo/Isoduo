@@ -36,8 +36,8 @@ template <class H> struct Derived : H {
         return requires(const Derived& d) { d.ui_; } || requires(const Derived& d) { d.lifetime_; } || requires(const Derived& d) { d.id_; };
     }
 };
-template <class H> concept exposesState = requires(const H& h) { h.ui_; } || requires(const H& h) { h.lifetime_; } || requires(const H& h) { h.id_; };
-template <class... H> constexpr bool statePrivate(std::tuple<H...>*) { return ((!exposesState<H> && !Derived<H>::seesState()) && ...); }
+template <class H> concept ExposesState = requires(const H& h) { h.ui_; } || requires(const H& h) { h.lifetime_; } || requires(const H& h) { h.id_; };
+template <class... H> constexpr bool statePrivate(std::tuple<H...>*) { return ((!ExposesState<H> && !Derived<H>::seesState()) && ...); }
 
 static_assert(std::tuple_size_v<HandleTypes> == 14);
 static_assert(everyAlternativeListed(static_cast<ComponentHandle*>(nullptr)));
@@ -55,9 +55,10 @@ static_assert(!std::equality_comparable_with<TextFieldHandle, LabelHandle>);
 static_assert(std::equality_comparable<ComponentHandle> && std::equality_comparable<ConfirmField>);
 static_assert(statePrivate(static_cast<HandleTypes*>(nullptr)));
 // The two probes do see state that is reachable, so the check above is not vacuous.
+// NOLINTNEXTLINE(readability-identifier-naming) -- Deliberately exposes the exact member being probed.
 struct OpenState { void* ui_ = nullptr; };
 class InheritedState { protected: int id_ = 0; };
-static_assert(exposesState<OpenState> && Derived<InheritedState>::seesState());
+static_assert(ExposesState<OpenState> && Derived<InheritedState>::seesState());
 
 namespace {
 std::function<std::function<void()>(std::function<void()>)> noUpdates() {

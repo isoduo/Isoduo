@@ -11,8 +11,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install desktop development packages
-        run: cmake -P cmake/ci/InstallLinuxDesktopPackages.cmake
+        run: cmake -DCOMPILER=${{ matrix.compiler }} -P cmake/ci/InstallLinuxDesktopPackages.cmake
       - name: Build and test core
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release-core
       - name: Build desktop
+        if: matrix.compiler == 'gcc'
         run: cmake --workflow --preset linux-${{ matrix.compiler }}-release
+      - name: Configure Clang desktop with required clang-tidy
+        if: matrix.compiler == 'clang'
+        run: cmake --preset linux-clang-release -DISODUO_REQUIRE_CLANG_TIDY=ON
+      - name: Build Clang desktop
+        if: matrix.compiler == 'clang'
+        run: cmake --build --preset linux-clang-release
+      - name: Check identifier names
+        if: matrix.compiler == 'clang'
+        run: ctest --test-dir build/linux-clang-release --no-tests=error --output-on-failure -R '^identifier_naming'

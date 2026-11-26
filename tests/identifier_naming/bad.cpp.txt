@@ -1,0 +1,10 @@
+struct Dispatch {
+    int CreateBuffer;
+};
+
+class Cache {
+    int entryCount;
+    const int maxEntries = 1;
+};
+
+void snake_case();

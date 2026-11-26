@@ -416,6 +416,7 @@ struct Editor {
     unsigned caret() { return host().edit("note")->selection.caret; }
     unsigned anchor() { return host().edit("note")->selection.anchor; }
     unsigned first() const { return placed().view.first; }
+private:
     int width_;
 };
 
