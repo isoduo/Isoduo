@@ -61,7 +61,7 @@ jobs:
       - name: Configure Debug validation
         run: cmake --preset windows-clang-cl-debug -C "${{ runner.temp }}/isoduo-vulkan-tools/tools.cmake" -DISODUO_REQUIRE_VULKAN_TESTS=ON -DISODUO_TEST_VULKAN_VALIDATION=ON
       - name: Build Debug render tests
-        run: cmake --build --preset windows-clang-cl-debug --target isoduo_vulkan_startup_tests isoduo_host_verify isoduo_settings_demo_web isoduo_renderer_failure_tests isoduo_diagnostic_queue_tests isoduo_diagnostics_tests
+        run: cmake --build --preset windows-clang-cl-debug --target isoduo_multi_desktop_tests isoduo_vulkan_startup_tests isoduo_host_verify isoduo_settings_demo_web isoduo_renderer_failure_tests isoduo_diagnostic_queue_tests isoduo_diagnostics_tests
       - name: Test Vulkan startup before registering lavapipe
         run: ctest --preset windows-clang-cl-debug --no-tests=error -R '^vulkan_no_driver$'
       - name: Install Mesa drivers

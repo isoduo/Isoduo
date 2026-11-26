@@ -431,6 +431,7 @@ void DesktopHost::paint() {
         if(inputTime_.time_since_epoch().count()) { inputPresentMs_=std::chrono::duration<double,std::milli>(presented-inputTime_).count(); inputTime_={}; }
     }
     ++frames_;
+    if (onPresented) onPresented();
     syncIme();
     scheduleAnimation();
     PostMessageW(window_,WM_APP+43,0,0);
@@ -991,6 +992,7 @@ struct Desktop::Impl {
 };
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
+detail::DesktopHost& detail::DesktopHost::fromDesktop(Desktop& desktop) { return *desktop.impl_->host; }
 CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options) {
     return detail::DesktopHost::createForTest(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
