@@ -2,7 +2,7 @@
 struct AtlasUpload {
     VkDeviceSize offset;
     VkExtent2D size;
-    VkBuffer restored{};
+    VkImage restored{};
 };
 struct GlyphBatch {
     const std::vector<Drawing::RestoredPage>& restored;
@@ -15,23 +15,23 @@ struct GlyphBatch {
         while (bytes.size() % 4)
             bytes.push_back(0);
         VkExtent2D extent{uint32_t(r.w), uint32_t(r.h)};
-        if (r.x==0 && r.y==0 && r.w==page.width && r.h==page.height) {
-            for (const auto& saved : restored) {
-                if (saved.page==&page && saved.pixels==page.pixels) {
-                    uploads.push_back({0,extent,saved.staging.handle});
-                    size.width=std::max(size.width,extent.width);
-                    size.height=std::max(size.height,extent.height);
-                    return int(uploads.size()-1);
+        AtlasUpload upload{bytes.size(), extent};
+        if (r.x == 0 && r.y == 0 && r.w == page.width && r.h == page.height) {
+            for (const auto& saved : restored)
+                if (saved.page == &page && saved.pixels == page.pixels) {
+                    upload.restored = saved.image;
+                    break;
                 }
+        }
+        if (!upload.restored) {
+            for (int y = 0; y < r.h; ++y) {
+                auto row = page.pixels.begin() + size_t(y + r.y) * page.width + r.x;
+                bytes.insert(bytes.end(), row, row + r.w);
             }
         }
-        uploads.push_back({bytes.size(), extent});
+        uploads.push_back(upload);
         size.width = std::max(size.width, extent.width);
         size.height = std::max(size.height, extent.height);
-        for (int y = 0; y < r.h; ++y) {
-            auto row = page.pixels.begin() + size_t(y + r.y) * page.width + r.x;
-            bytes.insert(bytes.end(), row, row + r.w);
-        }
         return int(uploads.size() - 1);
     }
     GlyphBatch(const DrawList &list, const std::vector<Drawing::RestoredPage>& pagesToRestore) : restored(pagesToRestore), glyphs(list.commands.size()), uploadAt(list.commands.size(), -1) {
@@ -165,8 +165,15 @@ struct CommandFrame {
             copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copy.bufferOffset = region.offset;
             copy.imageExtent = {region.size.width, region.size.height, 1};
-            auto source=region.restored ? region.restored : staging.handle;
-            api.CmdCopyBufferToImage(cmd, source, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            if (region.restored) {
+                VkImageCopy imageCopy{};
+                imageCopy.srcSubresource = imageCopy.dstSubresource = copy.imageSubresource;
+                imageCopy.extent = copy.imageExtent;
+                api.cmdCopyImage(cmd, region.restored, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                 atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopy);
+            } else {
+                api.CmdCopyBufferToImage(cmd, staging.handle, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+            }
             d.barrier(cmd, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         };
         upload(0, VK_IMAGE_LAYOUT_UNDEFINED);

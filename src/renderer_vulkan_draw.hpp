@@ -20,7 +20,7 @@ struct DeviceCommands {
     PFN_vkBindBufferMemory BindBufferMemory = load<PFN_vkBindBufferMemory>("vkBindBufferMemory");
     PFN_vkMapMemory MapMemory = load<PFN_vkMapMemory>("vkMapMemory");
     PFN_vkUnmapMemory UnmapMemory = load<PFN_vkUnmapMemory>("vkUnmapMemory");
-    PFN_vkCreateImage CreateImage = load<PFN_vkCreateImage>("vkCreateImage");
+    std::function<std::remove_pointer_t<PFN_vkCreateImage>> CreateImage = load<PFN_vkCreateImage>("vkCreateImage");
     PFN_vkDestroyImage DestroyImage = load<PFN_vkDestroyImage>("vkDestroyImage");
     PFN_vkGetImageMemoryRequirements GetImageMemoryRequirements =
         load<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements");
@@ -37,6 +37,7 @@ struct DeviceCommands {
     PFN_vkCmdBeginRendering CmdBeginRendering = load<PFN_vkCmdBeginRendering>("vkCmdBeginRendering");
     PFN_vkCmdEndRendering CmdEndRendering = load<PFN_vkCmdEndRendering>("vkCmdEndRendering");
     PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage = load<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
+    PFN_vkCmdCopyImage cmdCopyImage = load<PFN_vkCmdCopyImage>("vkCmdCopyImage");
     PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
     PFN_vkCmdClearAttachments CmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
     PFN_vkCmdSetViewport CmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
@@ -126,12 +127,11 @@ struct Drawing {
     PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
     PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
     Resources resources;
-    // Whole CPU pages uploaded while rebuilding; the next full-page copy can
-    // use these buffers even when a frame interleaves several atlas pages.
+    // Restored images remain copy sources while the corresponding CPU page is unchanged.
     struct RestoredPage {
         const AtlasPage* page;
         std::vector<unsigned char> pixels;
-        Buffer staging;
+        VkImage image;
     };
     std::vector<RestoredPage> restored;
     VkSampler sampler{};
