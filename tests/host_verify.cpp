@@ -4388,10 +4388,14 @@ std::string frameStatistics(const detail::PerfSummary& sample) {
     out << sample.p50 << '\t' << sample.p95 << '\t' << sample.p99 << '\t' << sample.maximum << '\t' << sample.overBudget;
     return out.str();
 }
-std::string timingColumns(DesktopHost& host, const detail::RendererTestHooks& timing) {
+std::string timingColumns(DesktopHost& host, const detail::RendererTestHooks& timing, bool warm) {
     std::ostringstream out;
     out << '\t' << (host.capabilities().renderBackend == RenderBackendKind::vulkan ? "vulkan" : "opengl")
-        << '\t' << timing.acquireTimeoutMs << '\t' << timing.maxAcquireMs << '\t' << timing.acquireCalls << '\t' << timing.acquireTimeouts;
+        << '\t' << timing.acquireTimeoutMs << '\t' << timing.maxAcquireMs << '\t' << timing.acquireCalls << '\t' << timing.acquireTimeouts << '\t';
+    const auto gpu = host.gpuSamples().summary(warm);
+    if (!gpu.count) out << "n/a";
+    else if (!std::isfinite(gpu.maximum)) out << "unknown";
+    else out << gpu.maximum;
     return out.str();
 }
 
@@ -4445,7 +4449,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
-    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\n";
+    out << "scenario\tappearance\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_max_ms\n";
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
         out << narrow(scenario) << '\t' << narrow(appearance) << '\t' << (large?"3840x2160":"1920x1080") << '\t' << (large?2:1) << '\t' << host.rendererName() << '\t' << windowsBuild() << '\t'
 #ifdef NDEBUG
@@ -4453,7 +4457,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << timingColumns(host,timing) << '\n';
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (ok?"PASS":"FAIL") << timingColumns(host,timing,phase) << '\n';
     }
     if(!out) throw std::runtime_error("Cannot write perf report");
     SetWindowLongPtrW(host.window(),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(previousProc)); x04OriginalProcs.erase(host.window());
@@ -4581,7 +4585,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
     if (sliderDrag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");
     auto stagesWarm=host.perfBreakdown().summary(true), stagesSteady=host.perfBreakdown().summary(false);
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/reportFile);
-    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts";
+    out << "scenario\tappearance\tfont_mode\tresolution\tscale\trenderer_driver\twindows_build\tconfiguration\tmode\tphase\tcount\tp50_ms\tp95_ms\tp99_ms\tmax_ms\tover_16_7\tstartup_ms\tinput_present_ms\tpresents\twm_paint\tcpu_ms\tdelay_ms\tpeak_working_set_bytes\trun_kind\tstatus\trender_backend\tacquire_timeout_ms\tacquire_max_ms\tacquire_calls\tacquire_timeouts\tgpu_max_ms";
     if (sliderDrag) for (const char* stage : {"layout","list","gpu"}) for (const char* column : {"p50","p95","p99","max"}) out << '\t' << stage << '_' << column << "_ms";
     out << '\n';
     for (auto phase : {true,false}) { const auto& v=phase?warm:steady;
@@ -4591,7 +4595,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
 #else
             << "Debug"
 #endif
-            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (sliderDrag?"REPORT":ok?"PASS":"FAIL") << timingColumns(host,timing);
+            << '\t' << (offscreen?"offscreen-no-compositor":"window") << '\t' << (phase?"warmup":"steady") << '\t' << v.count << '\t' << frameStatistics(v) << '\t' << host.firstPresentMs() << '\t' << host.inputPresentMs() << '\t' << presents << '\t' << paints << '\t' << cpuMs << '\t' << delay << '\t' << memory.PeakWorkingSetSize << '\t' << (durationMs?"smoke":"measurement") << '\t' << (sliderDrag?"REPORT":ok?"PASS":"FAIL") << timingColumns(host,timing,phase);
         if (sliderDrag) {
             const auto& stages=phase?stagesWarm:stagesSteady;
             for (const auto* stage : {&stages.layout,&stages.list,&stages.gpu}) out << '\t' << stage->p50 << '\t' << stage->p95 << '\t' << stage->p99 << '\t' << stage->maximum;
