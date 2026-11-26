@@ -447,6 +447,8 @@ void Form::updateRegionSource(OptionValue value) {
 void Form::setupDrawings(const std::string& prefix) {
     handles.chart = *ui.addDrawingArea({.id = prefix + "v03.chart", .label = u"Progress chart"});
     handles.chart.onDraw([this](const DrawingEnvironment& env) {
+        auto panel = env.roundedRect({0, 0, env.size().w, env.size().h}, 4, env.palette().panel);
+        if (!panel) return panel;
         const auto labelWidth = std::min(84.f, env.size().w);
         const auto track = env.size().w - labelWidth;
         const auto rowHeight = env.size().h / 2;
@@ -472,6 +474,8 @@ void Form::setupDrawings(const std::string& prefix) {
     });
     handles.indicator = *ui.addDrawingArea({.id = prefix + "v03.indicator", .label = u"Activity indicator"});
     handles.indicator.onDraw([this](const DrawingEnvironment& env) {
+        auto panel = env.roundedRect({0, 0, env.size().w, env.size().h}, 4, env.palette().panel);
+        if (!panel) return panel;
         for (int dot = 0; dot < 8; ++dot) {
             const float angle = indicatorAngle_ + dot * std::numbers::pi_v<float> / 4;
             const float x = env.size().w / 2 + 12 * std::cos(angle);
