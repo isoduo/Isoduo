@@ -10,6 +10,8 @@ static_assert(ISODUO_VERSION_MAJOR == 0 && ISODUO_VERSION_MINOR == 5 && ISODUO_V
 static_assert(isoduo::frameworkVersionMajor == 0 && isoduo::frameworkVersionMinor == 5 && isoduo::frameworkVersionPatch == 0);
 static_assert(!std::is_constructible_v<isoduo::SemanticTree, isoduo::detail::UiState&>);
 #include <concepts>
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <optional>
 #include <string>
@@ -346,7 +348,70 @@ void expect(bool ok, const char* what) {
 }
 }
 
+void drawingBars() {
+    using namespace isoduo;
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto upper = *ui.addDrawingArea({.id = "upper", .label = u"Upper bar"});
+    auto lower = *ui.addDrawingArea({.id = "lower", .label = u"Lower bar"});
+    float upperWidth = 0, lowerWidth = 0;
+    auto drawBar = [](DrawingAreaHandle area, float& width) {
+        return area.onDraw([&width](const DrawingEnvironment& env) {
+            return env.roundedRect({0, 0, width, env.size().h}, 2, env.palette().accent, 192);
+        });
+    };
+    expect(drawBar(upper, upperWidth) && drawBar(lower, lowerWidth), "register both drawings");
+
+    std::optional<std::chrono::steady_clock::time_point> start;
+    auto animate = [&](DrawingAreaHandle area, float& width) {
+        return area.onFrame([&, area](const FrameInfo& frame) {
+            if (!start) start = frame.time;
+            // Show the final value immediately for reduced or disabled motion.
+            width = 100;
+            if (frame.motionPreference == MotionPreference::noPreference) {
+                float elapsed = std::chrono::duration<float, std::milli>(frame.time - *start).count();
+                width = std::min(100.f, elapsed);
+            }
+            auto redraw = area.requestRedraw();
+            if (!redraw || width == 100) return redraw;
+            return area.requestFrame();
+        });
+    };
+    expect(animate(upper, upperWidth) && animate(lower, lowerWidth), "register both animations");
+    Monospace measure;
+    ScrollState scroll;
+    auto page = layout::column({layout::drawingArea(upper, 12), layout::drawingArea(lower, 12)}, 0, 0);
+    auto place = [&] { arrange(page, ui, materialAppearance(), measure, 100, 40, 1.f, scroll); };
+    auto expectBars = [&](float width) {
+        auto accent = materialAppearance().palette(ThemeVariant::light()).accent;
+        DrawingCommand bar{DrawingCommandKind::roundedRect, {0, 0, width, 12}, accent, 192, 2};
+        DrawingContent expected{DrawingStatus::drawn, false, {100, 12}, {bar}};
+        for (auto area : {upper, lower}) {
+            auto content = area.content();
+            expect(content && *content == expected, "retained bar matches size, status and drawing command");
+        }
+    };
+    place();
+    expectBars(0);
+    expect(upper.requestFrame() && lower.requestFrame(), "start both bars");
+    expect(bool(ui.simulateFrame(0ms)), "establish the common start");
+    place();
+    expectBars(0);
+    expect(bool(ui.simulateFrame(25ms)), "advance both bars by 25 ms");
+    place();
+    expectBars(25);
+    for (auto preference : {MotionPreference::reduce, MotionPreference::off}) {
+        expect(bool(ui.simulateSystemMotion(preference)), "change the system motion preference");
+        expect(upper.requestFrame() && lower.requestFrame(), "request the final values");
+        expect(bool(ui.simulateFrame(0ms)), "deliver the new preference");
+        place();
+        expectBars(100);
+        expect(ui.animating().value == false, "both bars stopped requesting frames");
+    }
+}
+
 int main() {
+    drawingBars();
     using namespace isoduo;
     Profile profile;
     std::function<void()> changed;

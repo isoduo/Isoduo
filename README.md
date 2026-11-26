@@ -354,6 +354,75 @@ if (result.failure && (result.failure->kind == isoduo::StartupFailureKind::rende
 
 MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
+## Drawing areas
+
+A drawing area is a passive image. Give it an accessible label and a positive height in
+`layout::drawingArea`. Coordinates and radii are in device-independent pixels. The drawing
+callback records commands that the framework retains and replays. Call `requestRedraw()`
+when your data changes. Read colors from `env.palette()` to follow the active theme. A
+hard-coded color stays the same when the theme changes.
+
+These excerpts come from `drawingBars()` in the [public core contract](examples/consumer/main.cpp).
+Its `expect` helper checks each registration. The captured widths and start time must stay alive
+while the callbacks are in use.
+
+```cpp
+Ui ui;
+auto upper = *ui.addDrawingArea({.id = "upper", .label = u"Upper bar"});
+auto lower = *ui.addDrawingArea({.id = "lower", .label = u"Lower bar"});
+float upperWidth = 0, lowerWidth = 0;
+auto drawBar = [](DrawingAreaHandle area, float& width) {
+    return area.onDraw([&width](const DrawingEnvironment& env) {
+        return env.roundedRect({0, 0, width, env.size().h}, 2, env.palette().accent, 192);
+    });
+};
+expect(drawBar(upper, upperWidth) && drawBar(lower, lowerWidth), "register both drawings");
+```
+
+Both bars use the first delivered frame as their shared start. Each computes its own width
+from elapsed time, so a delayed frame still draws the correct progress. This example grows
+the bars over 100 ms under `noPreference` and shows the final value immediately under
+`reduce` or `off`. Honor platform preferences in application animations (EN 301 549 §11.7).
+For moving content that starts automatically, lasts more than five seconds and appears
+alongside other content, provide a way to pause, stop or hide it unless the movement is
+essential (WCAG 2.2 SC 2.2.2). Put that control outside the drawing area, for example in a
+Pause button that calls `cancelFrame()` on each animated area.
+
+```cpp
+std::optional<std::chrono::steady_clock::time_point> start;
+auto animate = [&](DrawingAreaHandle area, float& width) {
+    return area.onFrame([&, area](const FrameInfo& frame) {
+        if (!start) start = frame.time;
+        // Show the final value immediately for reduced or disabled motion.
+        width = 100;
+        if (frame.motionPreference == MotionPreference::noPreference) {
+            float elapsed = std::chrono::duration<float, std::milli>(frame.time - *start).count();
+            width = std::min(100.f, elapsed);
+        }
+        auto redraw = area.requestRedraw();
+        if (!redraw || width == 100) return redraw;
+        return area.requestFrame();
+    });
+};
+expect(animate(upper, upperWidth) && animate(lower, lowerWidth), "register both animations");
+```
+
+In the core-only test, `place()` arranges both areas and `expectBars(width)` checks the
+retained size, status and command fields on each. Advancing the simulated clock makes
+the intermediate values reproducible.
+
+```cpp
+place();
+expectBars(0);
+expect(upper.requestFrame() && lower.requestFrame(), "start both bars");
+expect(bool(ui.simulateFrame(0ms)), "establish the common start");
+place();
+expectBars(0);
+expect(bool(ui.simulateFrame(25ms)), "advance both bars by 25 ms");
+place();
+expectBars(25);
+```
+
 ## Motion (animations)
 
 The framework has one internal animation clock (`src/animation.hpp`). A component registers a display property
