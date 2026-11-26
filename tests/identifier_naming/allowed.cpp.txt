@@ -8,6 +8,12 @@ using PFN_vkDestroyDevice = void (*)(VkDevice);
 extern "C" void vkDestroyDevice(VkDevice);
 
 enum class RenderBackendKind { openGL };
+void openGL();
+
+struct Backend {
+    int openGL;
+    void openGLSetup();
+};
 
 struct Provider : IRawElementProvider {
     int get_BoundingRectangle() override { return SDK_LIKE_MACRO; }
@@ -19,5 +25,7 @@ public:
     static constexpr int defaultCount = 1;
 private:
     int bufferCount_ = defaultCount;
+    int openGLCount_ = 0;
     static constexpr int capacity_ = 4;
+    static inline int openGL_ = 0;
 };

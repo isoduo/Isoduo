@@ -37,3 +37,14 @@ execute_process(
     "-p=${BUILD_DIR}" "--header-filter=${projectHeaders}" ${sources}
   WORKING_DIRECTORY "${SOURCE_DIR}"
   COMMAND_ERROR_IS_FATAL ANY)
+
+include("${CMAKE_CURRENT_LIST_DIR}/private_static_naming.cmake")
+# clang-query retains every AST in a single invocation. Bound its memory use.
+math(EXPR last "${count} - 1")
+foreach(offset RANGE 0 ${last} 8)
+  list(SUBLIST sources ${offset} 8 batch)
+  find_private_static_naming_violations(violations "${projectHeaders}" "-p=${BUILD_DIR}" ${batch})
+  if(violations)
+    message(SEND_ERROR "${violations}")
+  endif()
+endforeach()
