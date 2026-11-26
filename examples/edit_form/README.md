@@ -1,6 +1,8 @@
 # V01 minimal edit form (S1)
 
-> **Review-fix status (2026-11-05):** Applications and the V01 acceptance driver use typed handles and data connections; native input and geometry checks use the internal host interface. See [rework verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md) for the results and limits. The original [verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/verification.md) records the earlier S1 revision.
+> **Review-fix status (2026-11-05)**
+>
+> Applications and the V01 acceptance driver use typed handles and data connections. Native input and geometry checks use the internal host interface.
 
 
 The [S1 implementation ticket #15](https://github.com/isoduo/Isoduo-issues/issues/15) delivers a minimal V01 edit form built with the official C01 label, C02 button, and C03 single-line text field. It runs with both Minimal Web and Material-inspired appearances. The two appearances share the same form logic, editing state, and acceptance cases. Only the presentation and arrangement of parts differ. Data stays in memory.
@@ -60,7 +62,7 @@ The form now includes **Notices** (initially checked) and **Mode** (initially No
 
 Application code creates these fields through `CheckboxHandle` and `RadioGroupHandle`, connects typed sources, and explicitly chooses immediate, confirmed, or group-confirmed writing. Option identities use `OptionValue`; a source of another type requires an explicit adapter. The fields expose draft and semantic state through their handles. The confirmation callback receives typed changes and can return errors associated with individual handles. Source notifications must be delivered on the UI thread and the source must outlive the connection, as for text fields.
 
-The S1-specific descriptions below are historical where they list only the original text field and focus order. The S2a verification and remaining limits are recorded in [rework verification](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md).
+The S1 sections below cover the original text field and focus order before Notices and Mode were added.
 
 ## Building and running
 
@@ -104,8 +106,6 @@ The V01 behavior cases drive the assembled form through public handles; native k
 | CTest `components`, `layout`, `edit_form` | Core public operations, layout, and form acceptance. These tests create no windows and require no fonts or GPU. The form cases run once for each combination of two appearances and two distinct sets of logical IDs. |
 | CTest `consumer_example` | An independent CMake project ([examples/consumer](../consumer)) builds and runs another form using only the public targets and `include/`. |
 | CTest `host_native` | `isoduo_host_verify --evidence DIR` uses a real Win32 window, with keyboard and mouse messages dispatched through the host's own `TranslateMessage` and `DispatchMessage`. It checks both appearances with offscreen layout and screenshots at 960 x 720 and 640 x 480 DIP, each at 100% and 150%. It does not take the foreground. |
-
-See [the rework verification record](https://github.com/isoduo/Isoduo/blob/b404d3cabaf804ea19053e3f341bebc69cdd6d53/examples/edit_form/evidence/rework-verification.md) for the acceptance record, toolchain, and representative screenshots.
 
 ## Justified text comparison (#84)
 

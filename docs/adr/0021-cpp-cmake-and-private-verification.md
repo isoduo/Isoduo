@@ -10,4 +10,4 @@ The project author confirmed this decision on 2026-11-25 in interview Q1–Q20, 
 
 **Keep author-machine verification tools and their self-tests in the private repository `isoduo/Isoduo-verification`.** These tools need an idle desktop, input devices or the author's judgment. They may use PowerShell and Python and take the Isoduo build directory as an argument. The project author must complete real-machine verification before publishing each release. The public release notes record that completion. Detailed procedures belong with the tools.
 
-**Keep verification steps reproducible and run results outside version control.** Remove the historical logs, screenshots, reports and obsolete scripts from the examples in a regular commit. Link to the original files at a full commit SHA so readers can inspect the reports and their supporting files together. The existing records remain in public Git history and need no copy in the private repository.
+**Keep verification steps reproducible.** Keep run results and details of the local development environment outside all GitHub repositories.
