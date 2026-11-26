@@ -210,16 +210,18 @@ void callbackAccess() {
     auto field = *ui.addTextField({.id = "field", .value = u"before"});
     std::optional<DrawingEnvironment> saved;
     bool read = false, guarded = false;
-    Status workerRedraw{}, workerFill{};
+    Status workerRedraw{}, workerFill{}, workerMeasure{};
     area.onDraw([&](const DrawingEnvironment& env) {
         saved = env;
         read = field.draft().value == u"before";
         guarded = area.requestRedraw().status == Status::busy &&
             ui.setPresentation(ui.presentation()).status == Status::busy &&
+            ui.onChange({}).status == Status::busy && ui.bindAppearance(nullptr).status == Status::busy &&
             field.setValue(u"after").status == Status::busy &&
             ui.addButton({.id = "late"}).status == Status::busy;
         std::thread worker([&] {
             workerRedraw = area.requestRedraw().status;
+            workerMeasure = env.measureText(u"worker", {}).status;
             workerFill = env.fillRect({}, {}).status;
         });
         worker.join();
@@ -229,8 +231,9 @@ void callbackAccess() {
     ScrollState scroll;
     arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1, scroll);
     test::check(read && guarded && field.draft().value == u"before", "draw permits queries and refuses mutation");
-    test::check(workerRedraw == Status::wrongThread && workerFill == Status::wrongThread, "drawing is thread affine");
-    test::check(saved && saved->fillRect({}, {}).status == Status::notFound, "saved environment expires");
+    test::check(workerRedraw == Status::wrongThread && workerFill == Status::wrongThread && workerMeasure == Status::wrongThread, "drawing is thread affine");
+    test::check(saved && saved->fillRect({}, {}).status == Status::notFound &&
+                saved->measureText(u"expired", {}).status == Status::notFound, "saved environment expires");
 }
 
 void invisibleDrawings() {
@@ -315,8 +318,28 @@ void localizedFailure() {
     }
 }
 
+void drawingText() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "text"});
+    DrawingTextStyle style{.bold = true};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        for (const auto& invalid : {std::u16string(u"a\rb"), std::u16string(u"a\x01"), std::u16string(defaultMaxTextLength + 1, u'x')}) {
+            test::check(env.drawText(invalid, {}, style, {}).status == Status::invalidValue &&
+                        env.measureText(invalid, style).status == Status::invalidValue, "invalid text is rejected");
+        }
+        const auto size = env.measureText(u"abc\nd", style, 20);
+        test::check(size && *size == DipSize{20, 72}, "bold width and three lines from the supplied measure");
+        return env.drawText(u"abc\nd", {1,2,20,24}, style, {1,2,3}, 128);
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::drawingArea(area, 100), ui, webAppearance(), measure, 100, 100, 1, scroll);
+    test::check(area.content()->commands == std::vector<DrawingCommand>{{DrawingCommandKind::drawText,
+        {1,2,20,24}, {1,2,3}, 128, u"abc\nd", style}}, "original text command survives clipping and wrapping");
+}
+
 int main() {
-    const test::Case cases[] = {{"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
+    const test::Case cases[] = {{"drawing text", drawingText}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
         {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
