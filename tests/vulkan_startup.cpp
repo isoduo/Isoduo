@@ -144,6 +144,13 @@ int failures(DesktopConfig config) {
     loader.hideVulkanLoader = true;
     auto absent = create(loader);
     check(absent.kind == StartupFailureKind::renderBackendUnavailable && !absent.message.empty(), "VK03 missing loader");
+    {
+        auto retry = config;
+        retry.renderBackend = RenderBackendKind::openGL;
+        auto replacement = Desktop::create(ui, webAppearance(), page, scroll, retry);
+        check(replacement.desktop && replacement.desktop->capabilities().renderBackend == RenderBackendKind::openGL,
+              "HO07 OpenGL can host the same Ui after Vulkan startup fails");
+    }
 #ifndef _WIN32
     config.backend = absent.backend;
 #endif
