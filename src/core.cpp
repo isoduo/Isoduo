@@ -449,7 +449,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
         outputDiagnostic(message);
     }
 #endif
-    if (!field.draw || rendererFailed_) return;
+    if (!field.draw || stopped_ || rendererFailed_) return;
     DipSize size{bounds.w / scale, bounds.h / scale};
     if (field.scale != scale || field.content.size != size) field.content.pending = true;
     auto visible = intersect(bounds, placement.clip);
@@ -591,7 +591,11 @@ Query<DrawingContent> DrawingAreaHandle::content() const {
 
 DrawingAreaHandle detail::UiState::addDrawingArea(Component control) {
     OperationScope operation(this);
-    if (control.id.empty() || find(control.id))
+    const ComponentConfig defaults{};
+    if (control.id.empty() || find(control.id) || !control.value.empty() || control.readOnly || control.checked ||
+        !control.target.empty() || control.labelKind != defaults.labelKind || control.maxLength != defaults.maxLength ||
+        control.multiline || control.visibleLines != defaults.visibleLines || control.writingMode != defaults.writingMode ||
+        control.verticalDigits != defaults.verticalDigits || control.rich)
         throw std::invalid_argument("Invalid drawing area component");
     Id id = control.id;
     controls_.push_back(std::move(control));
@@ -1390,17 +1394,18 @@ Result detail::UiState::dispatchFrames() {
     dispatchingFrames_ = true;
     for (const auto& [ticket, id] : batch) {
         auto it = drawings_.find(id);
-        if (it == drawings_.end() || it->second.admitted != ticket) continue;
+        if (it == drawings_.end() || it->second.admitted != ticket || removalPending(id)) continue;
         if (windowHidden_ || rendererFailed_ || !semanticBounds_.contains(id)) {
             it->second.request = std::exchange(it->second.admitted, 0);
             continue;
         }
+        std::weak_ptr<void> lifetime = componentLifetime(id);
         auto callback = it->second.frame;
         it->second.admitted = 0;
         try {
             if (!(*callback)({frameTime_, motionPreference()})) {
                 auto current = drawings_.find(id);
-                if (current != drawings_.end() && current->second.frame == callback) current->second.request = 0;
+                if (current != drawings_.end() && !lifetime.expired()) current->second.request = 0;
                 auto message = id + " frame callback failed";
                 diagnosticMessages.push_back(message);
                 outputDiagnostic(message);

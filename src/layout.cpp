@@ -349,7 +349,7 @@ bool Frame::scrollTo(Ui& ui, ScrollState& state, int requestedOffset) const {
 }
 bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner || !region.state || owner.retiredComponent(region.component)) return false;
+    if (ownerState != &owner || !owner.creationAccess() || !region.state || owner.retiredComponent(region.component)) return false;
     if (std::none_of(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return &r == &region; })) return false;
     const bool popupScroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) {
         return p.dropdownPanel && p.component == region.component;
@@ -377,7 +377,7 @@ bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) co
 }
 bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
+    if (ownerState != &owner || !owner.creationAccess()) return false;
     // An open context menu owns the wheel: it scrolls itself and never the page behind it.
     if (const auto* menu = menuPanel()) {
         if (owner.retiredComponent(menu->component)) return false;
@@ -413,7 +413,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
 
 bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
+    if (ownerState != &owner || !owner.creationAccess()) return false;
     const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->horizontal || !it->clip.contains(x, y) || (blocked && !it->modalContent)) continue;
@@ -424,7 +424,7 @@ bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
 }
 bool Frame::selectTo(Ui& ui, const TextFieldHandle& handle, int x, int y) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner || owner.retiredComponent(handle)) return false;
+    if (ownerState != &owner || !owner.creationAccess() || owner.retiredComponent(handle)) return false;
     const auto* p = find(handle);
     auto* session = p ? owner.edit(p->id) : nullptr;
     if (!p || !session) return false;
