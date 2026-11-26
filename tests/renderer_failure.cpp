@@ -323,6 +323,24 @@ static void contextLost(const Appearance& appearance) {
     check(bool(host.rebuildRenderer()) && !host.rendererFailed(), "TD01 rebuild after a lost context");
     host.paint(); check(!host.rendererFailed(), "TD01 recovered paint");
 }
+static void zeroExtentRecovery(DesktopConfig config) {
+    editForm::Form form;
+    RendererTestHooks hooks;
+    hooks.submitResultAtFrame = {1, -4};
+    bool recovered = false;
+    config.onRendererFailed = [&](Desktop& desktop, const RendererFailure&) {
+        hooks.failImageCreationOnce = true;
+        auto failed = desktop.rebuildRenderer();
+        check(failed.status == Status::failed && failed.message == u"vkCreateImage: VK_ERROR_OUT_OF_DEVICE_MEMORY" &&
+              desktop.rendererFailed(), "Atlas image allocation must succeed before recovery completes");
+        hooks.zeroSurfaceExtent = true;
+        recovered = desktop.rebuildRenderer() && !desktop.rendererFailed();
+        desktop.close();
+    };
+    auto created = DesktopHost::createForTest(form.ui, webAppearance(), [&]{ return form.page(); }, form.scroll, config, &hooks);
+    check(created.desktop && created.desktop->run().status == Status::ok && recovered,
+          "A zero surface extent defers swapchain creation during recovery");
+}
 static void vulkanPresentation(DesktopConfig config) {
     constexpr int outOfDate = -1000001004, suboptimal = 1000001003;
     using Kind = RendererFailureKind;
@@ -392,6 +410,20 @@ int main(int argc, char** argv) {
                 result.failure->kind == StartupFailureKind::contextVersion)) return 77;
             check(!result.desktop && result.failure && result.failure->kind == StartupFailureKind::shader &&
                 !result.failure->message.empty(), "RF01 Vulkan shader module failure");
+            {
+                editForm::Form sample;
+                RendererTestHooks fault;
+                fault.hideBufferMemoryTypes = true;
+                auto options = config;
+                bool notified = false;
+                options.onRendererFailed = [&](Desktop& desktop, const RendererFailure& failure) {
+                    notified = desktop.rendererFailed() && failure.kind == RendererFailureKind::resourceFailed;
+                    desktop.close();
+                };
+                auto created = DesktopHost::createForTest(sample.ui, webAppearance(), [&]{return sample.page();}, sample.scroll, options, &fault);
+                check(created.desktop && created.desktop->run().status == Status::rendererFailed && notified,
+                      "Missing buffer memory type during paint notifies the application");
+            }
             {
                 editForm::Form debugForm;
                 RendererTestHooks debugHooks;
@@ -467,6 +499,7 @@ int main(int argc, char** argv) {
             failure(webAppearance(),false,true,true,true);
             failure(webAppearance(),true,true,false,true);
 
+            zeroExtentRecovery(config);
             vulkanPresentation(config);
             hooks.submitResultAtFrame = {1, -4};
             DesktopHost host(form.ui,webAppearance(),[&]{return form.page();},form.scroll,config,false,false,&hooks);

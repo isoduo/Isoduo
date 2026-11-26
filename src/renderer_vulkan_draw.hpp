@@ -5,78 +5,83 @@
 
 struct DeviceCommands {
     Session &session;
+    RendererTestHooks* hooks;
+    template <class F> Command<F> loadResult(const char* name) {
+        return resultCommand(load<F>(name), hooks, name);
+    }
     template <class F> F load(const char *name) {
         auto address = session.getDeviceProcAddr(session.device, name);
         if (!address)
             throw StartupError{{Kind::contextCreation, {}, {}, utf16FromUtf8(name)}};
         return reinterpret_cast<F>(address);
     }
-    PFN_vkCreateBuffer CreateBuffer = load<PFN_vkCreateBuffer>("vkCreateBuffer");
-    PFN_vkDestroyBuffer DestroyBuffer = load<PFN_vkDestroyBuffer>("vkDestroyBuffer");
-    PFN_vkGetBufferMemoryRequirements GetBufferMemoryRequirements =
+    Command<PFN_vkCreateBuffer> createBuffer = loadResult<PFN_vkCreateBuffer>("vkCreateBuffer");
+    PFN_vkDestroyBuffer destroyBuffer = load<PFN_vkDestroyBuffer>("vkDestroyBuffer");
+    std::function<std::remove_pointer_t<PFN_vkGetBufferMemoryRequirements>> getBufferMemoryRequirements =
         load<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
-    PFN_vkAllocateMemory AllocateMemory = load<PFN_vkAllocateMemory>("vkAllocateMemory");
-    PFN_vkFreeMemory FreeMemory = load<PFN_vkFreeMemory>("vkFreeMemory");
-    PFN_vkBindBufferMemory BindBufferMemory = load<PFN_vkBindBufferMemory>("vkBindBufferMemory");
-    PFN_vkMapMemory MapMemory = load<PFN_vkMapMemory>("vkMapMemory");
-    PFN_vkUnmapMemory UnmapMemory = load<PFN_vkUnmapMemory>("vkUnmapMemory");
-    PFN_vkCreateImage CreateImage = load<PFN_vkCreateImage>("vkCreateImage");
-    PFN_vkDestroyImage DestroyImage = load<PFN_vkDestroyImage>("vkDestroyImage");
-    PFN_vkGetImageMemoryRequirements GetImageMemoryRequirements =
+    Command<PFN_vkAllocateMemory> allocateMemory = loadResult<PFN_vkAllocateMemory>("vkAllocateMemory");
+    PFN_vkFreeMemory freeMemory = load<PFN_vkFreeMemory>("vkFreeMemory");
+    PFN_vkBindBufferMemory bindBufferMemory = load<PFN_vkBindBufferMemory>("vkBindBufferMemory");
+    PFN_vkMapMemory mapMemory = load<PFN_vkMapMemory>("vkMapMemory");
+    PFN_vkUnmapMemory unmapMemory = load<PFN_vkUnmapMemory>("vkUnmapMemory");
+    Command<PFN_vkCreateImage> createImage = loadResult<PFN_vkCreateImage>("vkCreateImage");
+    PFN_vkDestroyImage destroyImage = load<PFN_vkDestroyImage>("vkDestroyImage");
+    PFN_vkGetImageMemoryRequirements getImageMemoryRequirements =
         load<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements");
-    PFN_vkBindImageMemory BindImageMemory = load<PFN_vkBindImageMemory>("vkBindImageMemory");
-    PFN_vkCreateImageView CreateImageView = load<PFN_vkCreateImageView>("vkCreateImageView");
-    PFN_vkDestroyImageView DestroyImageView = load<PFN_vkDestroyImageView>("vkDestroyImageView");
-    PFN_vkCreateCommandPool CreateCommandPool = load<PFN_vkCreateCommandPool>("vkCreateCommandPool");
-    PFN_vkDestroyCommandPool DestroyCommandPool = load<PFN_vkDestroyCommandPool>("vkDestroyCommandPool");
-    PFN_vkAllocateCommandBuffers AllocateCommandBuffers =
+    PFN_vkBindImageMemory bindImageMemory = load<PFN_vkBindImageMemory>("vkBindImageMemory");
+    Command<PFN_vkCreateImageView> createImageView = loadResult<PFN_vkCreateImageView>("vkCreateImageView");
+    PFN_vkDestroyImageView destroyImageView = load<PFN_vkDestroyImageView>("vkDestroyImageView");
+    Command<PFN_vkCreateCommandPool> createCommandPool = loadResult<PFN_vkCreateCommandPool>("vkCreateCommandPool");
+    PFN_vkDestroyCommandPool destroyCommandPool = load<PFN_vkDestroyCommandPool>("vkDestroyCommandPool");
+    PFN_vkAllocateCommandBuffers allocateCommandBuffers =
         load<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
-    PFN_vkBeginCommandBuffer BeginCommandBuffer = load<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer");
-    PFN_vkEndCommandBuffer EndCommandBuffer = load<PFN_vkEndCommandBuffer>("vkEndCommandBuffer");
-    PFN_vkCmdPipelineBarrier2 CmdPipelineBarrier2 = load<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2");
-    PFN_vkCmdBeginRendering CmdBeginRendering = load<PFN_vkCmdBeginRendering>("vkCmdBeginRendering");
-    PFN_vkCmdEndRendering CmdEndRendering = load<PFN_vkCmdEndRendering>("vkCmdEndRendering");
-    PFN_vkCmdCopyBufferToImage CmdCopyBufferToImage = load<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
-    PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
-    PFN_vkCmdClearAttachments CmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
-    PFN_vkCmdSetViewport CmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
-    std::function<std::remove_pointer_t<PFN_vkCmdSetScissor>> CmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
-    PFN_vkCmdBindPipeline CmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
-    PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
-    PFN_vkCmdPushConstants CmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
-    PFN_vkCreateQueryPool CreateQueryPool = load<PFN_vkCreateQueryPool>("vkCreateQueryPool");
-    PFN_vkDestroyQueryPool DestroyQueryPool = load<PFN_vkDestroyQueryPool>("vkDestroyQueryPool");
-    PFN_vkCmdResetQueryPool CmdResetQueryPool = load<PFN_vkCmdResetQueryPool>("vkCmdResetQueryPool");
-    PFN_vkCmdWriteTimestamp2 CmdWriteTimestamp2 = load<PFN_vkCmdWriteTimestamp2>("vkCmdWriteTimestamp2");
-    PFN_vkGetQueryPoolResults GetQueryPoolResults = load<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
-    PFN_vkCmdDraw CmdDraw = load<PFN_vkCmdDraw>("vkCmdDraw");
-    PFN_vkCreateSampler CreateSampler = load<PFN_vkCreateSampler>("vkCreateSampler");
-    PFN_vkDestroySampler DestroySampler = load<PFN_vkDestroySampler>("vkDestroySampler");
-    PFN_vkCreateDescriptorSetLayout CreateDescriptorSetLayout =
-        load<PFN_vkCreateDescriptorSetLayout>("vkCreateDescriptorSetLayout");
-    PFN_vkDestroyDescriptorSetLayout DestroyDescriptorSetLayout =
+    PFN_vkBeginCommandBuffer beginCommandBuffer = load<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer");
+    PFN_vkEndCommandBuffer endCommandBuffer = load<PFN_vkEndCommandBuffer>("vkEndCommandBuffer");
+    PFN_vkCmdPipelineBarrier2 cmdPipelineBarrier2 = load<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2");
+    PFN_vkCmdBeginRendering cmdBeginRendering = load<PFN_vkCmdBeginRendering>("vkCmdBeginRendering");
+    PFN_vkCmdEndRendering cmdEndRendering = load<PFN_vkCmdEndRendering>("vkCmdEndRendering");
+    PFN_vkCmdCopyBufferToImage cmdCopyBufferToImage = load<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
+    PFN_vkCmdCopyImage cmdCopyImage = load<PFN_vkCmdCopyImage>("vkCmdCopyImage");
+    PFN_vkCmdCopyImageToBuffer cmdCopyImageToBuffer = load<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer");
+    PFN_vkCmdClearAttachments cmdClearAttachments = load<PFN_vkCmdClearAttachments>("vkCmdClearAttachments");
+    PFN_vkCmdSetViewport cmdSetViewport = load<PFN_vkCmdSetViewport>("vkCmdSetViewport");
+    std::function<std::remove_pointer_t<PFN_vkCmdSetScissor>> cmdSetScissor = load<PFN_vkCmdSetScissor>("vkCmdSetScissor");
+    PFN_vkCmdBindPipeline cmdBindPipeline = load<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
+    PFN_vkCmdBindDescriptorSets cmdBindDescriptorSets = load<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
+    PFN_vkCmdPushConstants cmdPushConstants = load<PFN_vkCmdPushConstants>("vkCmdPushConstants");
+    Command<PFN_vkCreateQueryPool> createQueryPool = loadResult<PFN_vkCreateQueryPool>("vkCreateQueryPool");
+    PFN_vkDestroyQueryPool destroyQueryPool = load<PFN_vkDestroyQueryPool>("vkDestroyQueryPool");
+    PFN_vkCmdResetQueryPool cmdResetQueryPool = load<PFN_vkCmdResetQueryPool>("vkCmdResetQueryPool");
+    PFN_vkCmdWriteTimestamp2 cmdWriteTimestamp2 = load<PFN_vkCmdWriteTimestamp2>("vkCmdWriteTimestamp2");
+    PFN_vkGetQueryPoolResults getQueryPoolResults = load<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
+    PFN_vkCmdDraw cmdDraw = load<PFN_vkCmdDraw>("vkCmdDraw");
+    Command<PFN_vkCreateSampler> createSampler = loadResult<PFN_vkCreateSampler>("vkCreateSampler");
+    PFN_vkDestroySampler destroySampler = load<PFN_vkDestroySampler>("vkDestroySampler");
+    Command<PFN_vkCreateDescriptorSetLayout> createDescriptorSetLayout =
+        loadResult<PFN_vkCreateDescriptorSetLayout>("vkCreateDescriptorSetLayout");
+    PFN_vkDestroyDescriptorSetLayout destroyDescriptorSetLayout =
         load<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout");
-    PFN_vkCreateDescriptorPool CreateDescriptorPool = load<PFN_vkCreateDescriptorPool>("vkCreateDescriptorPool");
-    PFN_vkDestroyDescriptorPool DestroyDescriptorPool = load<PFN_vkDestroyDescriptorPool>("vkDestroyDescriptorPool");
-    PFN_vkAllocateDescriptorSets AllocateDescriptorSets =
+    Command<PFN_vkCreateDescriptorPool> createDescriptorPool = loadResult<PFN_vkCreateDescriptorPool>("vkCreateDescriptorPool");
+    PFN_vkDestroyDescriptorPool destroyDescriptorPool = load<PFN_vkDestroyDescriptorPool>("vkDestroyDescriptorPool");
+    PFN_vkAllocateDescriptorSets allocateDescriptorSets =
         load<PFN_vkAllocateDescriptorSets>("vkAllocateDescriptorSets");
-    PFN_vkUpdateDescriptorSets UpdateDescriptorSets = load<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets");
-    PFN_vkCreatePipelineLayout CreatePipelineLayout = load<PFN_vkCreatePipelineLayout>("vkCreatePipelineLayout");
-    PFN_vkDestroyPipelineLayout DestroyPipelineLayout = load<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout");
-    PFN_vkCreateShaderModule CreateShaderModule = load<PFN_vkCreateShaderModule>("vkCreateShaderModule");
-    PFN_vkDestroyShaderModule DestroyShaderModule = load<PFN_vkDestroyShaderModule>("vkDestroyShaderModule");
-    PFN_vkCreateGraphicsPipelines CreateGraphicsPipelines =
-        load<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines");
-    PFN_vkDestroyPipeline DestroyPipeline = load<PFN_vkDestroyPipeline>("vkDestroyPipeline");
-    PFN_vkGetDeviceQueue GetDeviceQueue = load<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
-    std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
-    PFN_vkCreateFence CreateFence = load<PFN_vkCreateFence>("vkCreateFence");
-    PFN_vkDestroyFence DestroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
-    std::function<std::remove_pointer_t<PFN_vkWaitForFences>> WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
-    PFN_vkDeviceWaitIdle DeviceWaitIdle = load<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle");
-    PFN_vkQueueWaitIdle QueueWaitIdle = load<PFN_vkQueueWaitIdle>("vkQueueWaitIdle");
-    PFN_vkCreateSemaphore CreateSemaphore = load<PFN_vkCreateSemaphore>("vkCreateSemaphore");
-    PFN_vkDestroySemaphore DestroySemaphore = load<PFN_vkDestroySemaphore>("vkDestroySemaphore");
+    PFN_vkUpdateDescriptorSets updateDescriptorSets = load<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets");
+    Command<PFN_vkCreatePipelineLayout> createPipelineLayout = loadResult<PFN_vkCreatePipelineLayout>("vkCreatePipelineLayout");
+    PFN_vkDestroyPipelineLayout destroyPipelineLayout = load<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout");
+    Command<PFN_vkCreateShaderModule> createShaderModule = loadResult<PFN_vkCreateShaderModule>("vkCreateShaderModule");
+    PFN_vkDestroyShaderModule destroyShaderModule = load<PFN_vkDestroyShaderModule>("vkDestroyShaderModule");
+    Command<PFN_vkCreateGraphicsPipelines> createGraphicsPipelines =
+        loadResult<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines");
+    PFN_vkDestroyPipeline destroyPipeline = load<PFN_vkDestroyPipeline>("vkDestroyPipeline");
+    PFN_vkGetDeviceQueue getDeviceQueue = load<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
+    std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> queueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
+    Command<PFN_vkCreateFence> createFence = loadResult<PFN_vkCreateFence>("vkCreateFence");
+    PFN_vkDestroyFence destroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
+    std::function<std::remove_pointer_t<PFN_vkWaitForFences>> waitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
+    PFN_vkDeviceWaitIdle deviceWaitIdle = load<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle");
+    PFN_vkQueueWaitIdle queueWaitIdle = load<PFN_vkQueueWaitIdle>("vkQueueWaitIdle");
+    Command<PFN_vkCreateSemaphore> createSemaphore = loadResult<PFN_vkCreateSemaphore>("vkCreateSemaphore");
+    PFN_vkDestroySemaphore destroySemaphore = load<PFN_vkDestroySemaphore>("vkDestroySemaphore");
 };
 
 // Handles are released in reverse creation order at the enclosing frame or device boundary.
@@ -126,12 +131,11 @@ struct Drawing {
     PFN_vkCmdBeginDebugUtilsLabelEXT beginLabel{};
     PFN_vkCmdEndDebugUtilsLabelEXT endLabel{};
     Resources resources;
-    // Whole CPU pages uploaded while rebuilding; the next full-page copy can
-    // use these buffers even when a frame interleaves several atlas pages.
+    // Restored images remain copy sources while the corresponding CPU page is unchanged.
     struct RestoredPage {
         const AtlasPage* page;
         std::vector<unsigned char> pixels;
-        Buffer staging;
+        VkImage image;
     };
     std::vector<RestoredPage> restored;
     VkSampler sampler{};
@@ -139,9 +143,9 @@ struct Drawing {
     VkPipelineLayout layout{};
     VkPipeline rgbaPipeline{};
     Drawing(VulkanWindow window, bool surface, RendererTestHooks *testHooks, std::shared_ptr<Session> retained = {})
-        : owner(retained ? std::move(retained) : std::make_shared<Session>()), session(*owner), selected(initialize(session, window, testHooks, surface)), api{session}, device(session.device),
+        : owner(retained ? std::move(retained) : std::make_shared<Session>()), session(*owner), selected(initialize(session, window, testHooks, surface)), api{session,testHooks}, device(session.device),
           hooks(testHooks) {
-        api.GetDeviceQueue(device, *selected.graphicsQueue, 0, &queue);
+        api.getDeviceQueue(device, *selected.graphicsQueue, 0, &queue);
         session.function<PFN_vkGetPhysicalDeviceMemoryProperties>("vkGetPhysicalDeviceMemoryProperties")(
             selected.physical, &memory);
         VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
@@ -172,21 +176,21 @@ struct Drawing {
         caps.debugMessages = caps.debugContext && session.validationMessenger;
         VkSamplerCreateInfo sample{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         sample.addressModeU = sample.addressModeV = sample.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler = make<VkSampler>(resources, "vkCreateSampler", api.CreateSampler, sample, api.DestroySampler);
+        sampler = make<VkSampler>(resources, "vkCreateSampler", api.createSampler, sample, api.destroySampler);
         VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
                                              VK_SHADER_STAGE_FRAGMENT_BIT, &sampler};
         VkDescriptorSetLayoutCreateInfo set{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         set.bindingCount = 1;
         set.pBindings = &binding;
         descriptors = make<VkDescriptorSetLayout>(resources, "vkCreateDescriptorSetLayout",
-                                                  api.CreateDescriptorSetLayout, set, api.DestroyDescriptorSetLayout);
+                                                  api.createDescriptorSetLayout, set, api.destroyDescriptorSetLayout);
         VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(Push)};
         VkPipelineLayoutCreateInfo pipeline{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         pipeline.setLayoutCount = pipeline.pushConstantRangeCount = 1;
         pipeline.pSetLayouts = &descriptors;
         pipeline.pPushConstantRanges = &range;
-        layout = make<VkPipelineLayout>(resources, "vkCreatePipelineLayout", api.CreatePipelineLayout, pipeline,
-                                        api.DestroyPipelineLayout);
+        layout = make<VkPipelineLayout>(resources, "vkCreatePipelineLayout", api.createPipelineLayout, pipeline,
+                                        api.destroyPipelineLayout);
         rgbaPipeline = createPipeline(VK_FORMAT_R8G8B8A8_UNORM);
     }
     bool simulatedLoss = false;
@@ -246,7 +250,7 @@ struct Drawing {
     template <class T, class F, class Info, class D>
     T make(Resources &owner, const char *name, F create, const Info &info, D destroy, Kind failure = Kind::resource) {
         T handle{};
-        checked(name, invoke(hooks, name, [&] { return create(device, &info, nullptr, &handle); }), failure);
+        checked(name, create(device, &info, nullptr, &handle), failure);
         return owner.keep(handle, destroy, device);
     }
     VkPipeline createPipeline(VkFormat format) {
@@ -255,8 +259,8 @@ struct Drawing {
             VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
             info.codeSize = sizeof(bytes);
             info.pCode = bytes;
-            return make<VkShaderModule>(modules, "vkCreateShaderModule", api.CreateShaderModule, info,
-                                        api.DestroyShaderModule, Kind::shader);
+            return make<VkShaderModule>(modules, "vkCreateShaderModule", api.createShaderModule, info,
+                                        api.destroyShaderModule, Kind::shader);
         };
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -303,10 +307,9 @@ struct Drawing {
         info.pDynamicState = &states;
         VkPipeline pipeline{};
         checked("vkCreateGraphicsPipelines",
-                invoke(hooks, "vkCreateGraphicsPipelines",
-                       [&] { return api.CreateGraphicsPipelines(device, {}, 1, &info, nullptr, &pipeline); }),
+                api.createGraphicsPipelines(device, {}, 1, &info, nullptr, &pipeline),
                 Kind::shader);
-        return resources.keep(pipeline, api.DestroyPipeline, device);
+        return resources.keep(pipeline, api.destroyPipeline, device);
     }
     VkDeviceMemory allocate(Resources &owner, VkMemoryRequirements req, VkMemoryPropertyFlags flags) {
         for (uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
@@ -315,20 +318,22 @@ struct Drawing {
             VkMemoryAllocateInfo info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
             info.allocationSize = req.size;
             info.memoryTypeIndex = i;
-            return make<VkDeviceMemory>(owner, "vkAllocateMemory", api.AllocateMemory, info, api.FreeMemory);
+            return make<VkDeviceMemory>(owner, "vkAllocateMemory", api.allocateMemory, info, api.freeMemory);
         }
+        if (running)
+            throw FrameError{{RendererFailureKind::resourceFailed, 0, u"No compatible Vulkan memory type"}, {}};
         throw StartupError{{Kind::resource, {}, {}, u"No compatible Vulkan memory type"}};
     }
     Buffer buffer(Resources &owner, VkDeviceSize bytes, VkBufferUsageFlags usage) {
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         info.size = bytes;
         info.usage = usage;
-        auto handle = make<VkBuffer>(owner, "vkCreateBuffer", api.CreateBuffer, info, api.DestroyBuffer);
+        auto handle = make<VkBuffer>(owner, "vkCreateBuffer", api.createBuffer, info, api.destroyBuffer);
         VkMemoryRequirements req{};
-        api.GetBufferMemoryRequirements(device, handle, &req);
+        api.getBufferMemoryRequirements(device, handle, &req);
         auto mem = allocate(owner, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         std::iter_swap(owner.cleanup.end() - 1, owner.cleanup.end() - 2);
-        checked("vkBindBufferMemory", api.BindBufferMemory(device, handle, mem, 0));
+        checked("vkBindBufferMemory", api.bindBufferMemory(device, handle, mem, 0));
         return {handle, mem};
     }
     Texture texture(Resources &owner, VkExtent2D extent, VkFormat format, VkImageUsageFlags usage) {
@@ -339,12 +344,12 @@ struct Drawing {
         info.mipLevels = info.arrayLayers = 1;
         info.samples = VK_SAMPLE_COUNT_1_BIT;
         info.usage = usage;
-        auto image = make<VkImage>(owner, "vkCreateImage", api.CreateImage, info, api.DestroyImage);
+        auto image = make<VkImage>(owner, "vkCreateImage", api.createImage, info, api.destroyImage);
         VkMemoryRequirements req{};
-        api.GetImageMemoryRequirements(device, image, &req);
+        api.getImageMemoryRequirements(device, image, &req);
         auto mem = allocate(owner, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         std::iter_swap(owner.cleanup.end() - 1, owner.cleanup.end() - 2);
-        checked("vkBindImageMemory", api.BindImageMemory(device, image, mem, 0));
+        checked("vkBindImageMemory", api.bindImageMemory(device, image, mem, 0));
         return {image, view(owner, image, format), extent};
     }
     VkImageView view(Resources &owner, VkImage image, VkFormat format) {
@@ -353,7 +358,7 @@ struct Drawing {
         info.viewType = VK_IMAGE_VIEW_TYPE_2D;
         info.format = format;
         info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-        return make<VkImageView>(owner, "vkCreateImageView", api.CreateImageView, info, api.DestroyImageView);
+        return make<VkImageView>(owner, "vkCreateImageView", api.createImageView, info, api.destroyImageView);
     }
     void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout before, VkImageLayout after) {
         VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
@@ -369,6 +374,6 @@ struct Drawing {
         VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dep.imageMemoryBarrierCount = 1;
         dep.pImageMemoryBarriers = &b;
-        api.CmdPipelineBarrier2(cmd, &dep);
+        api.cmdPipelineBarrier2(cmd, &dep);
     }
 };
