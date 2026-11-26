@@ -69,7 +69,7 @@ struct DeviceCommands {
         load<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines");
     PFN_vkDestroyPipeline DestroyPipeline = load<PFN_vkDestroyPipeline>("vkDestroyPipeline");
     PFN_vkGetDeviceQueue GetDeviceQueue = load<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
-    PFN_vkQueueSubmit QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
+    std::function<std::remove_pointer_t<PFN_vkQueueSubmit>> QueueSubmit = load<PFN_vkQueueSubmit>("vkQueueSubmit");
     PFN_vkCreateFence CreateFence = load<PFN_vkCreateFence>("vkCreateFence");
     PFN_vkDestroyFence DestroyFence = load<PFN_vkDestroyFence>("vkDestroyFence");
     PFN_vkWaitForFences WaitForFences = load<PFN_vkWaitForFences>("vkWaitForFences");
