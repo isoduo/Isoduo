@@ -69,8 +69,9 @@ public:
     unsigned atlasPeakPages() const { return text_.atlasPeakPages(); }
     unsigned rasterizations() const { return text_.rasterizations(); }
     void perfEnable(int delayMs=0, bool offscreen=false) { perfEnabled_=true; perfDelay_=delayMs; perfOffscreen_=offscreen; }
-    void perfReset() { perfSamples_.clear(); perfBreakdown_.clear(); }
+    void perfReset() { perfSamples_.clear(); gpuSamples_.clear(); perfBreakdown_.clear(); }
     const PerfSamples& perfSamples() const { return perfSamples_; }
+    const PerfSamples& gpuSamples() const { return gpuSamples_; }
     const PerfBreakdown& perfBreakdown() const { return perfBreakdown_; }
     int paintMessages() const { return paintMessages_; }
     double firstPresentMs() const { return firstPresentMs_; }
@@ -127,7 +128,7 @@ private:
     int perfDelay_=0, paintMessages_=0;
     double firstPresentMs_=-1, inputPresentMs_=0;
     std::chrono::steady_clock::time_point inputTime_{};
-    PerfSamples perfSamples_;
+    PerfSamples perfSamples_, gpuSamples_;
     PerfBreakdown perfBreakdown_;
     int frames_ = 0;
     bool failed_ = false;
