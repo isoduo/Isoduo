@@ -1,0 +1,42 @@
+Checks: '-*,readability-identifier-naming'
+WarningsAsErrors: 'readability-identifier-naming'
+CheckOptions:
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.UnionCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.ConceptCase: CamelCase
+  readability-identifier-naming.TypedefCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  # SDK headers are outside the CTest header filter, and clang-tidy skips
+  # interface overrides such as UIA methods. Local SDK forward declarations
+  # and Vulkan C API signatures also need to retain their original spelling.
+  readability-identifier-naming.StructIgnoredRegexp: '(Vk.*|pollfd|zwp_text_input_v3_listener)'
+  readability-identifier-naming.TypedefIgnoredRegexp: '(Vk.*|PFN_.*)'
+  readability-identifier-naming.TypeAliasIgnoredRegexp: '(Vk.*|PFN_.*)'
+  # Preserve OpenGL's spelling in lower-camel names. Keep the private suffix.
+  readability-identifier-naming.FunctionCase: camelBack
+  readability-identifier-naming.FunctionIgnoredRegexp: '(vk.*|openGL([A-Z][a-zA-Z0-9]*)?)'
+  readability-identifier-naming.MethodCase: camelBack
+  readability-identifier-naming.MethodIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'
+  readability-identifier-naming.MemberCase: camelBack
+  readability-identifier-naming.MemberIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'
+  readability-identifier-naming.PrivateMemberCase: camelBack
+  readability-identifier-naming.PrivateMemberSuffix: '_'
+  readability-identifier-naming.PrivateMemberIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?_'
+  readability-identifier-naming.ProtectedMemberCase: camelBack
+  readability-identifier-naming.ProtectedMemberIgnoredRegexp: '([a-z][a-zA-Z0-9]*_|openGL([A-Z][a-zA-Z0-9]*)?)'
+  # clang-query checks the private suffix on static data members.
+  readability-identifier-naming.ClassMemberCase: camelBack
+  readability-identifier-naming.ClassMemberIgnoredRegexp: '([a-z][a-zA-Z0-9]*_|openGL([A-Z][a-zA-Z0-9]*)?)'
+  readability-identifier-naming.ClassConstantCase: camelBack
+  readability-identifier-naming.ClassConstantIgnoredRegexp: '([a-z][a-zA-Z0-9]*_|openGL([A-Z][a-zA-Z0-9]*)?)'
+  readability-identifier-naming.EnumConstantCase: camelBack
+  readability-identifier-naming.EnumConstantIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'
+  # Keep const fields under the same access-specific rules as other fields.
+  readability-identifier-naming.GlobalConstantCase: camelBack
+  readability-identifier-naming.GlobalConstantIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'
+  readability-identifier-naming.LocalConstantCase: camelBack
+  readability-identifier-naming.LocalConstantIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'
+  readability-identifier-naming.StaticConstantCase: camelBack
+  readability-identifier-naming.StaticConstantIgnoredRegexp: 'openGL([A-Z][a-zA-Z0-9]*)?'

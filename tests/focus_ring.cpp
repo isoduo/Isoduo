@@ -110,6 +110,7 @@ struct AccentAfterwards final : Appearance {
     TextFieldLayout arrangeTextField(int w, const TextFieldHeights& t, float s) const override { return webAppearance().arrangeTextField(w, t, s); }
     int buttonHeight(int l, float s) const override { return webAppearance().buttonHeight(l, s); }
     int buttonPadding(float s) const override { return webAppearance().buttonPadding(s); }
+private:
     std::optional<Color> ownFocus_;
 };
 void aCustomAppearanceThatAssignsAccentAfterwardsKeepsTheRingOnItsAccent() {

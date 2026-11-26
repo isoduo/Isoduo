@@ -314,6 +314,8 @@ class DropdownHandle;
 class ListHandle;
 namespace detail {
 // The value type a field kind's change record carries when Change names only the field kind (void: the kind has none).
+// Preserve the existing aliases in the shipped header for source compatibility.
+// NOLINTBEGIN(readability-identifier-naming)
 template <class Field> struct ChangeValue { using type = void; };
 template <> struct ChangeValue<TextFieldHandle> { using type = std::u16string; };
 template <> struct ChangeValue<CheckboxHandle> { using type = bool; };
@@ -321,6 +323,7 @@ template <> struct ChangeValue<RadioGroupHandle> { using type = std::optional<Op
 template <> struct ChangeValue<SliderHandle> { using type = int; };
 template <> struct ChangeValue<DropdownHandle> { using type = std::optional<OptionValue>; };
 template <> struct ChangeValue<ListHandle> { using type = std::optional<OptionValue>; };
+// NOLINTEND(readability-identifier-naming)
 // The combinations the framework sends: each field kind with its own value type, and a rich text field's RichText.
 template <class Field, class Value>
 inline constexpr bool sendsChange = (!std::is_void_v<Value> && std::is_same_v<Value, typename ChangeValue<Field>::type>) ||
