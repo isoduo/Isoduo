@@ -180,8 +180,20 @@ class SurfaceRenderer final : public Renderer {
     void resized() override { dirty = true; }
     RendererCapabilities capabilities() const override { return d.caps; }
     std::string name() const override { return utf8FromUtf16(d.caps.renderer) + " / " + utf8FromUtf16(d.caps.version); }
-    void restoreAtlas(
-        const std::vector<const AtlasPage *> &) override { /* Frame recording uploads current CPU pages before use. */ }
+    void restoreAtlas(const std::vector<const AtlasPage*>& pages) override {
+        // Allocation failures here are explicit rebuild failures, before the UI unfreezes.
+        d.running=false;
+        for (const auto* page : pages) {
+            if (page->pixels.empty()) continue;
+            auto buffer=d.buffer(d.resources,page->pixels.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            void* mapped{};
+            d.checked("vkMapMemory",d.api.MapMemory(d.device,buffer.memory,0,page->pixels.size(),0,&mapped));
+            std::memcpy(mapped,page->pixels.data(),page->pixels.size());
+            d.api.UnmapMemory(d.device,buffer.memory);
+            d.restored.push_back({page,page->pixels,buffer});
+        }
+        d.running=true;
+    }
     Image readBack(const DrawList &list, int width, int height) override { return readPixels(d, list, width, height); }
     double draw(const DrawList &list, int width, int height, bool measure, bool offscreen, double *submission,
                 std::chrono::steady_clock::time_point *displayed) override {

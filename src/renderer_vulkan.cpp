@@ -266,7 +266,13 @@ std::vector<VkPhysicalDevice> createInstance(Session& s, VulkanWindow window, Re
     if (requested) {
         std::function<std::remove_pointer_t<PFN_vkEnumerateInstanceLayerProperties>> layers =
             s.function<PFN_vkEnumerateInstanceLayerProperties>("vkEnumerateInstanceLayerProperties");
-        if (hooks && hooks->hideValidationLayer) layers = [](auto count, auto) { *count=0; return VK_SUCCESS; };
+        if (hooks && hooks->hideValidationLayer) layers = [real=layers,layer](auto count, auto out) {
+            auto result=real(count,out);
+            if (out && result==VK_SUCCESS) *count=uint32_t(std::remove_if(out,out+*count,[&](auto& entry) {
+                return std::string_view(entry.layerName)==layer;
+            })-out);
+            return result;
+        };
         auto available=enumerate<VkLayerProperties>("vkEnumerateInstanceLayerProperties",layers);
         s.validationEnabled=std::any_of(available.begin(),available.end(),[&](auto& entry){return std::string_view(entry.layerName)==layer;});
         if (s.validationEnabled) {
