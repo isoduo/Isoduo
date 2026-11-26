@@ -1505,17 +1505,17 @@ public:
         c.placement.bounds = {0, 0, c.width, c.drawingHeight};
     }
     void paint(ComponentPaint& c) const override {
-        const auto& field = UiState::Internals::drawings(c.ui).at(c.placement.id);
+        const auto& area = UiState::Internals::drawings(c.ui).at(c.placement.id);
         auto translate = [&](Rect rect) {
             rect.x += c.placement.bounds.x;
             rect.y += c.placement.bounds.y;
             return rect;
         };
-        for (const auto& pixel : field.pixels) {
-            const auto rect = translate(pixel.clip);
+        for (const auto& primitive : area.primitives) {
+            const auto rect = translate(primitive.clip);
             c.clip(rect);
-            if (pixel.text) {
-                const auto& layout = *pixel.text;
+            if (primitive.text) {
+                const auto& layout = *primitive.text;
                 const double x = c.placement.bounds.x + layout.x;
                 double y = c.placement.bounds.y + layout.y;
                 if (x + layout.width + layout.pixels < rect.x) continue;
@@ -1523,11 +1523,11 @@ public:
                     if (y >= double(rect.y) + rect.h) break;
                     if (y + layout.lineHeight > rect.y)
                         c.drawingTextLine(line, layout.pixels, layout.face,
-                            static_cast<int>(x), static_cast<int>(y), pixel.color, pixel.opacity, rect);
+                            static_cast<int>(x), static_cast<int>(y), primitive.color, primitive.opacity, rect);
                     y += layout.lineHeight;
                 }
             } else {
-                c.overlay(translate(pixel.rect), pixel.radius, pixel.color, pixel.opacity);
+                c.overlay(translate(primitive.rect), primitive.radius, primitive.color, primitive.opacity);
             }
         }
     }

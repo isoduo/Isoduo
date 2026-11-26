@@ -672,26 +672,26 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
-    struct DrawingPixel {
+    struct DrawingPrimitive {
         Rect rect, clip;
         int radius;
         Color color;
         unsigned char opacity;
         std::optional<DrawingTextLayout> text{};
     };
-    struct DrawingField {
+    struct DrawingAreaState {
         std::function<Result(const DrawingEnvironment&)> draw;
         std::shared_ptr<std::function<Result(const FrameInfo&)>> frame;
         std::uint64_t request = 0, admitted = 0;
         DrawingContent content;
-        std::vector<DrawingPixel> pixels;
+        std::vector<DrawingPrimitive> primitives;
         float scale = 0;
         bool diagnosedHeight = false;
     };
     std::uint64_t nextRequest_ = 0;
     FrameClock::time_point frameTime_{};
     bool dispatchingFrames_ = false;
-    std::map<Id, DrawingField, std::less<>> drawings_;
+    std::map<Id, DrawingAreaState, std::less<>> drawings_;
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numericSourceChanged(const Id& id);
     Result selectOption(const Id& id, OptionValue value);
