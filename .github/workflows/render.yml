@@ -51,8 +51,10 @@ jobs:
         run: cmake -E env -- build/Release/isoduo_host_verify.exe --backend-check
       - name: Verify Vulkan uses lavapipe
         run: cmake -E env -- build/Release/isoduo_host_verify.exe --render-backend vulkan --backend-check
+      # vk02-no-loader already runs the identifier_naming tests on this preset,
+      # and a full clang-tidy pass can exceed this step's 900-second test timeout.
       - name: Run full CTest suite
-        run: ctest --preset windows-clang-cl-release --timeout 900 -E '^vulkan_no_driver$'
+        run: ctest --preset windows-clang-cl-release --timeout 900 -E '^(vulkan_no_driver|identifier_naming.*)$'
       - name: Upload render evidence and CTest logs
         if: always()
         uses: actions/upload-artifact@v4
