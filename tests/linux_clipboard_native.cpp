@@ -62,6 +62,13 @@ int main(int argc, char** argv) {
         if (created.failure) std::cerr << utf8FromUtf16(created.failure->message) << '\n';
         return 1;
     }
+    if (mode == "host-claim") {
+        auto page = [&] { return layout::component(field); };
+        auto second = Desktop::create(ui, webAppearance(), page, scroll, desktop);
+        check(second.status == Status::busy && !second.desktop && !second.failure, "Second desktop refused");
+        check(runDesktop(ui, webAppearance(), page, scroll, desktop).status == Status::busy, "Second run refused");
+        created.desktop->post([] { std::cout << "First host processed post" << std::endl; });
+    }
     const auto& caps = created.desktop->capabilities();
     auto* window = created.desktop->nativeWindow();
     std::cout << "Window " << window->windowId << " backend " << static_cast<int>(window->backend) << ' '

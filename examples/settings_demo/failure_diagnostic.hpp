@@ -21,9 +21,10 @@ inline std::string failureUtf8(std::u16string_view text) {
     }
     return out;
 }
-inline isoduo::RenderDiagnostic failureDiagnostic(const isoduo::RendererFailure& failure) {
+inline isoduo::RenderDiagnostic failureDiagnostic(const isoduo::RendererFailure& failure,
+        isoduo::RenderBackendKind backend = isoduo::RenderBackendKind::openGL) {
     isoduo::RenderDiagnostic d;
-    d.backend = u"OpenGL";
+    d.backend = backend == isoduo::RenderBackendKind::vulkan ? u"Vulkan" : u"OpenGL";
     d.severity = isoduo::DiagnosticSeverity::error;
     d.kind = failure.kind == isoduo::RendererFailureKind::deviceReset ? isoduo::DiagnosticKind::deviceReset : isoduo::DiagnosticKind::other;
     switch (failure.kind) {

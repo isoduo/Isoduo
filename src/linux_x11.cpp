@@ -26,6 +26,8 @@ namespace {
 class X11Window final : public LinuxWindow {
 public:
     explicit X11Window(const DesktopConfig& config) {
+        static const bool threadsReady = XInitThreads() != 0;
+        if (!threadsReady) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to initialize X11 threading"}};
         display_ = XOpenDisplay(nullptr);
         if (!display_) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to connect to the X11 display"}};
         try {
@@ -40,14 +42,15 @@ public:
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"X11 client dimensions exceed the protocol limit"}};
             geometry_.width = std::max(1, static_cast<int>(width));
             geometry_.height = std::max(1, static_cast<int>(height));
-            egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_X11_KHR, display_);
+            if (config.renderBackend == RenderBackendKind::openGL)
+                egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_X11_KHR, display_);
             XVisualInfo match{};
-            match.visualid = egl_->visualId();
+            match.visualid = egl_ ? egl_->visualId() : XVisualIDFromVisual(DefaultVisual(display_, DefaultScreen(display_)));
             match.screen = DefaultScreen(display_);
             int count = 0;
             std::unique_ptr<XVisualInfo, decltype(&XFree)> visual(
                 XGetVisualInfo(display_, VisualIDMask | VisualScreenMask, &match, &count), XFree);
-            if (!visual) throw StartupError{{StartupFailureKind::window, {}, {}, u"EGL visual unavailable on the X11 screen"}};
+            if (!visual) throw StartupError{{StartupFailureKind::window, {}, {}, u"Requested visual unavailable on the X11 screen"}};
             const auto root = RootWindow(display_, match.screen);
             auto* connection = XGetXCBConnection(display_);
             const auto colormap = xcb_generate_id(connection);
@@ -77,7 +80,7 @@ public:
             XkbSetDetectableAutoRepeat(display_, True, &detectable);
             detectableRepeat_ = detectable;
             XSync(display_, False);
-            egl_->nativeWindow(&window_);
+            if (egl_) egl_->nativeWindow(&window_);
             reference_ = {DesktopBackendKind::x11, display_, nullptr, window_};
         } catch (...) {
             release();
@@ -88,6 +91,7 @@ public:
     const NativeWindow& reference() const override { return reference_; }
     EglWindow& renderWindow() override { return *egl_; }
     AsyncClipboard& clipboard() override { return *clipboard_; }
+    bool x11InputMethodOpen() const override { return ime_ && ime_->open(); }
     void updateIme(const std::optional<LinuxImeState>& state, bool) override { ime_->update(state); }
     void handoffClipboard() override {
         if (!clipboard_->beginHandoff()) return;

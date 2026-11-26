@@ -8,6 +8,7 @@
 #include "animation.hpp"
 #include "word_break.hpp"
 #include <array>
+#include <atomic>
 #include <map>
 #include <set>
 #include <thread>
@@ -29,6 +30,9 @@ struct Component : ComponentConfig {
 bool validTextControl(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
+    friend class HostClaim;
+    std::atomic_flag hostClaimed_{};
+    void resetHost();
     friend class isoduo::SemanticTree;
 public:
     using Action = std::function<Result()>;
@@ -189,9 +193,9 @@ public:
     const Component* find(std::string_view id) const;
     bool registerable(std::string_view id);
     void seedTestControls(std::vector<Component> controls);
-    std::map<Id, std::string, std::less<>> overlayIds_;
-    std::map<Id, Id, std::less<>> tooltipIds_;
-    std::vector<std::string> diagnostics_;
+    std::map<Id, std::string, std::less<>> overlayIds;
+    std::map<Id, Id, std::less<>> tooltipIds;
+    std::vector<std::string> diagnosticMessages;
     std::optional<ComponentSnapshot> describe(std::string_view id) const;
     std::vector<Verb> snapshotVerbs(const Component&, const ComponentSnapshot&, bool item = false) const;
     void semanticFrame(const Frame& frame);
@@ -738,6 +742,18 @@ private:
     struct TextProvider { std::function<std::u16string()> read; std::function<void()> disconnect; };
     std::map<Id, TextProvider, std::less<>> providers_;
     bool modal_ = false, stopped_ = false, dispatching_ = false, invoking_ = false, rendererFailed_ = false;
+};
+// Exclusive access to host bindings for one attachment. Moving transfers the rollback obligation.
+class HostClaim {
+public:
+    explicit HostClaim(Ui& ui);
+    HostClaim(HostClaim&& other) noexcept : state_(std::exchange(other.state_, nullptr)) {}
+    ~HostClaim() { release(); }
+    Status status() const { return state_ ? Status::ok : Status::busy; }
+    UiState& state() const { return *state_; }
+    void release();
+private:
+    UiState* state_;
 };
 const Placement* findPlacement(const Frame& frame, std::string_view id);
 unsigned placementTextOffset(const Frame& frame, std::string_view id, int x);
