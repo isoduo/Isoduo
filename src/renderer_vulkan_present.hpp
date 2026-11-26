@@ -11,7 +11,7 @@ struct Swapchain {
 class SurfaceRenderer final : public Renderer {
     Drawing d;
     VkQueue presentQueue{};
-    PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR getCaps =
+    std::function<std::remove_pointer_t<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>> getCaps =
         d.session.function<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
     std::function<std::remove_pointer_t<PFN_vkCreateSwapchainKHR>> create = d.api.load<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
     PFN_vkDestroySwapchainKHR destroy = d.api.load<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
@@ -105,7 +105,7 @@ class SurfaceRenderer final : public Renderer {
         d.diagnostic(call,result,kind);
         throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))}, {}};
     }
-    void rebuild(VkExtent2D desired) {
+    bool rebuild(VkExtent2D desired) {
         if (chain) {
             presentationResult("vkQueueWaitIdle", d.api.QueueWaitIdle(presentQueue), true);
             chain.reset();
@@ -116,7 +116,7 @@ class SurfaceRenderer final : public Renderer {
         auto next = std::make_unique<Swapchain>();
         next->extent = caps.currentExtent.width == UINT32_MAX ? desired : caps.currentExtent;
         if (!next->extent.width || !next->extent.height)
-            throw DeferredFrame{};
+            return false;
         VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
         info.surface = d.session.surface;
         info.minImageCount = caps.minImageCount + 1;
@@ -159,6 +159,7 @@ class SurfaceRenderer final : public Renderer {
         }
         chain = std::move(next);
         dirty = false;
+        return true;
     }
 
   public:
@@ -168,6 +169,11 @@ class SurfaceRenderer final : public Renderer {
         d.api.GetDeviceQueue(d.device, *d.selected.presentQueue, 0, &presentQueue);
         pipeline = d.selected.format.format == VK_FORMAT_R8G8B8A8_UNORM ? d.rgbaPipeline
                                                                         : d.createPipeline(d.selected.format.format);
+        if (hooks) getCaps = [real=getCaps,hooks](auto physical, auto surface, auto* caps) {
+            auto result = real(physical, surface, caps);
+            if (result == VK_SUCCESS && hooks->zeroSurfaceExtent) caps->currentExtent = {};
+            return result;
+        };
         if (initial.width && initial.height)
             rebuild(initial);
         installHooks();
@@ -218,9 +224,8 @@ class SurfaceRenderer final : public Renderer {
             for (;;) {
                 if (dirty || !chain || chain->extent.width != uint32_t(width) ||
                     chain->extent.height != uint32_t(height)) {
-                    if (rebuilt)
+                    if (rebuilt || !rebuild({uint32_t(width), uint32_t(height)}))
                         throw DeferredFrame{};
-                    rebuild({uint32_t(width), uint32_t(height)});
                     rebuilt = true;
                 }
                 CommandFrame frame(d, measure);

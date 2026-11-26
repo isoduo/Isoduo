@@ -323,6 +323,20 @@ static void contextLost(const Appearance& appearance) {
     check(bool(host.rebuildRenderer()) && !host.rendererFailed(), "TD01 rebuild after a lost context");
     host.paint(); check(!host.rendererFailed(), "TD01 recovered paint");
 }
+static void zeroExtentRecovery(DesktopConfig config) {
+    editForm::Form form;
+    RendererTestHooks hooks;
+    hooks.submitResultAtFrame = {1, -4};
+    bool recovered = false;
+    config.onRendererFailed = [&](Desktop& desktop, const RendererFailure&) {
+        hooks.zeroSurfaceExtent = true;
+        recovered = desktop.rebuildRenderer() && !desktop.rendererFailed();
+        desktop.close();
+    };
+    auto created = DesktopHost::createForTest(form.ui, webAppearance(), [&]{ return form.page(); }, form.scroll, config, &hooks);
+    check(created.desktop && created.desktop->run().status == Status::ok && recovered,
+          "A zero surface extent defers swapchain creation during recovery");
+}
 static void vulkanPresentation(DesktopConfig config) {
     constexpr int outOfDate = -1000001004, suboptimal = 1000001003;
     using Kind = RendererFailureKind;
@@ -467,6 +481,7 @@ int main(int argc, char** argv) {
             failure(webAppearance(),false,true,true,true);
             failure(webAppearance(),true,true,false,true);
 
+            zeroExtentRecovery(config);
             vulkanPresentation(config);
             hooks.submitResultAtFrame = {1, -4};
             DesktopHost host(form.ui,webAppearance(),[&]{return form.page();},form.scroll,config,false,false,&hooks);
