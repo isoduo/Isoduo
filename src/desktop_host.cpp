@@ -198,7 +198,8 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
     }
 }
 std::unique_ptr<Renderer> DesktopHost::createRenderer() {
-    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_);
+    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession, debugContext_,
+        [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
     return std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
 }
 Result DesktopHost::rebuildRenderer() {
@@ -215,7 +216,7 @@ Result DesktopHost::rebuildRenderer() {
             if (hooks) { previous=hooks->fragmentShaderOverride; if (hooks->failRebuildOnce) { hooks->failRebuildOnce=false; hooks->fragmentShaderOverride="invalid shader"; } }
         }
         ~ShaderOverride() { if (hooks) hooks->fragmentShaderOverride=std::move(previous); }
-    } shaderOverride(hooks_);
+    } shaderOverride(renderBackend_ == RenderBackendKind::openGL ? hooks_ : nullptr);
     try {
         renderer_ = createRenderer();
         renderer_->restoreAtlas(text_.atlasPages());
@@ -295,6 +296,7 @@ void DesktopHost::release() {
     ImmAssociateContext(window_, inputContext_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
     renderer_.reset();
+    vulkanSession.reset();
     DestroyWindow(window_);
     window_ = nullptr;
     claim_.release();
