@@ -106,6 +106,12 @@ public:
     virtual void clip(Rect rect) = 0;
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
+    virtual void drawingTextLine(std::u16string_view value, int pixels, FontStyle style, int x, int y,
+                                 Color color, unsigned char opacity, Rect bounds) {
+        (void)opacity;
+        (void)bounds;
+        styledText(value, pixels, style, x, y, color);
+    }
     // One piece of vertical text in its cell (see VerticalForm). The default draws it as horizontal text at the
     // cell's corner; backends that can rotate and center glyphs override it.
     virtual void verticalText(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }

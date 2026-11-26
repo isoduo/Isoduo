@@ -1511,9 +1511,24 @@ public:
             rect.y += c.placement.bounds.y;
             return rect;
         };
-        for (const auto& fill : field.pixels) {
-            c.clip(translate(fill.clip));
-            c.overlay(translate(fill.rect), fill.radius, fill.color, fill.opacity);
+        for (const auto& pixel : field.pixels) {
+            const auto rect = translate(pixel.clip);
+            c.clip(rect);
+            if (pixel.text) {
+                const auto& layout = *pixel.text;
+                const double x = c.placement.bounds.x + layout.x;
+                double y = c.placement.bounds.y + layout.y;
+                if (x + layout.width + layout.pixels < rect.x) continue;
+                for (const auto& line : layout.lines) {
+                    if (y >= double(rect.y) + rect.h) break;
+                    if (y + layout.lineHeight > rect.y)
+                        c.drawingTextLine(line, layout.pixels, layout.face,
+                            static_cast<int>(x), static_cast<int>(y), pixel.color, pixel.opacity, rect);
+                    y += layout.lineHeight;
+                }
+            } else {
+                c.overlay(translate(pixel.rect), pixel.radius, pixel.color, pixel.opacity);
+            }
         }
     }
 };
