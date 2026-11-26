@@ -15,11 +15,18 @@ struct VulkanSession;
 struct RendererTestHooks {
     bool failContext33 = false, failRebuildOnce = false, hideRobustness = false, hideKhrDebug = false, misuseOnce = false;
     std::optional<std::uint32_t> apiVersionOverride;
-    bool hideVulkanLoader = false, hidePhysicalDevices = false, hideInstanceExtension = false;
+    bool hideVulkanLoader = false, hideInstanceProcAddr = false, hidePhysicalDevices = false, hideInstanceExtension = false;
     bool hideDynamicRendering = false, hideSynchronization2 = false;
     bool hideDeviceExtension = false, hideSurfaceFormats = false, hidePresentQueue = false;
     std::optional<std::pair<std::string, int>> startupResultOnce;
-    std::pair<int, int> submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
+    struct FrameResult {
+        int frame = 0;
+        int result = 0;
+    };
+    FrameResult submitResultAtFrame{}, acquireResultAtFrame{}, presentResultAtFrame{};
+    bool diagnoseDestruction = false;
+    bool failImageCreationOnce = false;
+    bool zeroSurfaceExtent = false, hideBufferMemoryTypes = false;
     bool hideValidationLayer = false, hideDebugUtils = false;
     unsigned injectDebugMessage = 0;
     int fenceResultAtFrame = 0, swapchainCreateResultOnce = 0;

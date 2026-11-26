@@ -300,6 +300,7 @@ void DesktopHost::release() {
     DestroyWindow(window_);
     window_ = nullptr;
     claim_.release();
+    diagnostics_.drain();
 }
 float DesktopHost::scale() const { return forcedScale_ > 0 ? forcedScale_ : GetDpiForWindow(window_) / 96.f; }
 void DesktopHost::clientSize(int widthDip, int heightDip) {
