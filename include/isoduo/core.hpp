@@ -588,6 +588,7 @@ struct DrawingContent {
 };
 class DrawingEnvironment {
 public:
+    MotionPreference motionPreference() const { return motionPreference_; }
     DipSize size() const { return size_; }
     float scale() const { return scale_; }
     const Palette& palette() const { return palette_; }
@@ -597,6 +598,7 @@ public:
 private:
     friend class detail::UiState;
     DrawingEnvironment() = default;
+    MotionPreference motionPreference_ = MotionPreference::noPreference;
     DipSize size_;
     float scale_ = 1;
     Palette palette_;
@@ -856,6 +858,9 @@ public:
     Query<MenuSnapshot> contextMenu() const;  // hidden while no menu is open
     Result invokeMenuItem(std::string id);
     void onChange(std::function<void()> callback);
+    MotionPreference motionPreference() const;
+    Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    Result simulateSystemMotion(MotionPreference preference);
     Result setPresentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
     // True while any on-screen transition (for example a slider thumb sliding to its new value) is

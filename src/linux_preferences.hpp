@@ -1,16 +1,22 @@
 #pragma once
+#include "isoduo/presentation.hpp"
 #include <memory>
 #include <optional>
 #include <span>
 
 struct pollfd;
 typedef struct _GMainContext GMainContext;
+typedef struct _GVariant GVariant;
 
 namespace isoduo::detail {
 struct LinuxDesktopPreferences {
-    std::optional<bool> animations;
+    MotionPreference motion = MotionPreference::noPreference;
     std::optional<bool> keyboardCues;
 };
+
+// Decode the values returned by the desktop settings services. Missing keys pass nullptr.
+MotionPreference gnomeMotion(GVariant* enabled, GVariant* reduced);
+MotionPreference xfceMotion(GVariant* enabled);
 
 // Missing values leave the shared UI's normal motion and focus rules in effect.
 LinuxDesktopPreferences readLinuxDesktopPreferences();

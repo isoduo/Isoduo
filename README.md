@@ -363,16 +363,21 @@ of a drag slide the thumb over 150 ms (cubic ease-out), turning from the positio
 changes mid-way. Values, semantics and UI Automation update at once; only the picture moves. Application code,
 `setValue` (semantic or UIA), Ctrl+Z / Ctrl+Y, data-source changes and dragging itself land at once.
 
-- `PresentationSettings::motion`: `Motion::automatic` (default) follows Windows "Show animations in Windows"
-  (`SPI_GETCLIENTAREAANIMATION`, re-read on `WM_SETTINGCHANGE`); `Motion::off` never plays. There is no
-  "always on". Switching it with `Ui::setPresentation` takes effect at once and lands running transitions.
+- `Ui::motionPreference()` reports `MotionPreference::noPreference`, `reduce`, or `off`. The default
+  `Motion::automatic` follows the system. Disabling animations in Windows, GNOME, or Xfce yields `off`.
+  GNOME's reduced-motion setting yields `reduce` when animations are enabled. Setting
+  `PresentationSettings::motion` to `Motion::off` overrides either system preference.
+- With `reduce` or `off`, built-in transitions go straight to their endpoints, including transitions already
+  running. Applications can read the effective preference in `DrawingEnvironment::motionPreference()`.
+  Each drawing area redraws when the preference changes. Register a callback with
+  `Ui::onMotionPreferenceChange` to receive the new effective value. Register again to replace it.
 - `Ui::animating()` / `SemanticTree::animating()` answer whether any transition is still running (one query,
   one admission rule). Wait for `false` before comparing screenshots.
 - A minimized, cloaked or fully covered window jumps running transitions to their end and draws nothing for them.
   "Fully covered" is best effort: one visible opaque window above ours that spans the whole client area.
 - A core-only host that installs no time source (`detail::UiState::animationTime`) never animates. Tests use
-  that seam as a fake clock, and `setSystemAnimations` / `DesktopHost::systemAnimationSource` to simulate the
-  Windows setting. Tests: `animation` (core) and `isoduo_host_verify --animation-only` (native host).
+  that seam as a fake clock. A core-only `Ui` accepts all three preferences through `simulateSystemMotion`.
+  An attached Desktop supplies the preference itself and returns `Status::notSupported` for simulation. Tests: `animation` (core) and `isoduo_host_verify --animation-only` (native host).
 
 ## Palette overrides
 
