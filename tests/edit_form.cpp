@@ -2189,14 +2189,14 @@ void showcaseDrawingMotion() {
         return -1.f;
     };
     place();
-    auto initial = completedWidth();
-    check(initial > 0, "initial completed bar is half full");
+    const float trackWidth = h.chart.content()->size.w - 84.f;
+    check(trackWidth > 0 && std::abs(completedWidth() - trackWidth / 2) < 0.01f, "initial completed bar is half full");
     check(bool(h.progressFull.invoke()), "change chart data");
     tick(0ms);
     tick(150ms);
-    check(std::abs(completedWidth() - initial * 1.5f) < 0.01f, "chart reaches midpoint at 150 ms");
+    check(std::abs(completedWidth() - trackWidth * 0.75f) < 0.01f, "chart reaches midpoint at 150 ms");
     tick(150ms);
-    check(std::abs(completedWidth() - initial * 2) < 0.01f, "chart reaches endpoint at 300 ms");
+    check(std::abs(completedWidth() - trackWidth) < 0.01f, "chart reaches endpoint at 300 ms");
     auto dots = h.indicator.content()->commands;
     tick(100ms);
     check(dots != h.indicator.content()->commands, "indicator rotates");
@@ -2212,7 +2212,7 @@ void showcaseDrawingMotion() {
         check(completedWidth() == 0 && !*form.ui.animating(), "empty endpoint without frames");
         check(bool(h.progressFull.invoke()), "fill chart");
         place();
-        check(std::abs(completedWidth() - initial * 2) < 0.01f && !*form.ui.animating(), "full endpoint without frames");
+        check(std::abs(completedWidth() - trackWidth) < 0.01f && !*form.ui.animating(), "full endpoint without frames");
     }
 }
 
