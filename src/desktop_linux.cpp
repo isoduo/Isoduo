@@ -209,7 +209,7 @@ struct Desktop::Impl {
         const auto settings = readLinuxDesktopPreferences();
         auto& state = claim.state();
         state.setSystemKeyboardCues(settings.keyboardCues.value_or(false));
-        state.setSystemMotion(settings.motion);
+        if (settings.motion) state.setSystemMotion(*settings.motion);
     }
     void release() {
         accessibility.reset();
