@@ -371,13 +371,20 @@ changes mid-way. Values, semantics and UI Automation update at once; only the pi
   running. Applications can read the effective preference in `DrawingEnvironment::motionPreference()`.
   Each drawing area redraws when the preference changes. Register a callback with
   `Ui::onMotionPreferenceChange` to receive the new effective value. Register again to replace it.
-- `Ui::animating()` / `SemanticTree::animating()` answer whether any transition is still running (one query,
-  one admission rule). Wait for `false` before comparing screenshots.
+- Register a drawing area's callback with `onFrame` and call `requestFrame()` to schedule it once.
+  Every callback in a frame receives the same `FrameInfo::time` and can read the effective motion preference.
+  Call `requestRedraw()` when the drawing changes, and `requestFrame()` again to continue the animation.
+  The host retains requests while the area is outside the viewport, the window is hidden, or the renderer is unavailable.
+- `Ui::animating()` and `SemanticTree::animating()` include both running transitions and runnable frame requests.
+  Before comparing screenshots, cancel continuous requests with `cancelFrame()` or advance a core-only UI with `simulateFrame`.
 - A minimized, cloaked or fully covered window jumps running transitions to their end and draws nothing for them.
   "Fully covered" is best effort: one visible opaque window above ours that spans the whole client area.
-- A core-only host that installs no time source (`detail::UiState::animationTime`) never animates. Tests use
-  that seam as a fake clock. A core-only `Ui` accepts all three preferences through `simulateSystemMotion`.
-  An attached Desktop supplies the preference itself and returns `Status::notSupported` for simulation. Tests: `animation` (core) and `isoduo_host_verify --animation-only` (native host).
+- In a core-only test, arrange the UI, call `ui.simulateFrame(std::chrono::milliseconds(16))`, then arrange
+  again to see the changes requested by callbacks. The first simulated frame starts the shared timeline for
+  built-in transitions. Use `simulateSystemMotion` to vary the preference. An attached Desktop supplies both.
+- Run the `drawing_area` and `animation` CTests for the core behavior. Run `drawing_frames_opengl` and
+  `drawing_frames_vulkan` on Windows, GNOME Wayland and Xfce X11 for native pacing, visibility and idle checks.
+  The Windows `drawing_area_recovery_opengl` and `drawing_area_recovery_vulkan` tests inject presentation failures.
 
 ## Palette overrides
 

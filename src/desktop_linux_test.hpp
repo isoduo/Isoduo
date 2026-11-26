@@ -26,6 +26,8 @@ public:
     static Frame layoutFrame(Desktop&, int width, int height, float scale, std::string_view reveal = {});
     static GpuComparison compareFrame(Desktop&, int width, int height, float scale, Frame&,
                                       int fault = 0, std::string_view reveal = {});
+    static void observeWait(Desktop&, std::function<void(int)>);
+    static void setVisible(Desktop&, bool);
     static void observeFrames(Desktop&, std::function<void(const Frame&, const LinuxClientGeometry&)>);
     // Opt-in native-window performance probe. The renderer timing excludes swap wait.
     static void measureFrames(Desktop&, std::chrono::milliseconds delay,

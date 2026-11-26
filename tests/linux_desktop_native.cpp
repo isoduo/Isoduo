@@ -2,6 +2,9 @@
 #include "desktop_linux_test.hpp"
 #include "renderer.hpp"
 #include "check.hpp"
+#include "core_internal.hpp"
+#include "perf.hpp"
+#include <ctime>
 #include "utf.hpp"
 #include <atomic>
 #include <barrier>
@@ -33,6 +36,104 @@ void checkStartup(const CreateResult& result) {
                   << utf8FromUtf16(result.failure->message) << " actual " << utf8FromUtf16(result.failure->actual) << '\n';
     }
     check(result.status == Status::ok && !!result.desktop, "Native desktop opens");
+}
+void applicationFrames(DesktopConfig config) {
+    Ui ui;
+    ScrollState scroll;
+    auto area = *ui.addDrawingArea({.id = "indicator", .label = u"Indicator"});
+    auto spacer = *ui.addDrawingArea({.id = "spacer", .label = u"Spacer"});
+    auto page = [&] { return layout::scroll(layout::column({
+        layout::drawingArea(area, 20), layout::drawingArea(spacer, 800)}, 0, 0)); };
+    RendererTestHooks hooks;
+    if (config.renderBackend == RenderBackendKind::vulkan) hooks.submitResultAtFrame = {1, -2};
+    else hooks.errorAtFrame = 1;
+    int calls = 0, presents = 0, recovery = 0;
+    config.onRendererFailed = [&](Desktop& host, const RendererFailure&) {
+        check(calls == 1 && !*ui.animating(), "Failed presentation pauses the continuation");
+        check(area.cancelFrame() && area.requestFrame(), "Accept cancellation and requests during failure");
+        check(bool(host.rebuildRenderer()), "Rebuild after the callback already ran");
+        ++recovery;
+    };
+    auto opened = LinuxDesktopTest::create(ui, webAppearance(), page, scroll, config, &hooks);
+    checkStartup(opened);
+    auto& host = *opened.desktop;
+    check(ui.simulateFrame({}).status == Status::notSupported, "Desktop owns frame time");
+    using namespace std::chrono_literals;
+    std::chrono::steady_clock::time_point now{};
+    access(ui).animationTime([&] { return now; });
+    int quietStart = 0, lastPresentCount = -1, scrollFrame = 0, compositorWaits = 0;
+    bool shortWait = false, resumed = false, idle = false;
+    std::jthread idleProbe;
+    LinuxDesktopTest::observeWait(host, [&](int timeout) {
+        if (calls >= 4 && !scrollFrame && host.nativeWindow()->backend == DesktopBackendKind::wayland) {
+            if (timeout < 0) ++compositorWaits;
+            if (timeout == 16) shortWait = true;
+        }
+    });
+    std::chrono::steady_clock::time_point previous;
+    bool ordered = true, clipped = false;
+    area.onFrame([&](const FrameInfo& frame) {
+        ++calls;
+        ordered = ordered && frame.time >= previous;
+        previous = frame.time;
+        // Native map/expose traffic can submit during startup. Require four consecutive
+        // callback-only intervals after the last such submission.
+        if (presents != lastPresentCount) {
+            quietStart = calls;
+            lastPresentCount = presents;
+        }
+        if (!scrollFrame && recovery && calls - quietStart == 4) {
+            scrollFrame = calls;
+            scroll.offset = 100;
+            area.requestRedraw();
+        }
+        if (!scrollFrame && calls > 64) return host.close();
+        if (scrollFrame && calls == scrollFrame + 1) {
+            LinuxDesktopTest::setVisible(host, false);
+            area.requestFrame();
+            const bool paused = !*ui.animating();
+            host.post([&, paused] {
+                now += 3s;
+                resumed = paused && calls == scrollFrame + 1;
+                LinuxDesktopTest::setVisible(host, true);
+            });
+            return Result{};
+        }
+        if (scrollFrame && calls == scrollFrame + 2) {
+            resumed = resumed && frame.time == now && now.time_since_epoch() == 3s;
+            return area.requestFrame();
+        }
+        if (scrollFrame && calls == scrollFrame + 3) {
+            const int start = presents;
+            const auto cpu = std::clock();
+            idleProbe = std::jthread([&, start, cpu] {
+                std::this_thread::sleep_for(10s);
+                host.post([&, start, cpu] {
+                    idle = idlePass(presents - start, 0, 1000.0 * (std::clock() - cpu) / CLOCKS_PER_SEC);
+                    host.close();
+                });
+            });
+            return Result{};
+        }
+        return area.requestFrame();
+    });
+    area.onDraw([](const DrawingEnvironment&) { return Result{}; });
+    area.requestFrame();
+    LinuxDesktopTest::observeFrames(host, [&](const Frame& frame, const LinuxClientGeometry&) {
+        ++presents;
+        if (scrollFrame && calls == scrollFrame && !clipped) {
+            clipped = !*ui.animating();
+            check(frame.scrollTo(ui, scroll, 0) && spacer.enable(false), "Scroll the pending area back into view");
+        }
+    });
+    const bool wayland = host.nativeWindow()->backend == DesktopBackendKind::wayland;
+    auto run = host.run();
+    check(idle, "Ten seconds idle after the last frame request");
+    check(!wayland || (compositorWaits > 0 && !shortWait), "Wayland waits for compositor release without a 16ms timer");
+    check(run.status == Status::ok && scrollFrame && calls == scrollFrame + 3 && recovery == 1, "Resume the continuation after explicit rebuild");
+    check(ordered, "Ordered times and no submissions for callback-only frames");
+    check(clipped, "Scrolling out pauses the request");
+    check(resumed, "Visibility restoration runs the callback at the advanced time");
 }
 void checkFaults(DesktopConfig config) {
     Ui ui;
@@ -219,9 +320,10 @@ void interactive(DesktopConfig config, std::string_view mode) {
 }
 
 int main(int argc, char** argv) {
-    const bool faultSweep = argc == 5 && std::string_view(argv[2]) == "fault-sweep" &&
+    const bool rendererCase = argc == 5 && (std::string_view(argv[2]) == "fault-sweep" ||
+                           std::string_view(argv[2]) == "frames") &&
                            std::string_view(argv[3]) == "--render-backend";
-    if (argc != 3 && !faultSweep) {
+    if (argc != 3 && !rendererCase) {
         std::cerr << "Usage: isoduo_linux_desktop_native <wayland|x11|auto> "
                      "<faults|close|program|wrapper|low-version|locale|configured-locale|fault-sweep --render-backend opengl|vulkan>\n";
         return 2;
@@ -236,10 +338,13 @@ int main(int argc, char** argv) {
         config.height = 320;
         config.title = u"Isoduo native verification";
         config.debugContext = mode == "program" ? DebugContext::on : DebugContext::off;
-        if (faultSweep) {
+        if (rendererCase) {
             config.debugContext = DebugContext::buildDefault;
             config.renderBackend = test::rendererFaultSweep::renderBackend(argv[4]);
-            return test::rendererFaultSweep::run(config);
+            if (mode == "fault-sweep") return test::rendererFaultSweep::run(config);
+            if (!config.backend && !std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY")) return 77;
+            applicationFrames(config);
+            return 0;
         }
         if (mode == "locale") concurrentX11Locale(config);
         else if (mode == "configured-locale") configuredX11Locale(config);

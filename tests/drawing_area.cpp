@@ -415,8 +415,107 @@ void drawingText() {
         {1,2,20,24}, {1,2,3}, 128, 0, {}, u"abc\nd", style}}, "original text command survives clipping and wrapping");
 }
 
+void frameMutations() {
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto a = *ui.addDrawingArea({.id = "a"});
+    auto b = *ui.addDrawingArea({.id = "b"});
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    auto place = [&] {
+        arrange(layout::scroll(layout::column({layout::drawingArea(a, 20), layout::drawingArea(b, 100)}, 0, 0)),
+                ui, webAppearance(), measure, 100, 40, 1, scroll);
+    };
+    int draws = 0, calls = 0;
+    a.onDraw([&](const DrawingEnvironment&) {
+        ++draws;
+        test::check(a.requestFrame().status == Status::busy, "drawing cannot schedule");
+        return Result{};
+    });
+    place();
+    b.onFrame([&](const FrameInfo&) { ++calls; return Result{}; });
+    a.onFrame([&](const FrameInfo&) { return b.requestFrame(); });
+    a.requestFrame();
+    b.requestFrame();
+    ui.simulateFrame(0ms);
+    ui.simulateFrame(0ms);
+    test::check(calls == 2, "request for a later callback in this batch also schedules the next frame");
+    a.onFrame([&](const FrameInfo&) { return b.cancelFrame(); });
+    a.requestFrame();
+    b.requestFrame();
+    ui.simulateFrame(0ms);
+    test::check(calls == 2, "cancel withdraws a later callback in the same batch");
+    a.onFrame([&](const FrameInfo&) {
+        a.requestRedraw();
+        a.requestFrame();
+        return Result{Status::failed, {}};
+    });
+    scroll.offset = 50;
+    place();
+    a.requestFrame();
+    test::check(!*ui.animating() && !*ui.semantics().animating(), "clipped request pauses");
+    ui.simulateFrame(2ms);
+    scroll.offset = 0;
+    place();
+    auto diagnostics = ui.diagnostics().size();
+    auto before = draws;
+    ui.simulateFrame(0ms);
+    place();
+    test::check(draws == before + 1 && ui.diagnostics().size() == diagnostics + 1 && !*ui.animating(),
+                "resume, redraw and local failure with no automatic retry");
+    a.onFrame([&](const FrameInfo&) { return b.remove(); });
+    a.requestFrame();
+    b.requestFrame();
+    ui.simulateFrame(0ms);
+    test::check(calls == 2 && !b.describe(), "removal withdraws a later callback");
+    Status worker{};
+    std::thread([&] { worker = a.requestFrame().status; }).join();
+    test::check(worker == Status::wrongThread, "wrong thread cannot schedule");
+    a.onFrame([](const FrameInfo&) -> Result { throw 1; });
+    a.requestFrame();
+    test::check(ui.simulateFrame(0ms).status == Status::failed && a.requestFrame().status == Status::failed,
+                "exception stops UI");
+}
+
+void applicationFrames() {
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto a = *ui.addDrawingArea({.id = "a"});
+    auto b = *ui.addDrawingArea({.id = "b"});
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::column({layout::drawingArea(a, 20), layout::drawingArea(b, 20)}),
+            ui, webAppearance(), measure, 200, 200, 1, scroll);
+    test::check(a.requestFrame().status == Status::invalidValue, "request requires registration");
+    std::vector<int> order;
+    std::vector<std::chrono::steady_clock::time_point> times;
+    ui.simulateSystemMotion(MotionPreference::reduce);
+    a.onFrame([&](const FrameInfo& frame) {
+        test::check(frame.motionPreference == MotionPreference::reduce, "effective preference reaches application");
+        times.push_back(frame.time);
+        order.push_back(1);
+        test::check(ui.simulateFrame(0ms).status == Status::busy, "recursive frame rejected");
+        return Result{};
+    });
+    b.onFrame([&](const FrameInfo& frame) {
+        times.push_back(frame.time);
+        order.push_back(2);
+        return b.requestFrame();
+    });
+    b.requestFrame();
+    a.requestFrame();
+    b.requestFrame();
+    test::check(*ui.animating() && *ui.semantics().animating(), "visible requests animate");
+    ui.simulateFrame(4ms);
+    ui.simulateFrame(6ms);
+    test::check(order == std::vector<int>{2, 1, 2} && times[0] == times[1] && times[2]-times[1] == 6ms,
+                "one timestamp and one invocation per accepted request in order");
+    b.cancelFrame();
+    test::check(!*ui.animating() && ui.simulateFrame(-1ms).status == Status::invalidValue, "cancel and negative advance");
+}
+
 int main() {
-    const test::Case cases[] = {{"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
+    const test::Case cases[] = {{"frame mutations", frameMutations}, {"application frames", applicationFrames}, {"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
         {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);

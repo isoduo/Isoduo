@@ -62,7 +62,7 @@ static void inputAndWindowStateEndWithHost() {
     input.windowActive(true);
     check(*tip.visible(), "The replacement uses fresh visibility");
     check(!input.motionEnabled(), "Transitions finish immediately without a host clock");
-    input.animationTime([] { return 10; });
+    input.animationTime([] { return std::chrono::steady_clock::time_point{}; });
     check(input.motionEnabled(), "The new clock animates with default visibility and system preferences");
 }
 

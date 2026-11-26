@@ -528,6 +528,37 @@ Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)
         return {};
     });
 }
+Result DrawingAreaHandle::onFrame(std::function<Result(const FrameInfo&)> callback) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        auto& field = ui_->drawings_.at(id_);
+        field.frame = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
+        if (!field.frame) field.admitted = field.request = 0;
+        if (ui_->scheduleFrames) ui_->scheduleFrames();
+        return {};
+    });
+}
+Result DrawingAreaHandle::requestFrame() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& field = ui_->drawings_.at(id_);
+        if (!field.frame) return {Status::invalidValue, u"No frame callback registered"};
+        if (!field.request) {
+            field.request = ++ui_->nextRequest_;
+            if (ui_->scheduleFrames) ui_->scheduleFrames();
+        }
+        return {};
+    });
+}
+Result DrawingAreaHandle::cancelFrame() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& field = ui_->drawings_.at(id_);
+        field.admitted = field.request = 0;
+        if (ui_->scheduleFrames) ui_->scheduleFrames();
+        return {};
+    });
+}
 Result DrawingAreaHandle::requestRedraw() const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_, true); !r) return r;
@@ -1337,6 +1368,60 @@ void detail::UiState::setWindowHidden(bool hidden) {
     windowHidden_ = hidden;
     if (!motionEnabled()) finishAnimations();
 }
+bool detail::UiState::hasFrameRequests() const {
+    return std::any_of(drawings_.begin(), drawings_.end(), [](const auto& entry) { return entry.second.request != 0; });
+}
+bool detail::UiState::framesReady() const {
+    if (stopped_ || windowHidden_ || rendererFailed_) return false;
+    return std::any_of(drawings_.begin(), drawings_.end(), [&](const auto& entry) {
+        return (entry.second.admitted || entry.second.request) && semanticBounds_.contains(entry.first);
+    });
+}
+Result detail::UiState::dispatchFrames() {
+    if (dispatchingFrames_) return {Status::busy, u"Frame in progress"};
+    if (!framesReady()) return {};
+    std::vector<std::pair<std::uint64_t, Id>> batch;
+    for (auto& [id, field] : drawings_) {
+        if (!field.request || !semanticBounds_.contains(id)) continue;
+        field.admitted = std::exchange(field.request, 0);
+        batch.emplace_back(field.admitted, id);
+    }
+    std::sort(batch.begin(), batch.end());
+    dispatchingFrames_ = true;
+    for (const auto& [ticket, id] : batch) {
+        auto it = drawings_.find(id);
+        if (it == drawings_.end() || it->second.admitted != ticket) continue;
+        if (windowHidden_ || rendererFailed_ || !semanticBounds_.contains(id)) {
+            it->second.request = std::exchange(it->second.admitted, 0);
+            continue;
+        }
+        auto callback = it->second.frame;
+        it->second.admitted = 0;
+        try {
+            if (!(*callback)({frameTime_, motionPreference()})) {
+                auto current = drawings_.find(id);
+                if (current != drawings_.end() && current->second.frame == callback) current->second.request = 0;
+                auto message = id + " frame callback failed";
+                diagnosticMessages.push_back(message);
+                outputDiagnostic(message);
+            }
+        } catch (...) { stopped_ = true; }
+        if (stopped_) break;
+    }
+    dispatchingFrames_ = false;
+    return stopped_ ? Result{Status::failed, u"Frame callback stopped UI"} : Result{};
+}
+Result detail::UiState::simulateFrame(FrameClock::duration advance) {
+    if (auto r = mutationAccess(); !r) return r;
+    if (dispatchingFrames_) return {Status::busy, u"Frame in progress"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (hostClaimed_.test()) return {Status::notSupported, u"Desktop supplies frames"};
+    if (advance < FrameClock::duration::zero() || advance > FrameClock::time_point::max() - frameTime_)
+        return {Status::invalidValue, u"Invalid frame advance"};
+    frameTime_ += advance;
+    animationTime([this] { return frameTime_; });
+    return dispatchFrames();
+}
 bool detail::UiState::animationRunning() const {
     for (const auto& [id, target] : sliderTargets_) if (sliderTransitionLive(id)) return true;
     return false;
@@ -1344,7 +1429,7 @@ bool detail::UiState::animationRunning() const {
 Query<bool> detail::UiState::animating() const {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread", std::nullopt};
     if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
-    return {Status::ok, {}, animationRunning()};
+    return {Status::ok, {}, animationRunning() || framesReady()};
 }
 Query<ComponentSnapshot> SliderHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
@@ -1476,6 +1561,7 @@ void detail::UiState::resetHost() {
     setClipboard(nullptr);
     setAsyncClipboard(nullptr);
     bindAppearance(nullptr);
+    scheduleFrames = {};
     animationTime({});
     tooltipClock({});
     setClickClock({});
@@ -3785,6 +3871,7 @@ MotionPreference Ui::motionPreference() const { return state_->motionPreference(
 Result Ui::onMotionPreferenceChange(std::function<void(MotionPreference)> callback) {
     return state_->onMotionPreferenceChange(std::move(callback));
 }
+Result Ui::simulateFrame(std::chrono::steady_clock::duration advance) { return state_->simulateFrame(advance); }
 Result Ui::simulateSystemMotion(MotionPreference preference) { return state_->simulateSystemMotion(preference); }
 Result Ui::setPresentation(const PresentationSettings& settings) { return state_->setPresentation(settings); }
 Query<bool> Ui::animating() const { return state_->animating(); }
