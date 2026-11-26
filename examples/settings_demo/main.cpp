@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         };
         options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
 #ifdef ISODUO_DEMO_DIAGNOSTICS
-            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure,desktop.capabilities().renderBackend));
             exportDiagnostics();
 #endif
             WindowsPrompt prompt(desktop.nativeWindow());
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
         options.onCloseRequested = [&](isoduo::Desktop& desktop) { return prompt.requestClose(desktop); };
         options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
 #ifdef ISODUO_DEMO_DIAGNOSTICS
-            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure,desktop.capabilities().renderBackend));
             exportDiagnostics();
 #endif
             prompt.show(desktop, failure.message);

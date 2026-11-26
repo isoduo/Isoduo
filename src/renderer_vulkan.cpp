@@ -114,6 +114,7 @@ struct VulkanSession {
     std::function<void(RenderDiagnostic)> sink;
     std::atomic<bool> testingScissorCount = false;
     bool validationEnabled = false;
+    VkPhysicalDevice previousDevice{};
     bool surfaceLost = false;
 #ifdef _WIN32
     HMODULE library = LoadLibraryExW(L"vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -337,6 +338,7 @@ struct Selection {
     std::optional<uint32_t> graphicsQueue, presentQueue;
     VkSurfaceFormatKHR format{};
     uint32_t timestampBits{};
+    const char* faultExtension{};
 };
 std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererTestHooks* hooks) {
     auto dev = selected.physical;
@@ -351,6 +353,18 @@ std::optional<StartupFailure> inspect(Session& s, Selection& selected, RendererT
     if (!features.synchronization2 || (hooks && hooks->hideSynchronization2)) return missing("synchronization2");
     auto extensions = enumerate<VkExtensionProperties>("vkEnumerateDeviceExtensionProperties",
         [&](uint32_t* n, VkExtensionProperties* out){ return s.enumerateDeviceExtensionProperties(dev, nullptr, n, out); });
+    VkPhysicalDeviceFaultFeaturesKHR khr{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_KHR};
+    VkPhysicalDeviceFaultFeaturesEXT ext{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    if (hasExtension(extensions,VK_KHR_DEVICE_FAULT_EXTENSION_NAME)) {
+        query.pNext=&khr;
+        s.getPhysicalDeviceFeatures2(dev,&query);
+        if (khr.deviceFault) selected.faultExtension=VK_KHR_DEVICE_FAULT_EXTENSION_NAME;
+    }
+    if (!selected.faultExtension && hasExtension(extensions,VK_EXT_DEVICE_FAULT_EXTENSION_NAME)) {
+        query.pNext=&ext;
+        s.getPhysicalDeviceFeatures2(dev,&query);
+        if (ext.deviceFault) selected.faultExtension=VK_EXT_DEVICE_FAULT_EXTENSION_NAME;
+    }
     if (s.surface && ((hooks && hooks->hideDeviceExtension) || !hasExtension(extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME)))
         return missing(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     uint32_t count{};
@@ -397,9 +411,22 @@ void createDevice(Session& s, const Selection& selected, RendererTestHooks* hook
     queues[1].queueFamilyIndex = selected.presentQueue.value_or(*selected.graphicsQueue);
     info.queueCreateInfoCount = queues[0].queueFamilyIndex == queues[1].queueFamilyIndex ? 1 : 2;
     info.pQueueCreateInfos = queues;
-    const char* name = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    info.enabledExtensionCount = s.surface ? 1 : 0;
-    info.ppEnabledExtensionNames = &name;
+    std::vector<const char*> names;
+    if (s.surface) names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    VkPhysicalDeviceFaultFeaturesKHR khr{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_KHR};
+    VkPhysicalDeviceFaultFeaturesEXT ext{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT};
+    if (selected.faultExtension) {
+        names.push_back(selected.faultExtension);
+        if (std::string_view(selected.faultExtension)==VK_KHR_DEVICE_FAULT_EXTENSION_NAME) {
+            features.pNext=&khr;
+            khr.deviceFault=VK_TRUE;
+        } else {
+            features.pNext=&ext;
+            ext.deviceFault=VK_TRUE;
+        }
+    }
+    info.enabledExtensionCount=uint32_t(names.size());
+    info.ppEnabledExtensionNames=names.data();
     check("vkCreateDevice", invoke(hooks, "vkCreateDevice", [&]{ return s.createDevice(selected.physical, &info, nullptr, &s.device); }));
     s.destroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(s.getDeviceProcAddr(s.device, "vkDestroyDevice"));
 }

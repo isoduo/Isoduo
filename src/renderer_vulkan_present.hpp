@@ -23,6 +23,10 @@ class SurfaceRenderer final : public Renderer {
     bool dirty = true;
     VkPipeline pipeline{};
     int frameNumber = 0;
+    VkResult injectedResult(int result) {
+        d.simulatedLoss = result == VK_ERROR_DEVICE_LOST;
+        return static_cast<VkResult>(result);
+    }
     void installHooks() {
         if (!d.hooks) return;
         auto wait = d.api.WaitForFences;
@@ -30,6 +34,7 @@ class SurfaceRenderer final : public Renderer {
             auto result = wait(args...);
             if (result == VK_SUCCESS && frameNumber && d.hooks->fenceResultAtFrame == frameNumber) {
                 d.hooks->fenceResultAtFrame = 0;
+                d.simulatedLoss = true;
                 return VK_ERROR_DEVICE_LOST;
             }
             return result;
@@ -39,7 +44,7 @@ class SurfaceRenderer final : public Renderer {
             auto &fault = d.hooks->acquireResultAtFrame;
             if (fault.first != frameNumber) return acquireImage(args...);
             fault.first = 0;
-            return static_cast<VkResult>(fault.second);
+            return injectedResult(fault.second);
         };
         auto show = present;
         present = [this, show](auto... args) {
@@ -50,12 +55,12 @@ class SurfaceRenderer final : public Renderer {
                 auto actual = show(args...);
                 if (actual != VK_SUCCESS) return actual;
             }
-            return static_cast<VkResult>(fault.second);
+            return injectedResult(fault.second);
         };
         auto createChain = create;
         create = [this, createChain](auto... args) {
             int fault = std::exchange(d.hooks->swapchainCreateResultOnce, 0);
-            return fault ? static_cast<VkResult>(fault) : createChain(args...);
+            return fault ? injectedResult(fault) : createChain(args...);
         };
         auto scissor = d.api.CmdSetScissor;
         d.api.CmdSetScissor = [this, scissor](auto cmd, auto first, auto count, auto rect) {
@@ -81,7 +86,7 @@ class SurfaceRenderer final : public Renderer {
             auto &fault = d.hooks->submitResultAtFrame;
             if (frameNumber && fault.first == frameNumber) {
                 fault.first = 0;
-                return static_cast<VkResult>(fault.second);
+                return injectedResult(fault.second);
             }
             return submit(queue, count, infos, fence);
         };
@@ -97,6 +102,7 @@ class SurfaceRenderer final : public Renderer {
             kind = RendererFailureKind::deviceReset;
         else if (rebuilding && (result == VK_ERROR_OUT_OF_HOST_MEMORY || result == VK_ERROR_OUT_OF_DEVICE_MEMORY))
             kind = RendererFailureKind::resourceFailed;
+        d.diagnostic(call,result,kind);
         throw FrameError{{kind, uint32_t(result), utf16FromUtf8(std::string(call) + ": " + resultName(result))}, {}};
     }
     void rebuild(VkExtent2D desired) {
@@ -141,7 +147,9 @@ class SurfaceRenderer final : public Renderer {
             true);
         next->objects.keep(next->handle, destroy, d.device);
         auto handles = enumerate<VkImage>("vkGetSwapchainImagesKHR", [&](uint32_t *n, VkImage *out) {
-            return images(d.device, next->handle, n, out);
+            auto status=images(d.device, next->handle, n, out);
+            if (status!=VK_INCOMPLETE) presentationResult("vkGetSwapchainImagesKHR",status,true);
+            return status;
         });
         VkSemaphoreCreateInfo semaphore{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         for (auto handle : handles) {
@@ -165,7 +173,10 @@ class SurfaceRenderer final : public Renderer {
         installHooks();
         d.running = true;
     }
-    ~SurfaceRenderer() override { d.api.DeviceWaitIdle(d.device); }
+    ~SurfaceRenderer() override {
+        if (d.api.DeviceWaitIdle(d.device)==VK_ERROR_DEVICE_LOST)
+            d.diagnostic("vkDeviceWaitIdle",VK_ERROR_DEVICE_LOST,RendererFailureKind::deviceReset);
+    }
     void resized() override { dirty = true; }
     RendererCapabilities capabilities() const override { return d.caps; }
     std::string name() const override { return utf8FromUtf16(d.caps.renderer) + " / " + utf8FromUtf16(d.caps.version); }
