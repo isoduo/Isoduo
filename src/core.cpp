@@ -352,17 +352,49 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
     for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
+namespace {
+bool validDrawingRect(DipRect rect) {
+    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) && std::isfinite(rect.h)
+        && rect.w >= 0 && rect.h >= 0;
+}
+detail::DrawingTextLayout layoutDrawingText(TextMeasure& measure, int bodySize, float scale,
+        std::u16string_view text, DrawingTextStyle style, std::optional<float> width) {
+    detail::DrawingTextLayout layout;
+    layout.pixels = style.size == DrawingTextSize::caption ? std::max(1, bodySize * 7 / 8) : bodySize;
+    layout.lineHeight = measure.lineHeight(layout.pixels);
+    const int limit = std::numeric_limits<int>::max();
+    const int wrapWidth = width ? static_cast<int>(std::min<double>(limit, std::round(double(*width) * scale))) : limit;
+    FontStyle face{style.bold, style.italic};
+    layout.lines = detail::wrapStyled(measure, text, layout.pixels, wrapWidth, face);
+    for (const auto& line : layout.lines)
+        layout.width = std::max(layout.width, measure.measure(line, layout.pixels, face).width);
+    return layout;
+}
+}
+Query<DipSize> DrawingEnvironment::measureText(std::u16string_view text, DrawingTextStyle style, std::optional<float> width) const {
+    if (commands_.expired()) return {Status::notFound, u"Drawing has finished", {}};
+    if (!validMultiLine(text) || (width && (!std::isfinite(*width) || *width < 0)))
+        return {Status::invalidValue, u"Invalid drawing text or wrap width", {}};
+    auto layout = layoutDrawingText(*measure_, textSize_, scale_, text, style, width);
+    return {Status::ok, {}, DipSize{layout.width / scale_, float(layout.lines.size()) * layout.lineHeight / scale_}};
+}
+Result DrawingEnvironment::drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style, Color color, unsigned char opacity) const {
+    auto commands = commands_.lock();
+    if (!commands) return {Status::notFound, u"Drawing has finished"};
+    if (!validMultiLine(text) || !validDrawingRect(rect)) return {Status::invalidValue, u"Invalid drawing text or rectangle"};
+    commands->push_back({DrawingCommandKind::drawText, rect, color, opacity, std::u16string(text), style});
+    return {};
+}
 Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
     auto commands = commands_.lock();
     if (!commands) return {Status::notFound, u"Drawing has finished"};
-    if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) ||
-        !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
+    if (!validDrawingRect(rect))
         return {Status::invalidValue, u"Drawing rectangles require finite coordinates and nonnegative dimensions"};
     commands->push_back({DrawingCommandKind::fillRect, rect, color, opacity});
     return {};
 }
 
-void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale) {
+void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure) {
     auto entry = drawings_.find(placement.id);
     if (entry == drawings_.end() || removalPending(placement.id)) return;
     auto& field = entry->second;
@@ -383,6 +415,8 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
 
     DrawingEnvironment env;
     env.motionPreference_ = motionPreference();
+    env.measure_ = &measure;
+    env.textSize_ = placement.textSize;
     env.size_ = size;
     env.scale_ = scale;
     env.palette_ = effectivePalette(appearance);
@@ -400,6 +434,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     field.scale = scale;
     field.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
     field.pixels.clear();
+    field.text.clear();
     if (!result) {
         auto message = placement.id + " drawing failed";
         diagnosticMessages.push_back(message);
@@ -407,6 +442,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
         return;
     }
     field.content.commands = std::move(*commands);
+    commands.reset();
     // Clip the independently rounded edges before narrowing to the integer pixel grid.
     auto edge = [scale](double value, int limit) {
         return static_cast<int>(std::clamp(std::round(value * scale), 0.0, static_cast<double>(limit)));
@@ -415,6 +451,12 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
         auto r = command.rect;
         int left = edge(r.x, bounds.w), top = edge(r.y, bounds.h);
         int right = edge(double(r.x) + r.w, bounds.w), bottom = edge(double(r.y) + r.h, bounds.h);
+        if (command.kind == DrawingCommandKind::drawText && right > left && bottom > top) {
+            auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
+            layout.x = std::round(double(r.x) * scale);
+            layout.y = std::round(double(r.y) * scale);
+            field.text.emplace(field.pixels.size(), std::move(layout));
+        }
         field.pixels.push_back({left, top, right - left, bottom - top});
     }
 }
@@ -428,6 +470,7 @@ Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)
         else {
             field.content = {};
             field.pixels.clear();
+            field.text.clear();
         }
         ui_->invalidate();
         return {};

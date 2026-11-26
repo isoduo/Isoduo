@@ -46,7 +46,7 @@ struct RecordingCanvas {
     void rounded(Rect,int,Color);
     void overlay(Rect,int,Color,unsigned char alpha); // translucent fill; rounded when radius > 0
     void glyph(Rect,Color,std::shared_ptr<const AtlasPage>,Rect);
-    void glyphDeferred(Color,std::function<ResolvedGlyph()>);
+    void glyphDeferred(Color,std::function<ResolvedGlyph()>,unsigned char opacity = 255);
     void blend(int,int,Color,unsigned);
     void beginGroup(std::string owner,bool popup,bool tooltip);
     void endGroup();

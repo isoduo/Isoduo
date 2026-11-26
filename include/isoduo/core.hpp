@@ -570,12 +570,21 @@ struct DipSize {
     float w = 0, h = 0;
     bool operator==(const DipSize&) const = default;
 };
-enum class DrawingCommandKind { fillRect };
+class TextMeasure;
+enum class DrawingTextSize { body, caption };
+struct DrawingTextStyle {
+    DrawingTextSize size = DrawingTextSize::body;
+    bool bold = false, italic = false;
+    bool operator==(const DrawingTextStyle&) const = default;
+};
+enum class DrawingCommandKind { fillRect, drawText };
 struct DrawingCommand {
     DrawingCommandKind kind;
     DipRect rect;
     Color color;
     unsigned char opacity = 255;
+    std::u16string text{};
+    DrawingTextStyle style{};
     bool operator==(const DrawingCommand&) const = default;
 };
 enum class DrawingStatus { none, drawn, failed };
@@ -594,11 +603,17 @@ public:
     const Palette& palette() const { return palette_; }
     const ThemeVariant& variant() const { return variant_; }
     bool enabled() const { return enabled_; }
+    Query<DipSize> measureText(std::u16string_view text, DrawingTextStyle style = {},
+                               std::optional<float> wrapWidth = {}) const;
+    Result drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style,
+                    Color color, unsigned char opacity = 255) const;
     Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
 private:
     friend class detail::UiState;
     DrawingEnvironment() = default;
     MotionPreference motionPreference_ = MotionPreference::noPreference;
+    TextMeasure* measure_ = nullptr;
+    int textSize_ = 0;
     DipSize size_;
     float scale_ = 1;
     Palette palette_;
