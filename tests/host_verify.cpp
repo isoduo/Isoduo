@@ -114,6 +114,9 @@ struct Fixture {
         ShowWindow(host.window(), SW_SHOWNOACTIVATE);
         host.forceScale(1.f);
         host.clientSize(900, 700);
+        // Snapshot and input fixtures drain the message queue between actions.
+        // Keep the showcase at a fixed angle while these tests drive the host.
+        if (pages) form.handles.indicator.cancelFrame();
         settle();
     }
     ~Fixture() {
