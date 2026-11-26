@@ -452,6 +452,8 @@ changes mid-way. Values, semantics and UI Automation update at once; only the pi
   built-in transitions. Use `simulateSystemMotion` to vary the preference. An attached Desktop supplies both.
 - Run the `drawing_area` and `animation` CTests for the core behavior. Run `drawing_frames_opengl` and
   `drawing_frames_vulkan` on Windows, GNOME Wayland and Xfce X11 for native pacing, visibility and idle checks.
+  On Windows, run `drawing_area_pixels_opengl` and `drawing_area_pixels_vulkan` for pixel comparisons, and
+  `uia_drawing_image_web` and `uia_drawing_image_material` for the accessible image.
   The Windows `drawing_area_recovery_opengl` and `drawing_area_recovery_vulkan` tests inject presentation failures.
 
 ## Palette overrides
