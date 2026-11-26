@@ -62,11 +62,18 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
         }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override { styledText(value, pixels, {}, x, y, color); }
         void styledText(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) override {
+            drawingTextLine(value, pixels, style, x, y, color, 255, canvas.clip);
+        }
+        void drawingTextLine(std::u16string_view value, int pixels, FontStyle style, int x, int y,
+                             Color color, unsigned char opacity, Rect bounds) override {
+            auto previous = canvas.clip;
+            clip(bounds);
             auto layout = renderer.shape(value, pixels, style);
             auto begin=cursor();
-            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
+            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color, opacity);
             observe(DrawObservation::Type::text, std::u16string(value),
                 {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin, style.bold, style.italic);
+            canvas.clip = previous;
         }
     };
     for (const auto& item : frame.items) {

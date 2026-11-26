@@ -1511,7 +1511,23 @@ public:
             rect.x += c.placement.bounds.x;
             rect.y += c.placement.bounds.y;
             const auto& command = field.content.commands[i];
-            c.overlay(rect, 0, command.color, command.opacity);
+            if (command.kind == DrawingCommandKind::drawText) {
+                auto entry = field.text.find(i);
+                if (entry == field.text.end()) continue;
+                const auto& layout = entry->second;
+                const double x = c.placement.bounds.x + layout.x;
+                double y = c.placement.bounds.y + layout.y;
+                if (x + layout.width + layout.pixels < rect.x) continue;
+                for (const auto& line : layout.lines) {
+                    if (y >= double(rect.y) + rect.h) break;
+                    if (y + layout.lineHeight > rect.y)
+                        c.drawingTextLine(line, layout.pixels, {command.style.bold, command.style.italic},
+                            static_cast<int>(x), static_cast<int>(y), command.color, command.opacity, rect);
+                    y += layout.lineHeight;
+                }
+            } else {
+                c.overlay(rect, 0, command.color, command.opacity);
+            }
         }
     }
 };

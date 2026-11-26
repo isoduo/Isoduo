@@ -167,8 +167,28 @@ void pageAndDialog() {
                 "modal image draws and background reports modal blocking");
 }
 
+void drawingText() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "text"});
+    DrawingTextStyle style{.bold = true};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        for (const auto& invalid : {std::u16string(u"a\rb"), std::u16string(u"a\x01"), std::u16string(defaultMaxTextLength + 1, u'x')}) {
+            test::check(env.drawText(invalid, {}, style, {}).status == Status::invalidValue &&
+                        env.measureText(invalid, style).status == Status::invalidValue, "invalid text is rejected");
+        }
+        const auto size = env.measureText(u"abc\nd", style, 20);
+        test::check(size && *size == DipSize{20, 72}, "bold width and three lines from the supplied measure");
+        return env.drawText(u"abc\nd", {1,2,20,24}, style, {1,2,3}, 128);
+    });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::drawingArea(area, 100), ui, webAppearance(), measure, 100, 100, 1, scroll);
+    test::check(area.content()->commands == std::vector<DrawingCommand>{{DrawingCommandKind::drawText,
+        {1,2,20,24}, {1,2,3}, 128, u"abc\nd", style}}, "original text command survives clipping and wrapping");
+}
+
 int main() {
-    const test::Case cases[] = {{"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
+    const test::Case cases[] = {{"drawing text", drawingText}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
 }

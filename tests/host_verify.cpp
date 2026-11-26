@@ -254,6 +254,47 @@ void emitFailureIfNeeded(const std::filesystem::path& folder, const std::string&
 }
 
 // The same recorded frame must be executed by the graphics backend offscreen.
+int drawingTextPixels() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "text", .label = u"Text"});
+    ScrollState scroll;
+    DesktopHost host(ui, webAppearance(), [&] { return layout::drawingArea(area, 64); },
+                     scroll, Fixture::options(), false, true);
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        for (auto size : {DrawingTextSize::body, DrawingTextSize::caption}) {
+            for (FontStyle face : {FontStyle{}, FontStyle{true, false}, FontStyle{false, true}}) {
+                std::vector<unsigned char> opaque;
+                for (unsigned char opacity : {255, 128}) {
+                    area.onDraw([=](const DrawingEnvironment& env) {
+                        return env.drawText(u"ABC\u4e2d\u6587 ABC\u4e2d\u6587 ABC\u4e2d\u6587", {4, 4, 42, 38},
+                            {size, face.bold, face.italic}, {0,0,0}, opacity);
+                    });
+                    auto result = host.compareGpu(96, 96, scale);
+                    if (!result) return 1;
+                    const auto& image = result.reference;
+                    const int background = webAppearance().palette().background.r;
+                    bool secondLine = false;
+                    for (int y = 0; y < image.height; ++y) {
+                        for (int x = 0; x < image.width; ++x) {
+                            auto index = (y * image.width + x) * 4;
+                            const int red = image.pixels[index];
+                            if (red != background) {
+                                if (x < std::lround(4 * scale) || y < std::lround(4 * scale) ||
+                                    x >= std::lround(46 * scale) || y >= std::lround(42 * scale)) return 1;
+                                if (y > 28 * scale) secondLine = true;
+                            }
+                            if (opacity == 128 && std::abs(red - (background + opaque[index]) / 2) > 2) return 1;
+                        }
+                    }
+                    if (!secondLine) return 1;
+                    if (opacity == 255) opaque = image.pixels;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 int drawingAreaPixels() {
     Ui ui;
     auto area = ui.addDrawingArea({.id = "swatch", .label = u"Swatch"}).value.value();
@@ -4810,7 +4851,7 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
-        if (drawingPixels) return drawingAreaPixels();
+        if (drawingPixels) return drawingAreaPixels() || drawingTextPixels();
         if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
             throw std::runtime_error("Invalid verification options");
