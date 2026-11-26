@@ -380,15 +380,15 @@ bool bitmapCoverage(unsigned mode,const unsigned char* row,unsigned width,std::v
     }
     return true;
 }
-void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
+void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color,unsigned char opacity){
     for(auto& glyph:layout.glyphs){
         auto box=[&] {
             int left=x+static_cast<int>(std::round(glyph.x));
             int width=std::max(1,static_cast<int>(std::round(layout.size*.6f)));
             int height=std::max(1,static_cast<int>(std::round(layout.size*.8f)));
             int line=std::max(1,static_cast<int>(std::round(layout.size/16.f)));
-            canvas.fill({left,baseline-height,width,line},color); canvas.fill({left,baseline-line,width,line},color);
-            canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
+            canvas.fill({left,baseline-height,width,line},color,opacity); canvas.fill({left,baseline-line,width,line},color,opacity);
+            canvas.fill({left,baseline-height,line,height},color,opacity); canvas.fill({left+width-line,baseline-height,line,height},color,opacity);
         };
         if (!glyph.id) {box();continue;}
         auto font=impl_->glyphFont(glyph);
@@ -407,7 +407,7 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         for(unsigned row=0;row<bitmap.rows;++row){
             unsigned source=bitmap.pitch>=0?row:bitmap.rows-1-row; auto data=bitmap.buffer+source*std::abs(bitmap.pitch);
             bitmapCoverage(mode,data,bitmap.width,coverage);
-            for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col]);
+            for(unsigned col=0;col<bitmap.width;++col) canvas.blend(left+col,top+row,color,coverage[col] * opacity / 255);
         }
     }
 }
@@ -507,7 +507,7 @@ unsigned Text::atlasBatches() const { return impl_->atlas.batches(); }
 unsigned Text::atlasPeakPages() const { return impl_->atlas.peakPages(); }
 std::vector<const AtlasPage*> Text::atlasPages() const { return impl_->atlas.pages(); }
 unsigned Text::rasterizations() const { return impl_->rasterizations; }
-void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color){
+void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color,unsigned char opacity){
     for(const auto glyph:layout.glyphs) {
         const int size=layout.size;
         if (!glyph.id) {
@@ -515,8 +515,8 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
             int width=std::max(1,static_cast<int>(std::round(size*.6f)));
             int height=std::max(1,static_cast<int>(std::round(size*.8f)));
             int line=std::max(1,static_cast<int>(std::round(size/16.f)));
-            canvas.fill({left,baseline-height,width,line},color); canvas.fill({left,baseline-line,width,line},color);
-            canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
+            canvas.overlay({left,baseline-height,width,line},0,color,opacity); canvas.overlay({left,baseline-line,width,line},0,color,opacity);
+            canvas.overlay({left,baseline-height,line,height},0,color,opacity); canvas.overlay({left+width-line,baseline-height,line,height},0,color,opacity);
             continue;
         }
         canvas.glyphDeferred(color,[this,glyph,size,x,baseline] {
@@ -558,7 +558,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
             int top=baseline-static_cast<int>(std::round(glyph.dy))-entry.top;
             return ResolvedGlyph{{left,top,entry.region.rect.w,entry.region.rect.h},entry.region,
                                  impl_->atlas.batches(),impl_->atlas.batches()!=before};
-        });
+        }, opacity);
     }
 }
 TextRun ShapedMeasure::measure(std::u16string_view text, int pixels) { return measure(text, pixels, FontStyle{}); }

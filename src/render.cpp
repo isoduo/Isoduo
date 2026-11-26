@@ -43,9 +43,9 @@ void RecordingCanvas::glyph(Rect rect, Color color, std::shared_ptr<const AtlasP
     command.pageOwner = std::move(page);
     list.commands.push_back(std::move(command));
 }
-void RecordingCanvas::glyphDeferred(Color color, std::function<ResolvedGlyph()> resolve) {
+void RecordingCanvas::glyphDeferred(Color color, std::function<ResolvedGlyph()> resolve, unsigned char opacity) {
     list.setClip(clip);
-    DrawCommand command{DrawCommand::Type::glyph, {}, {color.r,color.g,color.b,255}, 0, {}, currentRole, {}, false, false, {}, {}};
+    DrawCommand command{DrawCommand::Type::glyph, {}, {color.r,color.g,color.b,opacity}, 0, {}, currentRole, {}, false, false, {}, {}};
     command.resolve = std::move(resolve);
     list.commands.push_back(std::move(command));
 }
