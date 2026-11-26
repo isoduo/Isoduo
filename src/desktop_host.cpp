@@ -2,6 +2,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
+#include "renderer_vulkan.hpp"
 #include "pointer_routing.hpp"
 #include "uia_provider.hpp"
 #include <windowsx.h>
@@ -11,7 +12,6 @@
 #include <UIAutomation.h>
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -24,6 +24,7 @@ bool systemKeyboardCues() {
     return SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &on, 0) && on;
 }
 const wchar_t* windowClass = L"Isoduo.DesktopHost";
+constexpr UINT_PTR presentRetryTimer = 4;
 constexpr UINT_PTR tooltipTimer = 1;
 constexpr UINT_PTR dragScrollTimer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
 constexpr UINT_PTR animationTimer = 3;    // distinct from the other timer ids: they run side by side
@@ -115,125 +116,14 @@ LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
 }
 }
 
-namespace {
-// Clipboard managers can hold the global clipboard briefly after a change. Bound the wait
-// on the UI thread; report failure rather than waiting indefinitely if another owner stalls.
-bool openClipboard(HWND window) {
-    constexpr ULONGLONG timeoutMs = 250;
-    const auto deadline = GetTickCount64() + timeoutMs;
-    do {
-        if (OpenClipboard(window)) return true;
-        auto now = GetTickCount64();
-        if (now >= deadline) break;
-        Sleep(static_cast<DWORD>(std::min<ULONGLONG>(5, deadline - now)));
-    } while (GetTickCount64() < deadline);
-    return false;
-}
-}
-
-namespace {
-UINT richFormat() {
-    static const UINT format = RegisterClipboardFormatW(L"Isoduo.RichText.1");
-    return format;
-}
-// Read-only compatibility with clipboard owners from before the rename.
-UINT legacyRichFormat() {
-    static const UINT format = RegisterClipboardFormatW(L"LcarsUI.RichText.1");
-    return format;
-}
-HGLOBAL globalText(std::u16string_view text) {
-    auto memory = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(char16_t));
-    if (!memory) return nullptr;
-    auto data = static_cast<char16_t*>(GlobalLock(memory));
-    if (!data) { GlobalFree(memory); return nullptr; }
-    std::memcpy(data, text.data(), text.size() * sizeof(char16_t));
-    data[text.size()] = 0;
-    GlobalUnlock(memory);
-    return memory;
-}
-HGLOBAL globalBytes(std::string_view bytes) {  // NUL-terminated: a global block may be larger than asked for
-    auto memory = GlobalAlloc(GMEM_MOVEABLE, bytes.size() + 1);
-    if (!memory) return nullptr;
-    auto data = static_cast<char*>(GlobalLock(memory));
-    if (!data) { GlobalFree(memory); return nullptr; }
-    std::memcpy(data, bytes.data(), bytes.size());
-    data[bytes.size()] = 0;
-    GlobalUnlock(memory);
-    return memory;
-}
-}
-bool WindowsClipboard::write(std::u16string_view text) { return writeRich(text, {}); }
-// Windows text carries CRLF line breaks; core hands every clipboard LF. A CRLF already there stays as it is.
-static std::u16string windowsLineBreaks(std::u16string_view text) {
-    std::u16string result;
-    result.reserve(text.size());
-    for (std::size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == u'\n' && (i == 0 || text[i - 1] != u'\r')) result += u'\r';
-        result += text[i];
-    }
-    return result;
-}
-// One clipboard transaction: the plain text and, for a copy from a rich field, the private payload beside it.
-// EmptyClipboard drops every older format, so a payload never outlives the text it belonged to.
-bool WindowsClipboard::writeRich(std::u16string_view text, std::string_view payload) {
-    if (!openClipboard(window_)) return false;
-    auto memory = globalText(windowsLineBreaks(text));
-    auto rich = payload.empty() ? nullptr : globalBytes(payload);
-    bool ok = false;
-    if (memory && (payload.empty() || rich)) {
-        ok = EmptyClipboard() && SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
-        if (ok) memory = nullptr;  // the clipboard owns it now
-        if (ok && rich) {
-            if (SetClipboardData(richFormat(), rich) != nullptr) rich = nullptr;  // plain text still stands if only this fails
-        }
-    }
-    if (memory) GlobalFree(memory);
-    if (rich) GlobalFree(rich);
-    CloseClipboard();
-    return ok;
-}
-Query<std::string> WindowsClipboard::readRich() {
-    if (!openClipboard(window_)) return {Status::failed, u"Cannot open the clipboard", std::nullopt};
-    Query<std::string> result{Status::notSupported, u"No rich text", std::nullopt};
-    const UINT format = IsClipboardFormatAvailable(richFormat()) ? richFormat() : legacyRichFormat();
-    if (IsClipboardFormatAvailable(format)) {
-        result = {Status::failed, u"Cannot read rich text", std::nullopt};
-        if (auto memory = GetClipboardData(format)) {
-            if (auto data = static_cast<const char*>(GlobalLock(memory))) {
-                const auto size = GlobalSize(memory);
-                std::size_t n = 0;
-                while (n < size && data[n]) ++n;
-                if (n < size) result = {Status::ok, {}, std::string(data, n)};
-                GlobalUnlock(memory);
-            }
-        }
-    }
-    CloseClipboard();
-    return result;
-}
-Query<std::u16string> WindowsClipboard::read() {
-    if (!openClipboard(window_)) return {Status::failed, u"Cannot open the clipboard", std::nullopt};
-    Query<std::u16string> result{Status::notSupported, u"Clipboard has no text", std::nullopt};
-    if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-        result = {Status::failed, u"Cannot read text from the clipboard", std::nullopt};
-        if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
-            if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {
-                auto units = GlobalSize(memory) / sizeof(char16_t);
-                std::size_t n = 0;
-                while (n < units && data[n]) ++n;
-                if (n < units) result = {Status::ok, {}, std::u16string(data, n)};
-                GlobalUnlock(memory);
-            }
-        }
-    }
-    CloseClipboard();
-    return result;
-}
-
 DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
                          const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
-    : ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.onDiagnostic,&ui),
+    : DesktopHost(HostClaim(ui), ui, appearance, std::move(page), scroll, options, trace, background, hooks) {}
+DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,
+                         ScrollState& scroll, const DesktopConfig& options, bool trace, bool background, RendererTestHooks* hooks)
+    : claim_(std::move(claim)), ui_(ui), appearance_(appearance), page_(std::move(page)), scroll_(scroll), diagnostics_(options.onDiagnostic,&ui),
       text_(systemFontFile, [this](const RenderDiagnostic& event) { diagnostics_.push(event); if(window_) PostMessageW(window_,WM_APP+43,0,0); }) {
+    if (claim_.status() == Status::busy) throw std::logic_error("Ui already has a host");
     hooks_ = hooks; debugContext_ = options.debugContext;
     text_.setStyledLookup(systemStyledFontFile);
     configureFont(ui.presentation().fontFamily);
@@ -254,6 +144,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         throw StartupError{{StartupFailureKind::window, {}, {}, u"Window creation failed"}};
     }
     try {
+        renderBackend_ = options.renderBackend;
         if (hooks_ && !hooks_->startupResourceError.empty()) throw std::runtime_error(hooks_->startupResourceError);
         if (options.platformAccessibilityEnabled) uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
             RECT client{}; GetClientRect(window_, &client);
@@ -263,22 +154,22 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         inputContext_ = ImmGetContext(window_);
         if (inputContext_) ImmReleaseContext(window_, inputContext_);
         clipboard_ = std::make_unique<WindowsClipboard>(window_);
-        detail::access(ui_).setClipboard(clipboard_.get());
-        detail::access(ui_).bindAppearance(&appearance_);
-        detail::access(ui_).tooltipClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
-        detail::access(ui_).setSystemKeyboardCues(systemKeyboardCues());
-        detail::access(ui_).animationTime(animationNowMs);
+        claim_.state().setClipboard(clipboard_.get());
+        claim_.state().bindAppearance(&appearance_);
+        claim_.state().tooltipClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
+        claim_.state().setSystemKeyboardCues(systemKeyboardCues());
+        claim_.state().animationTime(animationNowMs);
         refreshSystemAnimations();
-        detail::access(ui_).setClickClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
+        claim_.state().setClickClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
         refreshVisibility();
-        detail::access(ui_).onInvalidate([this] { if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        claim_.state().onInvalidate([this] { if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
-        detail::access(ui_).onRelayout([this] { relayout(); });
-        detail::access(ui_).onSemanticPending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
-        detail::access(ui_).onReveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
+        claim_.state().onRelayout([this] { relayout(); });
+        claim_.state().onSemanticPending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
+        claim_.state().onReveal([this](const Id& id) { reveal_ = id; if (window_) InvalidateRect(window_, nullptr, FALSE); });
         atlasTextSize_ = ui_.presentation().textSize;
         atlasFontFamily_ = ui_.presentation().fontFamily;
-        detail::access(ui_).onPresentation([this] {
+        claim_.state().onPresentation([this] {
             const auto& settings = ui_.presentation();
             const auto clears = text_.atlasClears();
             configureFont(settings.fontFamily);
@@ -294,8 +185,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
             reveal_.clear();
             syncIme();
         });
-        detail::access(ui_).beforeFocus([this] { finishComposition(); });
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        claim_.state().beforeFocus([this] { finishComposition(); });
+        renderer_ = createRenderer();
         capabilities_ = renderer_->capabilities();
         clientSize(options.width, options.height);
         PostMessageW(window_,WM_APP+43,0,0);
@@ -306,8 +197,14 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         throw;
     }
 }
+std::unique_ptr<Renderer> DesktopHost::createRenderer() {
+    if (renderBackend_ == RenderBackendKind::vulkan) return createVulkanRenderer(window_, hooks_, vulkanSession_, debugContext_,
+        [this](RenderDiagnostic event){ diagnostics_.push(std::move(event)); });
+    return std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+}
 Result DesktopHost::rebuildRenderer() {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (!window_) return {Status::notFound, u"Desktop window is closed"};
     if (painting_) return {Status::busy, u"Painting in progress"};
     if (!rendererFailure_) return {Status::invalidValue, u"Renderer is not failed"};
     if (hooks_) ++hooks_->rebuildAttempts;
@@ -319,14 +216,14 @@ Result DesktopHost::rebuildRenderer() {
             if (hooks) { previous=hooks->fragmentShaderOverride; if (hooks->failRebuildOnce) { hooks->failRebuildOnce=false; hooks->fragmentShaderOverride="invalid shader"; } }
         }
         ~ShaderOverride() { if (hooks) hooks->fragmentShaderOverride=std::move(previous); }
-    } shaderOverride(hooks_);
+    } shaderOverride(renderBackend_ == RenderBackendKind::openGL ? hooks_ : nullptr);
     try {
-        renderer_ = std::make_unique<Renderer>(window_, hooks_, debugContext_, [this](RenderDiagnostic event) { diagnostics_.push(std::move(event)); });
+        renderer_ = createRenderer();
         renderer_->restoreAtlas(text_.atlasPages());
         capabilities_=renderer_->capabilities();
     } catch (const StartupError& e) { renderer_.reset(); return {Status::failed,e.failure.message}; }
       catch (const std::exception& e) { renderer_.reset(); std::string text=e.what(); return {Status::failed,utf16FromUtf8(text)}; }
-    rendererFailure_.reset(); detail::access(ui_).rendererFailed(false);
+    rendererFailure_.reset(); claim_.state().rendererFailed(false);
     scheduleTooltip();
     InvalidateRect(window_,nullptr,FALSE);
     return {};
@@ -335,7 +232,7 @@ void DesktopHost::failRenderer(RendererFailure failure) {
     rendererFailure_=std::move(failure);
     if (window_) { KillTimer(window_, tooltipTimer); KillTimer(window_, animationTimer); }
     detail::access(ui_).finishAnimations();
-    detail::access(ui_).rendererFailed(true);
+    claim_.state().rendererFailed(true);
     if (auto session=detail::access(ui_).edit(detail::access(ui_).focused()); session && session->composing) {
         if (auto imc=ImmGetContext(window_)) { ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0); ImmReleaseContext(window_, imc); }
         detail::access(ui_).compositionCancel();
@@ -358,7 +255,7 @@ Result DesktopHost::post(std::function<void()> work) {
     if (!postWindow_) return {Status::notFound, u"Desktop window is closed"};
     posted_.push_back(std::move(work));
     // One wake-up message serves everything queued before it is handled.
-    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage, 0, 0)) {
+    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage_, 0, 0)) {
         posted_.clear();
         return {Status::failed, u"Unable to wake the desktop thread"};
     }
@@ -376,6 +273,7 @@ void DesktopHost::runPosted() {
     }
 }
 void DesktopHost::release() {
+    if (claim_.status() != Status::ok) return;
     std::vector<std::function<void()>> discarded;
     {
         std::lock_guard lock(postMutex_);
@@ -392,26 +290,17 @@ void DesktopHost::release() {
             ImmNotifyIME(imc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
             ImmReleaseContext(window_, imc);
         }
-        detail::access(ui_).compositionCancel();
     }
-    detail::access(ui_).onPresentation({});
-    if (detail::access(ui_).boundAppearance() == &appearance_) detail::access(ui_).bindAppearance(nullptr);
-    detail::access(ui_).onInvalidate({});
-    detail::access(ui_).onRelayout({});
-    detail::access(ui_).onSemanticPending({});
-    detail::access(ui_).onReveal({});
-    detail::access(ui_).tooltipClock({});
-    detail::access(ui_).animationTime({});
-    detail::access(ui_).setClickClock({});
     if (window_) { KillTimer(window_, tooltipTimer); KillTimer(window_, dragScrollTimer); KillTimer(window_, animationTimer); }
-    detail::access(ui_).beforeFocus({});
-    detail::access(ui_).setClipboard(nullptr);
-    if (!window_) return;
+    if (!window_) { claim_.release(); return; }
     ImmAssociateContext(window_, inputContext_);
     SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
     renderer_.reset();
+    vulkanSession_.reset();
     DestroyWindow(window_);
     window_ = nullptr;
+    claim_.release();
+    diagnostics_.drain();
 }
 float DesktopHost::scale() const { return forcedScale_ > 0 ? forcedScale_ : GetDpiForWindow(window_) / 96.f; }
 void DesktopHost::clientSize(int widthDip, int heightDip) {
@@ -442,13 +331,14 @@ void DesktopHost::scheduleTooltip() {
     }
 }
 void DesktopHost::refreshSystemAnimations() {
-    detail::access(ui_).setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
+    claim_.state().setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
 }
 void DesktopHost::refreshVisibility() {
     const bool hidden = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || coveredByAnotherWindow(window_);
     if (hidden == hidden_) return;
     hidden_ = hidden;
-    detail::access(ui_).setWindowHidden(hidden);  // hiding lands every running transition at once
+    if (hidden && window_) KillTimer(window_, presentRetryTimer);
+    claim_.state().setWindowHidden(hidden);  // hiding lands every running transition at once
 }
 void DesktopHost::scheduleAnimation() {
     if (!window_) return;
@@ -483,7 +373,7 @@ Frame DesktopHost::arrange(int width, int height, float scale) {
     return isoduo::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
-    if (rendererFailure_ || painting_) return;
+    if (rendererFailure_ || painting_ || (renderBackend_==RenderBackendKind::vulkan && IsIconic(window_))) return;
     struct Guard { bool& flag; explicit Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard(painting_);
     auto start=std::chrono::steady_clock::now();
     RECT r{};
@@ -510,6 +400,14 @@ void DesktopHost::paint() {
     double submission=0; std::chrono::steady_clock::time_point presented;
     double gpu=0;
     try { gpu=renderer_->draw(recording.list, r.right, r.bottom, perfEnabled_, perfOffscreen_, &submission, &presented); }
+    catch (const DeferredFrame&) {
+        refreshVisibility();
+        if (!hidden_) {
+            SetTimer(window_, presentRetryTimer, 16, nullptr);
+            if (hooks_) ++hooks_->retryTimers;
+        }
+        return;
+    }
     catch (const FrameError& e) {
         for (auto code : e.codes) diagnostics_.push(frameDiagnostic(code));
         PostMessageW(window_,WM_APP+43,0,0);
@@ -528,12 +426,14 @@ void DesktopHost::paint() {
         if(firstPresentMs_<0) firstPresentMs_=age;
         double cpu=std::chrono::duration<double,std::milli>(beforeGpu-start).count();
         double sampleAge=age-std::chrono::duration<double,std::milli>(presented-start).count();
+        gpuSamples_.add(sampleAge,gpu);
         perfSamples_.add(sampleAge,cpu+submission+gpu);
         perfBreakdown_.add(sampleAge,std::chrono::duration<double,std::milli>(afterLayout-start).count(),
             std::chrono::duration<double,std::milli>(afterList-afterLayout).count(),submission+gpu);
         if(inputTime_.time_since_epoch().count()) { inputPresentMs_=std::chrono::duration<double,std::milli>(presented-inputTime_).count(); inputTime_={}; }
     }
     ++frames_;
+    if (onPresented) onPresented();
     syncIme();
     scheduleAnimation();
     PostMessageW(window_,WM_APP+43,0,0);
@@ -547,7 +447,8 @@ Frame DesktopHost::render(int width, int height, float s, const std::filesystem:
     reveal_.clear();
     RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
-    auto image = renderCpu(recording.list, width, height);
+    auto image = renderBackend_ == RenderBackendKind::vulkan ? renderer_->readBack(recording.list, width, height) :
+        renderCpu(recording.list, width, height);
     if (copy) *copy = image;
     std::vector<unsigned char> pixels(image.pixels);
     for (std::size_t i = 0; i < pixels.size(); i += 4) std::swap(pixels[i], pixels[i + 2]);
@@ -723,7 +624,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
-    case postedWorkMessage:
+    case postedWorkMessage_:
         runPosted(); return 0;
     case WM_APP+45:
         ui_.semantics().dispatchEvents(); return 0;
@@ -736,7 +637,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_SIZE: refreshVisibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
+    case WM_SIZE: if (renderer_) renderer_->resized(); refreshVisibility(); InvalidateRect(window_, nullptr, FALSE); return 0;
     case WM_SHOWWINDOW: case WM_WINDOWPOSCHANGED: refreshVisibility(); break;
     case WM_DPICHANGED: {
         auto r = reinterpret_cast<RECT*>(l);
@@ -759,12 +660,18 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_SETFOCUS: {
-        detail::access(ui_).windowActive(true);
+        claim_.state().windowActive(true);
         POINT point{};
         if (GetFocus() == window_ && GetCursorPos(&point) && ScreenToClient(window_, &point)) updateHover(point.x, point.y);
         syncIme(); InvalidateRect(window_, nullptr, FALSE); return 0;
     }
     case WM_TIMER:
+        if (w == presentRetryTimer) {
+            KillTimer(window_, presentRetryTimer);
+            refreshVisibility();
+            if (!hidden_) InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
         if (w == animationTimer) {
             KillTimer(window_, animationTimer);
             refreshVisibility();  // covered windows are only noticed by looking
@@ -786,7 +693,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         break;
     case WM_KILLFOCUS:
         logIme(L"wm:killfocus");
-        detail::access(ui_).windowActive(false);
+        claim_.state().windowActive(false);
         detail::access(ui_).cancelInput();
         drag_ = Drag::none;
         InvalidateRect(window_, nullptr, FALSE);
@@ -829,7 +736,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
     case WM_SETTINGCHANGE:  // one case for every system setting we follow (a second label would not compile)
         refreshSystemAnimations();  // "Show animations in Windows"
         // "Always underline access keys and show keyboard focus": takes effect without a restart.
-        if (w == SPI_SETKEYBOARDCUES || w == 0) detail::access(ui_).setSystemKeyboardCues(systemKeyboardCues());
+        if (w == SPI_SETKEYBOARDCUES || w == 0) claim_.state().setSystemKeyboardCues(systemKeyboardCues());
         break;
     case WM_RBUTTONDOWN: {
         detail::access(ui_).pointerPressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
@@ -903,7 +810,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
                 // picks a caret, a word or a paragraph; a drag then grows the selection by the same unit.
                 auto at = detail::placementTextHit(frame_, id, x, y);
                 auto cell = detail::placementTextCell(frame_, id, x, y);
-                detail::access(ui_).setClickSettings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
+                claim_.state().setClickSettings({GetDoubleClickTime(), GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)});
                 detail::access(ui_).textPointerDown(id, at, cell, x, y, (w & MK_SHIFT) != 0);
                 drag_ = Drag::text;
                 if (!touch) detail::access(ui_).hoverCapture(id);
@@ -1083,19 +990,23 @@ struct Desktop::Impl {
     std::unique_ptr<detail::DesktopHost> host;
     DesktopConfig options;
     std::thread::id owner = std::this_thread::get_id();
+    bool running = false;
 };
 Desktop::Desktop(std::unique_ptr<Impl> impl):impl_(std::move(impl)) {}
 Desktop::~Desktop() = default;
+detail::DesktopHost& detail::DesktopHost::fromDesktop(Desktop& desktop) { return *desktop.impl_->host; }
 CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options) {
     return detail::DesktopHost::createForTest(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
 CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options, detail::RendererTestHooks* hooks) {
+    HostClaim claim(ui);
+    if (claim.status() == Status::busy) return {Status::busy, {}, {}};
     if (options.backend && *options.backend != DesktopBackendKind::windows)
         return {Status::failed, StartupFailure{StartupFailureKind::window, {}, {},
             u"Requested desktop backend is unavailable on Windows", options.backend}, {}};
     try {
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
-        impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
+        impl->host=std::unique_ptr<DesktopHost>(new DesktopHost(std::move(claim), ui, appearance, std::move(page), scroll, impl->options, false, false, hooks));
         auto desktop=std::unique_ptr<Desktop>(new Desktop(std::move(impl)));
         if (desktop->impl_->options.onCloseRequested) {
             auto ptr = desktop.get();
@@ -1110,11 +1021,18 @@ CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appear
       catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16FromUtf8(message),DesktopBackendKind::windows},{}}; }
 }
 RunResult Desktop::run() {
+    if (std::this_thread::get_id() != impl_->owner) return {Status::wrongThread, {}, {}};
+    if (impl_->running) return {Status::busy, {}, {}};
     auto& host=*impl_->host;
+    if (!host.window()) return {Status::notFound, {}, {}};
+    impl_->running = true;
+    struct RunScope {
+        Impl& impl;
+        ~RunScope() { impl.host->close(); impl.running = false; }
+    } run{*impl_};
     ShowWindow(host.window(),SW_SHOW); SetFocus(host.window()); UpdateWindow(host.window());
     int result=host.run();
     auto failure=host.rendererFailure();
-    host.close();
     if (failure) return {Status::rendererFailed,failure,{}};
     return {result ? Status::failed : Status::ok,{}, {}};
 }

@@ -1,0 +1,14 @@
+#include "bad_members.hpp"
+
+struct Dispatch {
+    int CreateBuffer;
+};
+
+class Cache {
+    int entryCount;
+    const int maxEntries = 1;
+    static inline int sharedCount = 0;
+    static inline int openGL = 0;
+};
+
+void snake_case();

@@ -208,7 +208,7 @@ void detail::UiState::commitRemovals() {
                 group = confirmationMembers_.erase(group);
             } else ++group;
         }
-        if (auto tip = tooltipIds_.find(id); tip != tooltipIds_.end()) { overlayIds_.erase(tip->second); tooltipIds_.erase(tip); }
+        if (auto tip = tooltipIds.find(id); tip != tooltipIds.end()) { overlayIds.erase(tip->second); tooltipIds.erase(tip); }
         actions_.erase(id); confirmationButtons_.erase(id); errors_.erase(id); tooltips_.erase(id); diagnosedNames_.erase(id);
         componentType(find(id)->kind).retire(*this, id);
         textScrolls_.erase(id); verticalScrolls_.erase(id); visibility_.erase(id);
@@ -1204,6 +1204,46 @@ void detail::UiState::refreshTooltips() {
         }
     }
     if (changed && invalidate_) invalidate_();
+}
+detail::HostClaim::HostClaim(Ui& ui) : state_(&access(ui)) {
+    if (state_->hostClaimed_.test_and_set(std::memory_order_acquire)) state_ = nullptr;
+}
+void detail::HostClaim::release() {
+    if (!state_) return;
+    state_->resetHost();
+    state_->hostClaimed_.clear(std::memory_order_release);
+    state_ = nullptr;
+}
+void detail::UiState::resetHost() {
+    onInvalidate({});
+    onRelayout({});
+    onSemanticPending({});
+    onReveal({});
+    onPresentation({});
+    beforeFocus({});
+    setClipboard(nullptr);
+    setAsyncClipboard(nullptr);
+    bindAppearance(nullptr);
+    animationTime({});
+    tooltipClock({});
+    setClickClock({});
+    rendererFailed(false);
+    compositionCancel();
+    cancelInput();
+    clickRun_ = {};
+    clickSettings_ = {};
+    textScrolls_.clear();
+    visibility_.clear();
+    hasFrameVisibility_ = false;
+    tooltipNow_ = 0;
+    tooltipHover_.clear();
+    tooltipPausedAt_.reset();
+    keyboardCues_ = false;
+    hoverClear();
+    windowActive(false);
+    setWindowHidden(false);
+    setSystemKeyboardCues(false);
+    setSystemAnimations(true);
 }
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
@@ -3371,13 +3411,13 @@ void detail::UiState::seedTestControls(std::vector<Component> controls) {
 }
 bool detail::UiState::registerable(std::string_view id) {
     const auto* existing = find(id);
-    auto overlay = overlayIds_.find(id);
-    if (!id.empty() && !existing && overlay == overlayIds_.end()) return true;
+    auto overlay = overlayIds.find(id);
+    if (!id.empty() && !existing && overlay == overlayIds.end()) return true;
 #ifndef NDEBUG
     const auto* registered = existing ? findComponentType(existing->kind) : nullptr;
-    std::string type = existing ? std::string(registered ? registered->name() : "custom") : overlay != overlayIds_.end() ? overlay->second : "none";
+    std::string type = existing ? std::string(registered ? registered->name() : "custom") : overlay != overlayIds.end() ? overlay->second : "none";
     std::string message = "Invalid component ID '" + std::string(id) + "'; existing component type: " + type;
-    diagnostics_.push_back(message);
+    diagnosticMessages.push_back(message);
     outputDiagnostic(message);
 #endif
     return false;
@@ -3388,7 +3428,7 @@ Result detail::UiState::creationAccess() const {
     if (rendererFailed_) return {Status::rendererFailed, u"Renderer failed"};
     return {};
 }
-const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnostics_; }
+const std::vector<std::string>& Ui::diagnostics() const { return state_->diagnosticMessages; }
 // Every Ui::add_x: one component of `kind`, the same checks in the same order, then `create` (the matching
 // UiState::add_x). `extra` is a check of the type's own parameters (the slider's range), made after the shared ones.
 template <class Handle, class Create>
@@ -3448,8 +3488,8 @@ Query<TooltipHandle> Ui::addTooltip(std::string id, ComponentHandle source, std:
     try {
         auto sourceId = state_->layoutId(source);
         auto handle = state_->addTooltip(std::move(source), std::move(text), delayMs);
-        state_->tooltipIds_.emplace(*sourceId, id);
-        state_->overlayIds_.emplace(std::move(id), "tooltip");
+        state_->tooltipIds.emplace(*sourceId, id);
+        state_->overlayIds.emplace(std::move(id), "tooltip");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalidValue, u"Invalid tooltip", std::nullopt}; }
 }
@@ -3458,7 +3498,7 @@ Query<DialogHandle> Ui::addDialog(std::string id, std::vector<ComponentHandle> m
     if (!state_->registerable(id)) return {Status::invalidValue, u"Invalid or duplicate ID", std::nullopt};
     try {
         auto handle = state_->addDialog(id, std::move(members), initial, fallback, std::move(result), std::move(name));
-        state_->overlayIds_.emplace(std::move(id), "dialog");
+        state_->overlayIds.emplace(std::move(id), "dialog");
         return {Status::ok, {}, std::move(handle)};
     } catch (const std::invalid_argument&) { return {Status::invalidValue, u"Invalid dialog", std::nullopt}; }
 }
@@ -3531,8 +3571,8 @@ void detail::UiState::semanticFrame(const Frame& frame) {
     for (const auto& p : frame.items) store(p);
     for (const auto& p : frame.overlays) {
         if (p.tooltip) {
-            auto id = tooltipIds_.find(p.id);
-            if (id != tooltipIds_.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semanticBounds_[id->second] = r; }
+            auto id = tooltipIds.find(p.id);
+            if (id != tooltipIds.end()) { auto r = intersect(p.bounds, p.clip); if (r.w > 0 && r.h > 0) semanticBounds_[id->second] = r; }
         } else if (!p.menu) store(p);
     }
     menuFrame(frame);
@@ -3543,7 +3583,7 @@ void detail::UiState::semanticFrame(const Frame& frame) {
         if (c && s && componentType(c->kind).needsName() && s->name.empty() && diagnosedNames_.insert(id).second)
         {
             auto message = id + " is focusable but has no name";
-            diagnostics_.push_back(message);
+            diagnosticMessages.push_back(message);
             outputDiagnostic(message);
         }
     }
@@ -3563,8 +3603,8 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     if (auto menu = u.menuNode(ref)) return *menu;
     auto c = u.find(ref.id);
     if (!c) {
-        auto overlay = u.overlayIds_.find(ref.id);
-        if (overlay == u.overlayIds_.end() || ref.item) return {Status::notFound, {}, {}};
+        auto overlay = u.overlayIds.find(ref.id);
+        if (overlay == u.overlayIds.end() || ref.item) return {Status::notFound, {}, {}};
         NodeSnapshot n; n.ref = ref; n.role = overlay->second == "dialog" ? Role::dialog : Role::tooltip;
         auto [instance, inserted] = u.semanticInstances_.try_emplace(ref.id, 0);
         if (inserted) instance->second = ++u.nextSemanticInstance_;
@@ -3574,7 +3614,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
             const auto& label = u.dialogs_.at(ref.id).nameLabel;
             if (!label.empty() && u.find(label)) { n.name = u.text(label); n.labelledBy.push_back({label}); }
         }
-        else for (const auto& [source, id] : u.tooltipIds_) if (id == ref.id) {
+        else for (const auto& [source, id] : u.tooltipIds) if (id == ref.id) {
             auto tip = u.tooltips_.find(source);
             if (tip != u.tooltips_.end()) { n.name = tip->second.text; n.hidden = !tip->second.visible; }
         }
@@ -3625,7 +3665,7 @@ Query<std::vector<NodeRef>> SemanticTree::children(const NodeRef& parent) const 
     std::vector<NodeRef> result;
     if (parent.id.empty() && !parent.item) {
         for (const auto& c : u.controls_) if (c.page != "dialog" && !u.removalPending(c.id)) result.push_back({c.id});
-        for (const auto& [id, type] : u.overlayIds_) result.push_back({id});
+        for (const auto& [id, type] : u.overlayIds) result.push_back({id});
         std::stable_sort(result.begin(), result.end(), [&](const NodeRef& a, const NodeRef& b) {
             auto ai = u.semanticPositions_.find(a.id), bi = u.semanticPositions_.find(b.id);
             if (ai == u.semanticPositions_.end()) return false;

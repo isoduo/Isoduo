@@ -24,6 +24,8 @@ jobs:
         run: cmake --preset windows-clang-cl-release
       - name: Build Release
         run: cmake --build --preset windows-clang-cl-release
+      - name: Check identifier names
+        run: ctest --preset windows-clang-cl-release -R '^identifier_naming'
       - name: Download, verify and install application-local Mesa DLLs
         run: cmake -DDESTINATION=build/Release -P cmake/InstallMesa.cmake
       - name: Run UI Automation tests

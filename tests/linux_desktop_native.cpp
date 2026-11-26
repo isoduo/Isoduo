@@ -3,6 +3,9 @@
 #include "renderer.hpp"
 #include "check.hpp"
 #include "utf.hpp"
+#include <atomic>
+#include <barrier>
+#include <clocale>
 #include <cstdio>
 #include <thread>
 
@@ -91,7 +94,67 @@ void checkFaults(DesktopConfig config) {
     checkStartup(result);
     reference = result.desktop->nativeWindow();
     check(result.desktop->run().status == Status::ok && recovered == 1, "Run returns after the recovery callback closes");
+    hooks = {};
+    hooks.errorAtFrame = 1;
+    config.onRendererFailed = [](Desktop& host, const RendererFailure&) { host.close(); };
+    result = create(hooks);
+    checkStartup(result);
+    check(result.desktop->run().status == Status::rendererFailed, "Close a failed host");
+    auto button = ui.addButton({.id = "recovered"}).value.value();
+    auto next = Desktop::create(ui, webAppearance(), [&] { return layout::component(button); }, scroll, config);
+    checkStartup(next);
+    check(!next.desktop->rendererFailed() && bool(button.focus()), "Replacement host accepts focus");
+    bool painted = false;
+    LinuxDesktopTest::observeFrames(*next.desktop, [&](const Frame&, const LinuxClientGeometry&) {
+        painted = true;
+        next.desktop->close();
+    });
+    check(next.desktop->run().status == Status::ok && painted, "Replacement host paints a frame");
     std::cout << "PASS startup fixtures, close thread, renderer rebuild\n";
+}
+void concurrentX11Locale(DesktopConfig config) {
+    check(config.backend == DesktopBackendKind::x11, "Locale verification requires X11");
+    check(std::setlocale(LC_CTYPE, "C") != nullptr, "Select the C locale");
+    for (int round = 0; round < 50; ++round) {
+        std::barrier start(2);
+        auto open = [&](bool& opened) {
+            Ui ui;
+            ScrollState scroll;
+            start.arrive_and_wait();
+            auto host = Desktop::create(ui, webAppearance(), [] { return layout::column({}); }, scroll, config);
+            opened = host.desktop && LinuxDesktopTest::x11InputMethodOpen(*host.desktop);
+            start.arrive_and_wait();
+        };
+        bool first = false, second = false;
+        std::jthread worker([&] { open(first); });
+        open(second);
+        worker.join();
+        check(first && second, "Both concurrent desktops open their X11 input method");
+        check(std::string_view(std::setlocale(LC_CTYPE, nullptr)) == "C", "Concurrent opens restore LC_CTYPE");
+    }
+}
+void configuredX11Locale(DesktopConfig config) {
+    check(config.backend == DesktopBackendKind::x11, "Locale verification requires X11");
+    const char* locale = std::setlocale(LC_CTYPE, "C.UTF-8");
+    check(locale != nullptr, "Select the application UTF-8 locale");
+    const std::string expected(locale);
+    std::atomic<bool> changed = false;
+    std::barrier ready(2);
+    std::jthread observer([&](std::stop_token stop) {
+        ready.arrive_and_wait();
+        do {
+            if (std::string_view(std::setlocale(LC_CTYPE, nullptr)) != expected) changed = true;
+        } while (!stop.stop_requested());
+    });
+    ready.arrive_and_wait();
+    Ui ui;
+    ScrollState scroll;
+    auto host = Desktop::create(ui, webAppearance(), [] { return layout::column({}); }, scroll, config);
+    observer.request_stop();
+    observer.join();
+    checkStartup(host);
+    check(!changed && std::string_view(std::setlocale(LC_CTYPE, nullptr)) == expected,
+        "Application LC_CTYPE is preserved during and after opening");
 }
 void lowVersion(DesktopConfig config) {
     Ui ui;
@@ -155,7 +218,7 @@ void interactive(DesktopConfig config, std::string_view mode) {
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        std::cerr << "Usage: isoduo_linux_desktop_native <wayland|x11|auto> <faults|close|program|wrapper|low-version>\n";
+        std::cerr << "Usage: isoduo_linux_desktop_native <wayland|x11|auto> <faults|close|program|wrapper|low-version|locale|configured-locale>\n";
         return 2;
     }
     try {
@@ -168,7 +231,9 @@ int main(int argc, char** argv) {
         config.height = 320;
         config.title = u"Isoduo native verification";
         config.debugContext = mode == "program" ? DebugContext::on : DebugContext::off;
-        if (mode == "faults") checkFaults(config);
+        if (mode == "locale") concurrentX11Locale(config);
+        else if (mode == "configured-locale") configuredX11Locale(config);
+        else if (mode == "faults") checkFaults(config);
         else if (mode == "low-version") lowVersion(config);
         else {
             check(mode == "close" || mode == "program" || mode == "wrapper", "Unknown verification mode");

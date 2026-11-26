@@ -489,19 +489,19 @@ public:
 IUnknown* makeSelectionProvider(Provider* owner) { return static_cast<ISelectionProvider*>(new SelectionProvider(owner)); }
 
 class TextRange final : public ITextRangeProvider {
-    std::atomic<ULONG> refs{1};
-    Provider *owner;
-    unsigned first, last;
-    std::u16string version;
-    std::uint64_t revision;
+    std::atomic<ULONG> refs_{1};
+    Provider *owner_;
+    unsigned first_, last_;
+    std::u16string version_;
+    std::uint64_t revision_;
     HRESULT call(std::function<HRESULT(const NodeSnapshot &)> action) {
         AddRef();
-        auto hr = owner->ctx->call([this, action = std::move(action)] {
-            auto h = owner->check();
+        auto hr = owner_->ctx->call([this, action = std::move(action)] {
+            auto h = owner_->check();
             if (FAILED(h))
                 return h;
-            auto n = owner->ctx->ui->semantics().get(owner->ref);
-            if (!n || n->textRevision != revision)
+            auto n = owner_->ctx->ui->semantics().get(owner_->ref);
+            if (!n || n->textRevision != revision_)
                 return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
             return action(*n);
         });
@@ -509,12 +509,12 @@ class TextRange final : public ITextRangeProvider {
         return hr;
     }
     const Placement *placement() const {
-        return findPlacement(owner->ctx->frame(), owner->ref.id);
+        return findPlacement(owner_->ctx->frame(), owner_->ref.id);
     }
     // Boundaries in committed-text offsets from offsets of the visible text (composition included).
     std::vector<unsigned> committed(const std::vector<unsigned> &visible) const {
         std::vector<unsigned> out;
-        auto session = access(*owner->ctx->ui).edit(owner->ref.id);
+        auto session = access(*owner_->ctx->ui).edit(owner_->ref.id);
         for (auto offset : visible) {
             if (session && session->composing && offset > session->begin()) {
                 auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
@@ -523,13 +523,13 @@ class TextRange final : public ITextRangeProvider {
                 offset = offset - static_cast<unsigned>(session->preedit.size()) + session->end() -
                          session->begin();
             }
-            if (offset <= version.size() && (out.empty() || out.back() != offset))
+            if (offset <= version_.size() && (out.empty() || out.back() != offset))
                 out.push_back(offset);
         }
         if (out.empty() || out.front() != 0)
             out.insert(out.begin(), 0);
-        if (out.back() != version.size())
-            out.push_back(static_cast<unsigned>(version.size()));
+        if (out.back() != version_.size())
+            out.push_back(static_cast<unsigned>(version_.size()));
         return out;
     }
     std::vector<unsigned> stops() const {
@@ -558,10 +558,10 @@ class TextRange final : public ITextRangeProvider {
         if (unit == TextUnit_Character)
             return stops();
         if (unit == TextUnit_Word || unit == TextUnit_Paragraph) {
-            auto out = unit == TextUnit_Word ? access(*owner->ctx->ui).wordUnitBoundaries(owner->ref.id)
-                                             : access(*owner->ctx->ui).paragraphBoundaries(owner->ref.id);
-            if (out.empty() || out.back() != version.size())
-                out.push_back(static_cast<unsigned>(version.size()));
+            auto out = unit == TextUnit_Word ? access(*owner_->ctx->ui).wordUnitBoundaries(owner_->ref.id)
+                                             : access(*owner_->ctx->ui).paragraphBoundaries(owner_->ref.id);
+            if (out.empty() || out.back() != version_.size())
+                out.push_back(static_cast<unsigned>(version_.size()));
             return out;
         }
         std::vector<unsigned> raw;
@@ -570,7 +570,7 @@ class TextRange final : public ITextRangeProvider {
                 raw.push_back(p->view.lines[i].begin);
         auto out = committed(raw);
         if (raw.empty())
-            out = {0, static_cast<unsigned>(version.size())};
+            out = {0, static_cast<unsigned>(version_.size())};
         return out;
     }
     static bool endpoint(TextPatternRangeEndpoint e) {
@@ -579,12 +579,12 @@ class TextRange final : public ITextRangeProvider {
 
   public:
     TextRange(Provider *p, unsigned a, unsigned b, std::u16string v)
-        : owner(p), first(a), last(b), version(std::move(v)),
-          revision(p->ctx->ui->semantics().get(p->ref)->textRevision) {
-        owner->AddRef();
+        : owner_(p), first_(a), last_(b), version_(std::move(v)),
+          revision_(p->ctx->ui->semantics().get(p->ref)->textRevision) {
+        owner_->AddRef();
     }
     ~TextRange() {
-        owner->Release();
+        owner_->Release();
     }
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void **out) override {
         if (!out)
@@ -597,10 +597,10 @@ class TextRange final : public ITextRangeProvider {
         return S_OK;
     }
     ULONG STDMETHODCALLTYPE AddRef() override {
-        return ++refs;
+        return ++refs_;
     }
     ULONG STDMETHODCALLTYPE Release() override {
-        auto n = --refs;
+        auto n = --refs_;
         if (!n)
             delete this;
         return n;
@@ -610,7 +610,7 @@ class TextRange final : public ITextRangeProvider {
             return E_POINTER;
         *out = nullptr;
         return call([&](const auto &) {
-            *out = new TextRange(owner, first, last, version);
+            *out = new TextRange(owner_, first_, last_, version_);
             return S_OK;
         });
     }
@@ -619,12 +619,12 @@ class TextRange final : public ITextRangeProvider {
             return E_POINTER;
         *out = FALSE;
         auto o = dynamic_cast<TextRange *>(r);
-        if (!o || o->owner != owner)
+        if (!o || o->owner_ != owner_)
             return E_INVALIDARG;
         return call([&](const auto &) {
-            if (o->revision != revision)
+            if (o->revision_ != revision_)
                 return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
-            *out = first == o->first && last == o->last;
+            *out = first_ == o->first_ && last_ == o->last_;
             return S_OK;
         });
     }
@@ -634,13 +634,13 @@ class TextRange final : public ITextRangeProvider {
             return E_POINTER;
         *out = 0;
         auto o = dynamic_cast<TextRange *>(r);
-        if (!o || o->owner != owner || !endpoint(e) || !endpoint(f))
+        if (!o || o->owner_ != owner_ || !endpoint(e) || !endpoint(f))
             return E_INVALIDARG;
         return call([&](const auto &) {
-            if (o->revision != revision)
+            if (o->revision_ != revision_)
                 return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
-            auto a = e == TextPatternRangeEndpoint_Start ? first : last,
-                 b = f == TextPatternRangeEndpoint_Start ? o->first : o->last;
+            auto a = e == TextPatternRangeEndpoint_Start ? first_ : last_,
+                 b = f == TextPatternRangeEndpoint_Start ? o->first_ : o->last_;
             *out = a < b ? -1 : a > b ? 1 : 0;
             return S_OK;
         });
@@ -650,17 +650,17 @@ class TextRange final : public ITextRangeProvider {
             return E_INVALIDARG;
         return call([&](const auto &) {
             if (!granular(unit)) {
-                first = 0;
-                last = static_cast<unsigned>(version.size());
+                first_ = 0;
+                last_ = static_cast<unsigned>(version_.size());
             } else {
                 auto v = boundaries(unit);
-                auto it = std::upper_bound(v.begin(), v.end(), first);
+                auto it = std::upper_bound(v.begin(), v.end(), first_);
                 if (it == v.end()) {
-                    last = v.back();
-                    first = v.size() > 1 ? v[v.size() - 2] : last;
+                    last_ = v.back();
+                    first_ = v.size() > 1 ? v[v.size() - 2] : last_;
                 } else {
-                    last = *it;
-                    first = it == v.begin() ? 0 : *std::prev(it);
+                    last_ = *it;
+                    first_ = it == v.begin() ? 0 : *std::prev(it);
                 }
             }
             return S_OK;
@@ -678,7 +678,7 @@ class TextRange final : public ITextRangeProvider {
         case UIA_IsItalicAttributeId: return style.italic ? 1 : 0;
         case UIA_UnderlineStyleAttributeId: return style.underline ? 1 : 0;  // TextDecorationLineStyle_Single
         case UIA_ForegroundColorAttributeId: {
-            auto color = owner->ctx->ui->semantics().textColor(owner->ref, style.color);
+            auto color = owner_->ctx->ui->semantics().textColor(owner_->ref, style.color);
             if (!color) return std::nullopt;
             return static_cast<long>(color->r | (color->g << 8) | (color->b << 16));  // COLORREF
         }
@@ -689,15 +689,15 @@ class TextRange final : public ITextRangeProvider {
     // piece: the style of the character at the caret (the last one at the end of the text).
     std::vector<std::tuple<unsigned, unsigned, long>> attributeRuns(const NodeSnapshot &n, TEXTATTRIBUTEID id) const {
         std::vector<std::tuple<unsigned, unsigned, long>> runs;
-        std::vector<unsigned> cuts{first, last};
-        if (first == last) {
-            const unsigned at = first < version.size() || first == 0 ? first : first - 1;
-            if (auto key = attributeKey(id, styleAt(n.styles, at))) runs.emplace_back(first, last, *key);
+        std::vector<unsigned> cuts{first_, last_};
+        if (first_ == last_) {
+            const unsigned at = first_ < version_.size() || first_ == 0 ? first_ : first_ - 1;
+            if (auto key = attributeKey(id, styleAt(n.styles, at))) runs.emplace_back(first_, last_, *key);
             return runs;
         }
         for (const auto &span : n.styles)
             for (unsigned edge : {span.start, span.start + span.length})
-                if (edge > first && edge < last) cuts.push_back(edge);
+                if (edge > first_ && edge < last_) cuts.push_back(edge);
         std::sort(cuts.begin(), cuts.end());
         cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
         for (std::size_t i = 0; i + 1 < cuts.size(); ++i) {
@@ -728,7 +728,7 @@ class TextRange final : public ITextRangeProvider {
             if (backward) std::reverse(runs.begin(), runs.end());
             for (const auto &[a, b, key] : runs)
                 if (key == wanted) {
-                    *out = new TextRange(owner, a, b, version);
+                    *out = new TextRange(owner_, a, b, version_);
                     break;
                 }
             return S_OK;
@@ -744,13 +744,13 @@ class TextRange final : public ITextRangeProvider {
         std::wstring query(text, SysStringLen(text));
         return call([&](const auto &) {
             auto len = query.size();
-            if (len <= last - first)
-                for (unsigned i = 0; i <= last - first - len; ++i) {
-                    auto at = backward ? last - static_cast<unsigned>(len) - i : first + i;
-                    if (CompareStringOrdinal(reinterpret_cast<const wchar_t *>(version.data() + at),
+            if (len <= last_ - first_)
+                for (unsigned i = 0; i <= last_ - first_ - len; ++i) {
+                    auto at = backward ? last_ - static_cast<unsigned>(len) - i : first_ + i;
+                    if (CompareStringOrdinal(reinterpret_cast<const wchar_t *>(version_.data() + at),
                                              static_cast<int>(len), query.data(), static_cast<int>(len),
                                              ignore) == CSTR_EQUAL) {
-                        *out = new TextRange(owner, at, at + static_cast<unsigned>(len), version);
+                        *out = new TextRange(owner_, at, at + static_cast<unsigned>(len), version_);
                         break;
                     }
                 }
@@ -776,7 +776,7 @@ class TextRange final : public ITextRangeProvider {
                 // TextPattern. So `distribute` never reaches this line today; the branch stays so that a label
                 // TextPattern (should one ever be added) already reports it, and the "distribute reports Justified"
                 // line of the #84 spec contradicts #82 item 7 (labels are not text ranges) until then.
-                switch (detail::drawnTextAlign(n.textAlign, owner->ctx->ui->presentation())) {
+                switch (detail::drawnTextAlign(n.textAlign, owner_->ctx->ui->presentation())) {
                 case TextAlign::justify: case TextAlign::distribute: out->lVal = HorizontalTextAlignment_Justified; break;
                 case TextAlign::center: out->lVal = HorizontalTextAlignment_Centered; break;
                 case TextAlign::right: out->lVal = HorizontalTextAlignment_Right; break;
@@ -823,7 +823,7 @@ class TextRange final : public ITextRangeProvider {
         *out = nullptr;
         return call([&](const auto &) {
             std::vector<Rect> rectangles;
-            if (auto p = placement(); p && first != last) {
+            if (auto p = placement(); p && first_ != last_) {
                 auto editor = p->textField.editor;
                 editor.x += p->bounds.x; editor.y += p->bounds.y;
                 auto clip = intersect(editor, p->clip);
@@ -847,21 +847,21 @@ class TextRange final : public ITextRangeProvider {
                     auto r = intersect({left, editor.y, std::max(0, right-left), editor.h}, clip);
                     if (r.w > 0 && r.h > 0) rectangles.push_back(r);
                 };
-                auto session = access(*owner->ctx->ui).edit(owner->ref.id);
+                auto session = access(*owner_->ctx->ui).edit(owner_->ref.id);
                 if (session && session->composing) {
                     auto begin = session->begin(), end = session->end();
-                    if (first < begin) add(first, std::min(last, begin));
-                    if (last > end) {
+                    if (first_ < begin) add(first_, std::min(last_, begin));
+                    if (last_ > end) {
                         auto offset = static_cast<unsigned>(session->preedit.size());
-                        add(std::max(first, end) - end + begin + offset, last - end + begin + offset);
+                        add(std::max(first_, end) - end + begin + offset, last_ - end + begin + offset);
                     }
-                } else add(first, last);
+                } else add(first_, last_);
             }
             *out = SafeArrayCreateVector(VT_R8, 0, static_cast<ULONG>(rectangles.size() * 4));
             if (!*out) return E_OUTOFMEMORY;
             LONG i = 0;
             for (auto r : rectangles) {
-                POINT pt{r.x, r.y}; ClientToScreen(owner->ctx->hwnd, &pt);
+                POINT pt{r.x, r.y}; ClientToScreen(owner_->ctx->hwnd, &pt);
                 double values[] = {double(pt.x), double(pt.y), double(r.w), double(r.h)};
                 for (double value : values) { SafeArrayPutElement(*out, &i, &value); ++i; }
             }
@@ -873,8 +873,8 @@ class TextRange final : public ITextRangeProvider {
             return E_POINTER;
         *out = nullptr;
         return call([&](const auto &) {
-            *out = static_cast<IRawElementProviderSimple *>(owner);
-            owner->AddRef();
+            *out = static_cast<IRawElementProviderSimple *>(owner_);
+            owner_->AddRef();
             return S_OK;
         });
     }
@@ -885,10 +885,10 @@ class TextRange final : public ITextRangeProvider {
         if (max < -1)
             return E_INVALIDARG;
         return call([&](const auto &) {
-            auto n = last - first;
+            auto n = last_ - first_;
             if (max >= 0)
                 n = std::min(n, static_cast<unsigned>(max));
-            *out = bstr(std::u16string_view(version).substr(first, n));
+            *out = bstr(std::u16string_view(version_).substr(first_, n));
             return *out ? S_OK : E_OUTOFMEMORY;
         });
     }
@@ -902,19 +902,19 @@ class TextRange final : public ITextRangeProvider {
         return call([&](const auto &) {
             auto v = granular(unit)
                          ? boundaries(unit)
-                         : std::vector<unsigned>{0, static_cast<unsigned>(version.size())};
-            unsigned pos = e == TextPatternRangeEndpoint_Start ? first : last;
+                         : std::vector<unsigned>{0, static_cast<unsigned>(version_.size())};
+            unsigned pos = e == TextPatternRangeEndpoint_Start ? first_ : last_;
             auto i = static_cast<long long>(std::lower_bound(v.begin(), v.end(), pos) - v.begin());
             i = std::min(i, static_cast<long long>(v.size() - 1));
             auto j = std::clamp(i + count, 0LL, static_cast<long long>(v.size() - 1));
             *moved = static_cast<int>(j - i);
             pos = v[static_cast<size_t>(j)];
             if (e == TextPatternRangeEndpoint_Start) {
-                first = pos;
-                last = std::max(last, first);
+                first_ = pos;
+                last_ = std::max(last_, first_);
             } else {
-                last = pos;
-                first = std::min(first, last);
+                last_ = pos;
+                first_ = std::min(first_, last_);
             }
             return S_OK;
         });
@@ -929,19 +929,19 @@ class TextRange final : public ITextRangeProvider {
             if (!count)
                 return S_OK;
             if (!granular(unit)) {
-                first = 0;
-                last = static_cast<unsigned>(version.size());
+                first_ = 0;
+                last_ = static_cast<unsigned>(version_.size());
                 return S_OK;
             }
             auto v = boundaries(unit);
-            bool empty = first == last;
-            auto it = std::upper_bound(v.begin(), v.end(), first);
+            bool empty = first_ == last_;
+            auto it = std::upper_bound(v.begin(), v.end(), first_);
             long long i = it == v.begin() ? 0 : it - v.begin() - 1;
             long long max = std::max(0LL, static_cast<long long>(v.size()) - (empty ? 1 : 2));
             i = std::min(i, max);
             auto j = std::clamp(i + count, 0LL, max);
-            first = v[static_cast<size_t>(j)];
-            last = empty ? first : v[static_cast<size_t>(j + 1)];
+            first_ = v[static_cast<size_t>(j)];
+            last_ = empty ? first_ : v[static_cast<size_t>(j + 1)];
             *moved = static_cast<int>(j - i);
             return S_OK;
         });
@@ -949,18 +949,18 @@ class TextRange final : public ITextRangeProvider {
     HRESULT STDMETHODCALLTYPE MoveEndpointByRange(TextPatternRangeEndpoint e, ITextRangeProvider *r,
                                                   TextPatternRangeEndpoint f) override {
         auto o = dynamic_cast<TextRange *>(r);
-        if (!o || o->owner != owner || !endpoint(e) || !endpoint(f))
+        if (!o || o->owner_ != owner_ || !endpoint(e) || !endpoint(f))
             return E_INVALIDARG;
         return call([&](const auto &) {
-            if (revision != o->revision)
+            if (revision_ != o->revision_)
                 return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
-            unsigned pos = f == TextPatternRangeEndpoint_Start ? o->first : o->last;
+            unsigned pos = f == TextPatternRangeEndpoint_Start ? o->first_ : o->last_;
             if (e == TextPatternRangeEndpoint_Start) {
-                first = pos;
-                last = std::max(last, first);
+                first_ = pos;
+                last_ = std::max(last_, first_);
             } else {
-                last = pos;
-                first = std::min(first, last);
+                last_ = pos;
+                first_ = std::min(first_, last_);
             }
             return S_OK;
         });
@@ -968,17 +968,17 @@ class TextRange final : public ITextRangeProvider {
     HRESULT STDMETHODCALLTYPE Select() override {
         return call([&](const auto &) {
             return statusHr(
-                owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
+                owner_->ctx->ui->semantics().perform(owner_->ref, Verb::select, Selection{first_, last_}).status);
         });
     }
     HRESULT STDMETHODCALLTYPE AddToSelection() override {
         return call([&](const auto &n) {
             auto s = n.textSelection.value_or(Selection{});
             if (s.anchor != s.caret &&
-                (std::min(s.anchor, s.caret) != first || std::max(s.anchor, s.caret) != last))
+                (std::min(s.anchor, s.caret) != first_ || std::max(s.anchor, s.caret) != last_))
                 return static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
             return statusHr(
-                owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
+                owner_->ctx->ui->semantics().perform(owner_->ref, Verb::select, Selection{first_, last_}).status);
         });
     }
     HRESULT STDMETHODCALLTYPE RemoveFromSelection() override {
@@ -990,8 +990,8 @@ class TextRange final : public ITextRangeProvider {
             if (!p || !p->multiline || !n.scroll)
                 return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
             // Offsets here are committed text; the lines are laid out over the visible text.
-            auto session = access(*owner->ctx->ui).edit(owner->ref.id);
-            unsigned at = first;
+            auto session = access(*owner_->ctx->ui).edit(owner_->ref.id);
+            unsigned at = first_;
             if (session && session->composing && at > session->begin())
                 at += static_cast<unsigned>(session->preedit.size()) - (session->end() - session->begin());
             auto view = p->view;
@@ -1001,7 +1001,7 @@ class TextRange final : public ITextRangeProvider {
             long long most = n.scroll->lineCount > n.scroll->visibleLines ? n.scroll->lineCount - n.scroll->visibleLines : 0;
             if (line >= n.scroll->firstLine && line < n.scroll->firstLine + visible)
                 return S_OK;
-            return statusHr(owner->ctx->ui->semantics().perform(owner->ref, Verb::scroll, static_cast<int>(std::clamp(target, 0LL, most))).status);
+            return statusHr(owner_->ctx->ui->semantics().perform(owner_->ref, Verb::scroll, static_cast<int>(std::clamp(target, 0LL, most))).status);
         });
     }
     HRESULT STDMETHODCALLTYPE GetChildren(SAFEARRAY **out) override {

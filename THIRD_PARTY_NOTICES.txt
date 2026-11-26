@@ -648,3 +648,41 @@ not be used in advertising or otherwise to promote the sale, use or other
 dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
+
+========================================================================
+Khronos Vulkan headers
+License: MIT, chosen from the Apache-2.0 OR MIT dual license
+Source: https://github.com/KhronosGroup/Vulkan-Headers/tree/6802bb4733b63ed5efd3adb308a6c885ef180ea1
+Tag: vulkan-sdk-1.4.363.0
+Commit: 6802bb4733b63ed5efd3adb308a6c885ef180ea1
+Copyright 2015-2026 The Khronos Group Inc.
+vk_video/vulkan_video_codec_av1std.h
+vk_video/vulkan_video_codec_av1std_decode.h
+vk_video/vulkan_video_codec_av1std_encode.h
+vk_video/vulkan_video_codec_h264std.h
+vk_video/vulkan_video_codec_h264std_decode.h
+vk_video/vulkan_video_codec_h264std_encode.h
+vk_video/vulkan_video_codec_h265std.h
+vk_video/vulkan_video_codec_h265std_decode.h
+vk_video/vulkan_video_codec_h265std_encode.h
+vk_video/vulkan_video_codec_vp9std.h
+vk_video/vulkan_video_codec_vp9std_decode.h
+vk_video/vulkan_video_codecs_common.h
+vulkan/LICENSES/MIT.txt
+vulkan/vk_platform.h
+vulkan/vulkan.h
+vulkan/vulkan_core.h
+vulkan/vulkan_wayland.h
+vulkan/vulkan_win32.h
+vulkan/vulkan_xcb.h
+------------------------------------------------------------------------ LICENSES/MIT.txt
+MIT License
+
+Copyright (c) 2015-2023 The Khronos Group Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+

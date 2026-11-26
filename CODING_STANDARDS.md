@@ -33,6 +33,7 @@ the words public names use are these.
   (`ComponentKind::radioGroup`, `Ui::addRadioGroup`, `RadioGroupHandle`). A typed reference to one thing is
   `XxxHandle`; what an operation hands back, when it is more than a `Result`, is `XxxResult` (`ConfirmationResult`,
   `CreateResult`, `RunResult`).
+- A product name keeps its own capitals after the first letter (`RenderBackendKind::openGL`).
 - Boundaries. Semantic property-event strings follow their C++ names (`"readOnly"`, `"numericValue"`). Standard-library
   and foreign API names keep their required spelling. CMake targets, file names, persisted demo `settings.json` keys,
   macros (`ISODUO_OP`), menu command identifiers (`"isoduo.undo"`) and other runtime text are outside the C++ naming rules.
@@ -40,6 +41,8 @@ the words public names use are these.
   with legacy names permitted only in readers and migration fixtures. CTest
   `public_names` checks public header declarations (including the generated version header template); its fixtures
   reject snake_case and exclude comments, literals, `std::` names, macros and private trailing underscores.
+  CTest `identifier_naming` uses clang-tidy and the build's compile commands to enforce declaration naming
+  in Isoduo translation units and their headers. The Windows and Linux desktop CI builds require clang-tidy.
 - A. An enumeration that says which kind of thing something is, is `XxxKind` (`ComponentKind`, `LabelKind`,
   `DiagnosticKind`, `layout::Node::Kind`, `SemanticEventKind`). Kind only classifies a thing: a choice of how something
   behaves is `XxxMode` or `XxxMethod` (`MenuMode`, `FocusIndicatorMode`, `WritingMode`, `JustifyMethod`), and `Density`,
