@@ -134,6 +134,7 @@ int controlType(Role r) {
     case Role::list: return UIA_ListControlTypeId;
     case Role::tabs: return UIA_TabControlTypeId;
     case Role::tabItem: return UIA_TabItemControlTypeId;
+    case Role::drawingArea: return UIA_ImageControlTypeId;
     case Role::progress: return UIA_ProgressBarControlTypeId;
     case Role::dialog: return UIA_WindowControlTypeId;
     case Role::tooltip: return UIA_ToolTipControlTypeId;

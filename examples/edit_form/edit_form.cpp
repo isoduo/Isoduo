@@ -168,6 +168,12 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.v03Title.connectSource([this, v03TitleId, v03TitleText] {
             return clipPaddingId_ == v03TitleId ? clipPaddingText_ : v03TitleText;
         });
+        handles.swatch = ui.addDrawingArea({.id = prefix + "v03.swatch", .label = u"Accent color"}).value.value();
+        ui.addLabel({.id = prefix + "v03.swatch.description", .value = u"Current accent",
+                     .target = prefix + "v03.swatch", .labelKind = LabelKind::description});
+        handles.swatch.onDraw([](const DrawingEnvironment& env) {
+            return env.fillRect({0, 0, env.size().w, env.size().h}, env.palette().accent);
+        });
         handles.progress = ui.addProgress({.id = prefix + "v03.progress", .label = u"Demo Progress"}).value.value();
         handles.progressSource = ui.addLabel({.id = prefix + "v03.source"}).value.value();
         handles.progressZero = ui.addButton({.id = prefix + "v03.zero", .label = u"0%"}).value.value();
@@ -335,7 +341,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
                 list->handles.hundred, list->handles.sort, list->handles.disableEight, list->handles.reset,
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
-            {{"v03"}, u"Confirm", true, {handles.v03Title, handles.progress, handles.progressSource, handles.dialogResult,
+            {{"v03"}, u"Confirm", true, {handles.v03Title, handles.swatch, handles.progress, handles.progressSource, handles.dialogResult,
                 handles.progressZero, handles.progressHalf, handles.progressFull, handles.progressBelow, handles.progressAbove, handles.resetV03, handles.dialogOpen, handles.dialogTemporary}},
             {{"v04"}, u"Presentation Settings", true, {handles.v04Title, handles.font, handles.textSize, handles.dark, handles.compact, handles.preview, handles.fontStatus, handles.resetV04,
                 handles.justifySample, handles.justifyAlign, handles.justifyMethod, handles.distributeName, handles.distributePlain}}
@@ -525,7 +531,7 @@ layout::Node Form::page() const {
         content = layout::scroll(column(std::move(items), 16, 24));
     }
 
-    else content = layout::scroll(column({component(handles.v03Title, 24), component(handles.progress), component(handles.progressSource), component(handles.dialogResult), component(handles.dialogOpen), component(handles.dialogTemporary),
+    else content = layout::scroll(column({component(handles.v03Title, 24), layout::drawingArea(handles.swatch, 16), component(handles.progress), component(handles.progressSource), component(handles.dialogResult), component(handles.dialogOpen), component(handles.dialogTemporary),
         grid({component(handles.progressZero), component(handles.progressHalf), component(handles.progressFull),
               component(handles.progressBelow), component(handles.progressAbove), component(handles.resetV03)}, 120, 8)}, 16, 24));
     return modal(pinned(component(handles.tabs), std::move(content)),

@@ -14,7 +14,7 @@
 namespace handleKinds {
 using All = std::tuple<isoduo::TextFieldHandle, isoduo::ButtonHandle, isoduo::LabelHandle, isoduo::CheckboxHandle, isoduo::RadioGroupHandle,
                        isoduo::SliderHandle, isoduo::ProgressHandle, isoduo::DropdownHandle, isoduo::TabsHandle, isoduo::NavigationListHandle,
-                       isoduo::ListHandle, isoduo::DialogHandle, isoduo::TooltipHandle, isoduo::ContextMenuHandle>;
+                       isoduo::DrawingAreaHandle, isoduo::ListHandle, isoduo::DialogHandle, isoduo::TooltipHandle, isoduo::ContextMenuHandle>;
 template <class A, class... H> constexpr bool comparesOnlyWithItself = ((std::is_same_v<A, H> || !std::equality_comparable_with<A, H>) && ...);
 // Every kind in the list has operator== and compares with no other kind in the list.
 template <class... H> constexpr bool compareWithinTheirKindOnly(std::tuple<H...>*) {

@@ -676,7 +676,7 @@ void compactTargetsMeetMinimumHeight() {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {
-            if (item.kind == ComponentKind::label || item.kind == ComponentKind::progress) continue;
+            if (!detail::componentType(item.kind).acceptsPointer()) continue;
             check(item.bounds.h >= 24, "Clickable component is at least 24 DIP high");
             for (auto option : item.options) check(option.h >= 24, "Clickable row is at least 24 DIP high");
         }
@@ -2195,6 +2195,10 @@ void x04NormalInventoryAtEachSizeAndScale() {
                 auto ownerSemantic = state.describe(owner);
                 PaintTextProbe paint(state, *item, *ownerSemantic, *appearance, scale, true);
                 detail::componentType(item->kind).paint(paint);
+                if (semantic->kind == ComponentKind::drawingArea) {
+                    auto accent = appearance->palette(form.ui.presentation().variant).accent;
+                    check(paint.colors == std::vector<Color>{accent}, "showcase image draws the accent swatch");
+                }
                 for (const auto& expected : x04::normalText(*semantic))
                     check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
             }
@@ -2212,6 +2216,10 @@ void x04DisabledInventoryAtEachSizeAndScale(bool dark = false) {
             auto baseline = x04::snapshot(form);
             auto initial = x04::describe(entry.handle);
             if (!detail::componentType(initial->kind).supportsState(detail::ComponentState::disabled)) continue;
+            if (auto image = std::get_if<DrawingAreaHandle>(&entry.handle)) {
+                check(x04::disabledDrawingArea(*image), "disabled showcase image remains passive");
+                continue;
+            }
             if (initial->kind == ComponentKind::tabs) {
                 auto tabs = std::get<TabsHandle>(entry.handle);
                 check(bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus()), "X04 disable tab page");

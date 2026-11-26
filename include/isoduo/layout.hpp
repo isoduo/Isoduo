@@ -117,6 +117,7 @@ struct Node {
     ScrollState* scrollState = nullptr; // bounded nested viewport: caller keeps this state alive
     int scrollHeight = 0; // viewport height in DIP; 0 fills the available space
     bool scrollableText = false; // a single label may receive focus when it overflows
+    int drawingHeight = 0;
     int verticalHeight = 0;      // component: height in DIP of a vertical-writing label; 0 = columns never wrap
     std::vector<Node> children;
 };
@@ -131,6 +132,7 @@ Node scrollText(LabelHandle label, ScrollState& state, int height);
 // fills columns of that height from right to left, and its width follows from the number of columns; when
 // the columns are wider than the space offered, the label scrolls sideways by itself (initially showing
 // the right end, where the text starts). In horizontal writing mode it lays out as an ordinary label.
+Node drawingArea(DrawingAreaHandle area, int height);
 Node verticalText(LabelHandle label, int height);
 Node pinned(Node header, Node content); // fixed header above a scroll region
 Node stack(std::vector<Node> children); // later children are painted and hit above earlier children
@@ -237,6 +239,7 @@ struct Frame {
     const Placement* find(const CheckboxHandle& handle) const;
     const Placement* find(const RadioGroupHandle& handle) const;
     const Placement* find(const SliderHandle& handle) const;
+    const Placement* find(const DrawingAreaHandle& handle) const;
     const Placement* find(const ProgressHandle& handle) const;
     const Placement* find(const DropdownHandle& handle) const;
     const Placement* find(const TabsHandle& handle) const;

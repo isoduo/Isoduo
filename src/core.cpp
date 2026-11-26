@@ -351,6 +351,126 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
     for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
+Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
+    auto commands = commands_.lock();
+    if (!commands) return {Status::notFound, u"Drawing has finished"};
+    if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) ||
+        !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
+        return {Status::invalidValue, u"Drawing rectangles require finite coordinates and nonnegative dimensions"};
+    commands->push_back({DrawingCommandKind::fillRect, rect, color, opacity});
+    return {};
+}
+
+void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale) {
+    auto entry = drawings_.find(placement.id);
+    if (entry == drawings_.end() || removalPending(placement.id)) return;
+    auto& field = entry->second;
+    const auto bounds = placement.bounds;
+#ifndef NDEBUG
+    if (bounds.h == 0 && !field.diagnosedHeight) {
+        field.diagnosedHeight = true;
+        auto message = placement.id + " needs layout::drawingArea with a positive height";
+        diagnosticMessages.push_back(message);
+        outputDiagnostic(message);
+    }
+#endif
+    if (!field.draw || rendererFailed_) return;
+    DipSize size{bounds.w / scale, bounds.h / scale};
+    if (field.scale != scale || field.content.size != size) field.content.pending = true;
+    auto visible = intersect(bounds, placement.clip);
+    if (!field.content.pending || visible.w <= 0 || visible.h <= 0) return;
+
+    DrawingEnvironment env;
+    env.size_ = size;
+    env.scale_ = scale;
+    env.palette_ = effectivePalette(appearance);
+    env.variant_ = presentation_.variant;
+    env.enabled_ = find(placement.id)->enabled;
+    auto commands = std::make_shared<std::vector<DrawingCommand>>();
+    env.commands_ = commands;
+    Result result;
+    try {
+        auto draw = field.draw;
+        result = draw(env);
+    } catch (...) {
+        result = {Status::failed, u"Drawing callback threw"};
+    }
+    field.scale = scale;
+    field.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
+    field.pixels.clear();
+    if (!result) {
+        auto message = placement.id + " drawing failed";
+        diagnosticMessages.push_back(message);
+        outputDiagnostic(message);
+        return;
+    }
+    field.content.commands = std::move(*commands);
+    // Clip the independently rounded edges before narrowing to the integer pixel grid.
+    auto edge = [scale](double value, int limit) {
+        return static_cast<int>(std::clamp(std::round(value * scale), 0.0, static_cast<double>(limit)));
+    };
+    for (const auto& command : field.content.commands) {
+        auto r = command.rect;
+        int left = edge(r.x, bounds.w), top = edge(r.y, bounds.h);
+        int right = edge(double(r.x) + r.w, bounds.w), bottom = edge(double(r.y) + r.h, bounds.h);
+        field.pixels.push_back({left, top, right - left, bottom - top});
+    }
+}
+
+Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)> draw) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        auto& field = ui_->drawings_.at(id_);
+        field.draw = std::move(draw);
+        if (field.draw) field.content.pending = true;
+        else {
+            field.content = {};
+            field.pixels.clear();
+        }
+        ui_->invalidate();
+        return {};
+    });
+}
+Result DrawingAreaHandle::requestRedraw() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& field = ui_->drawings_.at(id_);
+        if (field.draw && !field.content.pending) {
+            field.content.pending = true;
+            ui_->invalidate();
+        }
+        return {};
+    });
+}
+Result DrawingAreaHandle::enable(bool enabled) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        if (ui_->find(id_)->enabled != enabled) {
+            ui_->enable(id_, enabled);
+            auto& field = ui_->drawings_.at(id_);
+            field.content.pending = bool(field.draw);
+            ui_->invalidate();
+        }
+        return {};
+    });
+}
+Query<DrawingContent> DrawingAreaHandle::content() const {
+    return detail::UiState::operate(*this, [&]() -> Query<DrawingContent> {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return {r.status, r.message, {}};
+        return {Status::ok, {}, ui_->drawings_.at(id_).content};
+    });
+}
+
+DrawingAreaHandle detail::UiState::addDrawingArea(Component control) {
+    OperationScope operation(this);
+    if (control.id.empty() || find(control.id))
+        throw std::invalid_argument("Invalid drawing area component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    drawings_.try_emplace(id);
+    return DrawingAreaHandle(this, componentLifetime(id), id);
+}
+
 ProgressHandle detail::UiState::addProgress(Component control) {
     OperationScope operation(this);
     if (control.id.empty() || find(control.id))
@@ -373,6 +493,10 @@ Result ProgressHandle::connectSource(Source<int> source) const {
         return {};
     });
 }
+Query<ComponentSnapshot> DrawingAreaHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
+}
+
 Query<ComponentSnapshot> ProgressHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
 }
@@ -1770,6 +1894,10 @@ Result RadioGroupHandle::remove() const {
 Result SliderHandle::remove() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
 }
+Result DrawingAreaHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
+}
+
 Result ProgressHandle::remove() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
 }
@@ -3463,6 +3591,9 @@ Query<SliderHandle> Ui::addSlider(ComponentConfig config, SliderRange range) {
     return addComponent<SliderHandle>(*state_, ComponentKind::slider, std::move(config),
         [&](auto c) { return state_->addSlider(std::move(c), range); }, std::move(validRange));
 }
+Query<DrawingAreaHandle> Ui::addDrawingArea(ComponentConfig config) {
+    return addComponent<DrawingAreaHandle>(*state_, ComponentKind::drawingArea, std::move(config), [&](auto c) { return state_->addDrawingArea(std::move(c)); });
+}
 Query<ProgressHandle> Ui::addProgress(ComponentConfig config) {
     return addComponent<ProgressHandle>(*state_, ComponentKind::progress, std::move(config), [&](auto c) { return state_->addProgress(std::move(c)); });
 }
@@ -3582,7 +3713,7 @@ void detail::UiState::semanticFrame(const Frame& frame) {
         auto c = find(id); auto s = describe(id);
         if (c && s && componentType(c->kind).needsName() && s->name.empty() && diagnosedNames_.insert(id).second)
         {
-            auto message = id + " is focusable but has no name";
+            auto message = id + " has no name";
             diagnosticMessages.push_back(message);
             outputDiagnostic(message);
         }

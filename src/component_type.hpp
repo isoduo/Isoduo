@@ -43,6 +43,7 @@ struct ComponentLayout {
     int width;
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
+    int drawingHeight = 0;
     int verticalHeight = 0; // physical pixels given by layout::verticalText; 0 = columns never wrap
     // The appearance's sizes and texts for the density in force now.
     ComponentPresentation presentation() const;
@@ -209,6 +210,7 @@ public:
     // A pointer press starts a value drag (a slider); true when it did.
     virtual bool beginValueDrag(UiState&, const Placement&, int /*x*/, float /*scale*/) const { return false; }
     // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
+    virtual bool acceptsContextMenu() const { return true; }
     virtual bool hasBuiltinMenu() const { return false; }
     virtual void builtinMenuEntries(const UiState&, const Component&, bool /*clipboardText*/, std::vector<UiState::MenuEntry>&) const {}
     virtual Result runBuiltinMenu(UiState&, const std::string&, std::string_view) const { return {Status::notFound, u"Menu item not found"}; }

@@ -74,6 +74,8 @@ int runFixture(std::string mode) {
     auto progress = ui.addProgress({.id = id("progress"), .label = u"Progress"}).value.value();
     auto dropdown = ui.addDropdown({.id = id("dropdown"), .label = u"Option"},
         {{{"one"}, u"One"}, {{"two"}, u"Two"}, {{"disabled"}, u"Disabled", false}}).value.value();
+    auto image = *ui.addDrawingArea({.id = id("image"), .label = u"Chart", .enabled = false});
+    ui.addLabel({.id = id("caption"), .value = u"Yearly totals", .target = id("image"), .labelKind = LabelKind::description});
     const auto subscribe = [](auto) { return [] {}; };
     std::u16string saved = injectFailure ? u"Retained draft" : u"A\U0001F642\u4e2d";
     std::u16string replacementValue = u"New";
@@ -176,6 +178,10 @@ int runFixture(std::string mode) {
             button.focus();
         }
     });
+    if (mode == "drawing-area") {
+        auto pages = *ui.addTabs({.id = id("pages")}, {{{"chart"}, u"Chart", true, {image}}, {{"other"}, u"Other", true, {}}});
+        close.bind([pages] { return pages.activate({"other"}); });
+    }
     DesktopConfig config;
     config.title = u"Isoduo Accessibility ";
     config.title.append(mode.begin(), mode.end());
@@ -189,7 +195,7 @@ int runFixture(std::string mode) {
         return CloseDecision::close;
     };
     auto created = detail::LinuxDesktopTest::create(ui, webAppearance(), [&] {
-        return layout::column({layout::component(button), layout::component(label), layout::component(text),
+        return layout::column({layout::drawingArea(image, 12), layout::component(button), layout::component(label), layout::component(text),
             layout::component(check), layout::component(slider), layout::component(progress),
             layout::component(dropdown), layout::component(remove), layout::component(replaced),
             layout::component(close)});

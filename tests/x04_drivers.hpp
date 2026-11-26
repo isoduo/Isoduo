@@ -118,6 +118,7 @@ inline std::vector<std::u16string> normalText(const isoduo::ComponentSnapshot& s
         text.erase(std::remove(text.begin(), text.end(), u'\n'), text.end());
         if (!text.empty()) result.push_back(std::move(text));
     };
+    if (s.kind == ComponentKind::drawingArea) return {}; // The accessible name is not painted text.
     if (s.kind == ComponentKind::label) add(s.value);
     else {
         add(s.name);
@@ -144,6 +145,13 @@ inline bool focusApplicable(const isoduo::ComponentSnapshot& semantic) {
 inline bool focus(isoduo::Ui& ui, const isoduo::ComponentHandle& value) {
     auto id = isoduo::detail::access(ui).layoutId(value);
     return id && bool(ui.semantics().perform({*id}, isoduo::Verb::focus));
+}
+// The showcase image has owner-configured enabled state and never receives input focus.
+inline bool disabledDrawingArea(const isoduo::DrawingAreaHandle& area) {
+    const bool enabled = area.describe()->enabled;
+    if (!area.enable(false)) return false;
+    auto snapshot = area.describe();
+    return snapshot && !snapshot->enabled && !snapshot->focusable && snapshot->verbs.empty() && bool(area.enable(enabled));
 }
 inline bool disabledRetry(const isoduo::ComponentHandle& value) {
     return std::visit([](const auto& h) {

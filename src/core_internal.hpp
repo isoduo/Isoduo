@@ -80,6 +80,8 @@ public:
     CheckboxHandle addCheckbox(Component control);
     RadioGroupHandle addRadioGroup(Component control, std::vector<OptionItem> options);
     SliderHandle addSlider(Component control, SliderRange range);
+    DrawingAreaHandle addDrawingArea(Component control);
+    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale);
     ProgressHandle addProgress(Component control);
     DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
     TabsHandle addTabs(Component control, std::vector<TabPage> pages);
@@ -419,6 +421,7 @@ private:
     friend class ::isoduo::NavigationListHandle;
     friend class ::isoduo::TextFieldHandle;
     friend class ::isoduo::ButtonHandle;
+    friend class ::isoduo::DrawingAreaHandle;
     friend class ::isoduo::LabelHandle;
     friend class ::isoduo::CheckboxHandle;
     friend class ::isoduo::RadioGroupHandle;
@@ -632,6 +635,14 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
+    struct DrawingField {
+        std::function<Result(const DrawingEnvironment&)> draw;
+        DrawingContent content;
+        std::vector<Rect> pixels;
+        float scale = 0;
+        bool diagnosedHeight = false;
+    };
+    std::map<Id, DrawingField, std::less<>> drawings_;
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numericSourceChanged(const Id& id);
     Result selectOption(const Id& id, OptionValue value);
