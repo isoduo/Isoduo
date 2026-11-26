@@ -29,7 +29,7 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (msg == WM_GETOBJECT && static_cast<LONG>(l) == UiaRootObjectId) ++rootRequests;
     if (msg == WM_APP + 80) {
         switch (w) {
-        case 75: return static_cast<LRESULT>(activeForm->handles.swatch.enable(l != 0).status);
+        case 75: return static_cast<LRESULT>(activeForm->handles.chart.enable(l != 0).status);
         case 2: return static_cast<LRESULT>(activeForm->handles.tabs.activate({"v03"}).status);
         case 3: return static_cast<LRESULT>(activeForm->handles.dialogTemporary.remove().status);
         case 4: return static_cast<LRESULT>(activeForm->handles.resetV03.invoke().status);
@@ -158,8 +158,8 @@ int wmain(int argc, wchar_t** argv) {
             auto button = form.ui.addButton({.id = id, .label = u"Status fixture"}).value.value();
             button.bind([i] { return isoduo::Result{static_cast<isoduo::Status>(i), {}}; });
         }
-        form.ui.addLabel({.id = "fixture.swatch.caption", .value = u"Current accent",
-                          .target = form.handles.swatch.describe()->id, .labelKind = isoduo::LabelKind::description});
+        form.ui.addLabel({.id = "fixture.chart.caption", .value = u"Completed and remaining progress",
+                          .target = form.handles.chart.describe()->id, .labelKind = isoduo::LabelKind::description});
         auto disabled = form.ui.addButton({.id = "fixture.real_disabled", .label = u"Disabled"}).value.value();
         disabled.enable(false);
         for (bool enabled : {false, true}) {
