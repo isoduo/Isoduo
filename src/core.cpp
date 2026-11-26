@@ -240,7 +240,7 @@ void detail::UiState::setSystemKeyboardCues(bool enabled) {
     focusCuesChanged();
 }
 Result detail::UiState::setPresentation(const PresentationSettings& settings) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.textSize < minTextSize || settings.textSize > maxTextSize ||
         (settings.density != Density::standard && settings.density != Density::compact) ||
@@ -258,6 +258,9 @@ Result detail::UiState::setPresentation(const PresentationSettings& settings) {
     reflows.focusIndicator = settings.focusIndicator;
     reflows.motion = settings.motion;
     const bool reflow = !(reflows == settings);
+    if (settings.variant != presentation_.variant || settings.density != presentation_.density ||
+        settings.textSize != presentation_.textSize || settings.fontFamily != presentation_.fontFamily)
+        invalidateDrawings();
     presentation_ = settings;
     if (reflow) ++layoutRevision_;
     refreshTooltips();
@@ -285,7 +288,7 @@ Palette detail::UiState::effectivePalette(const Appearance& appearance, const Th
     return palette;
 }
 Result detail::UiState::setPaletteOverrides(std::vector<PaletteOverride> overrides) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     std::u16string problems;
     auto reject = [&](const std::string& text) { problems += (problems.empty() ? u"" : u"; ") + ascii16(text); };
@@ -315,6 +318,7 @@ Result detail::UiState::setPaletteOverrides(std::vector<PaletteOverride> overrid
         }
     }
     if (!problems.empty()) return {Status::invalidValue, u"Palette overrides rejected: " + problems};
+    if (paletteOverrides_ != overrides) invalidateDrawings();
     paletteOverrides_ = std::move(overrides);
     if (invalidate_) invalidate_();
     return {};
@@ -352,6 +356,7 @@ detail::UiState::~UiState() {
     for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
 Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Drawing requires the UI thread"};
     auto commands = commands_.lock();
     if (!commands) return {Status::notFound, u"Drawing has finished"};
     if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) ||
@@ -359,6 +364,11 @@ Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opa
         return {Status::invalidValue, u"Drawing rectangles require finite coordinates and nonnegative dimensions"};
     commands->push_back({DrawingCommandKind::fillRect, rect, color, opacity});
     return {};
+}
+
+void detail::UiState::invalidateDrawings() {
+    for (auto& [id, field] : drawings_)
+        if (field.draw) field.content.pending = true;
 }
 
 void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale) {
@@ -378,7 +388,7 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     DipSize size{bounds.w / scale, bounds.h / scale};
     if (field.scale != scale || field.content.size != size) field.content.pending = true;
     auto visible = intersect(bounds, placement.clip);
-    if (!field.content.pending || visible.w <= 0 || visible.h <= 0) return;
+    if (windowHidden_ || !field.content.pending || visible.w <= 0 || visible.h <= 0) return;
 
     DrawingEnvironment env;
     env.size_ = size;
@@ -389,12 +399,13 @@ void detail::UiState::arrangeDrawing(const Placement& placement, const Appearanc
     auto commands = std::make_shared<std::vector<DrawingCommand>>();
     env.commands_ = commands;
     Result result;
+    drawing_ = true;
     try {
-        auto draw = field.draw;
-        result = draw(env);
+        result = field.draw(env);
     } catch (...) {
-        result = {Status::failed, u"Drawing callback threw"};
+        result.status = Status::failed;
     }
+    drawing_ = false;
     field.scale = scale;
     field.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
     field.pixels.clear();
@@ -1522,6 +1533,7 @@ Query<std::optional<HoverTarget>> detail::UiState::hoverQuery() const {
     return {Status::ok, {}, hoverTarget()};
 }
 Result detail::UiState::simulateHover(std::string_view id, const std::optional<OptionValue>& item) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     if (menuOpen()) return {Status::blockedByModal, u"A context menu is open"};
@@ -1542,7 +1554,7 @@ Result detail::UiState::simulateHover(std::string_view id, const std::optional<O
 }
 Result detail::UiState::clearSimulatedHover() {
     OperationScope operation(this);
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (!hoverSimulated_) return {};
     hoverSimulated_ = false;
@@ -2007,6 +2019,7 @@ static void adoptWritten(FieldState& f, const ConfirmFieldChange& written) {
 }
 Result detail::UiState::connectConfirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalidValue, u"Invalid confirmation group"};
@@ -3200,6 +3213,7 @@ Result detail::UiState::focus(std::string_view id) {
     return moveFocus(control->id);
 }
 Result detail::UiState::addShortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     auto targetId = layoutId(target);
     auto scopeId = layoutId(scope);
@@ -3550,8 +3564,13 @@ bool detail::UiState::registerable(std::string_view id) {
 #endif
     return false;
 }
-Result detail::UiState::creationAccess() const {
+Result detail::UiState::mutationAccess() const {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (drawing_) return {Status::busy, u"Drawing in progress"};
+    return {};
+}
+Result detail::UiState::creationAccess() const {
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (rendererFailed_) return {Status::rendererFailed, u"Renderer failed"};
     return {};
@@ -3640,7 +3659,7 @@ Result Ui::connectConfirmation(ButtonHandle button, std::vector<ConfirmField> fi
         std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
     return state_->connectConfirmation(std::move(button), std::move(fields), std::move(submit));
 }
-void Ui::onChange(std::function<void()> callback) { state_->onChange(std::move(callback)); }
+void Ui::onChange(std::function<void()> callback) { if (state_->mutationAccess()) state_->onChange(std::move(callback)); }
 Result Ui::setPresentation(const PresentationSettings& settings) { return state_->setPresentation(settings); }
 Query<bool> Ui::animating() const { return state_->animating(); }
 Query<std::optional<HoverTarget>> Ui::hover() const { return state_->hoverQuery(); }
@@ -3657,7 +3676,7 @@ Query<Palette> Ui::effectivePalette(const Appearance& appearance, const ThemeVar
     if (!appearance.supports(variant)) return {Status::invalidValue, u"Appearance does not support this theme variant", {}};
     return {Status::ok, {}, state_->effectivePalette(appearance, variant)};
 }
-void Ui::bindAppearance(const Appearance* appearance) { state_->bindAppearance(appearance); }
+void Ui::bindAppearance(const Appearance* appearance) { if (state_->mutationAccess()) state_->bindAppearance(appearance); }
 
 bool Ui::focusIndicatorVisible() const { return state_->focusIndicatorVisible(); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
@@ -3964,7 +3983,7 @@ void detail::UiState::semanticDiff() {
     if (wasEmpty && !semanticPending_.empty() && semanticSchedule_) semanticSchedule_();
 }
 Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> callback) {
-    if (std::this_thread::get_id() != state_->owner_ || !callback) return Subscription{};
+    if (std::this_thread::get_id() != state_->owner_ || state_->drawing_ || !callback) return Subscription{};
     auto id = ++state_->nextSemanticSubscriber_;
     state_->semanticSubscribers_.emplace(id, std::make_shared<std::function<void(const SemanticEvent&)>>(std::move(callback)));
     std::weak_ptr<void> lifetime = state_->lifetime_; auto state = state_;
@@ -3972,7 +3991,7 @@ Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> c
 }
 void SemanticTree::dispatchEvents() {
     auto& u = *state_;
-    if (std::this_thread::get_id() != u.owner_ || u.semanticDispatching_) return;
+    if (std::this_thread::get_id() != u.owner_ || u.drawing_ || u.semanticDispatching_) return;
     u.semanticDispatching_ = true;
     for (unsigned round = 0; round < 64 && !u.semanticPending_.empty(); ++round) {
         auto batch = std::exchange(u.semanticPending_, {});
@@ -3989,6 +4008,7 @@ void SemanticTree::dispatchEvents() {
     if (!u.semanticPending_.empty() && u.semanticSchedule_) u.semanticSchedule_();
 }
 Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
+    if (auto access = state_->mutationAccess(); !access) return access;
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->rendererFailed_) return {Status::rendererFailed, {}};

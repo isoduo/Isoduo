@@ -265,6 +265,7 @@ int drawingAreaPixels() {
     ScrollState scroll;
     DesktopHost host(ui, webAppearance(), [&] { return layout::drawingArea(area, 12); },
                      scroll, Fixture::options(), false, true);
+    host.hiddenSource([] { return false; });
     for (float scale : {1.f, 1.25f, 1.5f}) {
         auto result = host.compareGpu(64, 48, scale);
         if (!result) return 1;
@@ -284,6 +285,70 @@ int drawingAreaPixels() {
             }
         }
     }
+    return 0;
+}
+
+int drawingRecovery() {
+    Ui ui;
+    auto pending = *ui.addDrawingArea({.id = "pending", .label = u"Pending"});
+    auto retained = *ui.addDrawingArea({.id = "retained", .label = u"Retained"});
+    auto broken = *ui.addDrawingArea({.id = "broken", .label = u"Broken"});
+    Color ink{200, 10, 30}, replay{5, 90, 140};
+    int pendingCalls = 0, retainedCalls = 0;
+    pending.onDraw([&](const DrawingEnvironment& env) {
+        ++pendingCalls;
+        return env.fillRect({0,0,10,10}, ink);
+    });
+    retained.onDraw([&](const DrawingEnvironment& env) {
+        ++retainedCalls;
+        return env.fillRect({0,0,10,10}, replay);
+    });
+    broken.onDraw([](const DrawingEnvironment& env) {
+        env.fillRect({0,0,10,10}, {255,0,0});
+        return Result{Status::failed, {}};
+    });
+    auto page = [&] { return layout::column({layout::drawingArea(pending, 10),
+        layout::drawingArea(retained, 10), layout::drawingArea(broken, 10)}, 0, 0); };
+    ScrollState scroll;
+    detail::RendererTestHooks hooks;
+    auto config = Fixture::options();
+    DesktopHost host(ui, webAppearance(), page, scroll, config, false, true, &hooks);
+    host.forceScale(1);
+    RECT client{};
+    GetClientRect(host.window(), &client);
+    auto place = [&] { host.layout(client.right, client.bottom, 1, scroll, {}); };
+    host.hiddenSource([] { return true; });
+    pending.requestRedraw();
+    pending.requestRedraw();
+    place();
+    if (pendingCalls || retainedCalls) throw std::runtime_error("hidden window drew");
+    host.hiddenSource([] { return false; });
+    place();
+    host.hiddenSource([] { return true; });
+    place();
+    host.hiddenSource([] { return false; });
+    place();
+    if (pendingCalls != 1 || retainedCalls != 1) throw std::runtime_error("visibility redraw count");
+
+    if (config.renderBackend == RenderBackendKind::vulkan) hooks.submitResultAtFrame = {1, -2};
+    else hooks.errorAtFrame = 1;
+    host.paint();
+    if (!host.rendererFailed()) throw std::runtime_error("expected renderer failure");
+    ink = {20,180,40};
+    if (!pending.requestRedraw() || retained.onDraw({}).status != Status::rendererFailed)
+        throw std::runtime_error("failed renderer admission");
+    place();
+    if (pendingCalls != 1 || retainedCalls != 1 || !host.rebuildRenderer())
+        throw std::runtime_error("drawing ran before recovery or rebuild failed");
+    auto result = host.compareGpu(client.right, client.bottom, 1);
+    if (!result || pendingCalls != 2 || retainedCalls != 1) throw std::runtime_error("rebuild redraw count or comparison");
+    const auto& image = result.actual;
+    auto sample = [&](int y) {
+        auto i = (y * image.width + 2) * 4;
+        return Color{image.pixels[i], image.pixels[i+1], image.pixels[i+2]};
+    };
+    if (sample(2) != ink || sample(12) != replay || sample(22) != webAppearance().palette().background)
+        throw std::runtime_error("recovered, retained or failed drawing pixels");
     return 0;
 }
 
@@ -4657,7 +4722,7 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(reportCrash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool drawingPixels = false, dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
+        bool drawingRecoveryOnly = false, drawingPixels = false, dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
         bool multilineOnly = false, verticalOnly = false, richtextOnly = false, wordSelectOnly = false, justifyOnly = false;
                 bool uiaIme = false, demoComparison = false, demoPerf = false, demoPerfFont = false;
         bool ime = false, clipboardOnly = false, dpi = false, x02Only = false, x04Only = false, x04ClippedOnly = false, x04ExecutingOnly = false, x04DisabledOnly = false, x04SelectionOnly = false, hoverOnly = false, focusOnly = false;
@@ -4677,6 +4742,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--paint-delay-ms" && i+1<argc) perfDelay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perfDuration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            else if (arg == L"--drawing-recovery") drawingRecoveryOnly = true;
             else if (arg == L"--drawing-area") drawingPixels = true;
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01Only = true;
             else if (arg == L"--demo-compare") demoComparison = true;
@@ -4810,6 +4876,7 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
+        if (drawingRecoveryOnly) return drawingRecovery();
         if (drawingPixels) return drawingAreaPixels();
         if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
