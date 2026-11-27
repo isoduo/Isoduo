@@ -206,10 +206,7 @@ struct Desktop::Impl {
         });
     }
     void refreshPreferences() {
-        const auto settings = readLinuxDesktopPreferences();
-        auto& state = claim.state();
-        state.setSystemKeyboardCues(settings.keyboardCues.value_or(false));
-        if (settings.motion) state.setSystemMotion(*settings.motion);
+        applyLinuxDesktopPreferences(claim.state(), readLinuxDesktopPreferences());
     }
     void release() {
         accessibility.reset();
