@@ -537,6 +537,12 @@ private window station. It requires Windows Secondary Logon to start the local
 worker and fails if it cannot establish isolation. The `serialized_contract`
 test checks the same rich-text wire round trip without Windows.
 
+## Continuous integration
+
+The Core, Render, UIA trial, and Linux workflows run when a pull request is opened,
+reopened, or updated with new commits, and on pushes to `main` or to tags.
+Pushes to other branches only get CI through a pull request.
+
 ## Releasing
 
 A release is source only: the zip and tar.gz GitHub attaches to it. Its tag is `v` followed by
