@@ -22,6 +22,7 @@
 
 namespace isoduo::detail {
 int LinuxWindow::pollFileDescriptors(std::span<pollfd> descriptors, int timeout) {
+    if (observeWait) observeWait(timeout);
     if (preferences_) return preferences_->poll(descriptors, timeout);
     return ::poll(descriptors.data(), descriptors.size(), timeout);
 }
@@ -143,6 +144,7 @@ struct Desktop::Impl {
     bool leftPressed = false, rightPressed = false, hidden = false;
     std::uint64_t retryAt = 0;
     bool animationScheduled = false;
+    std::uint64_t nextAnimationAt = 0;
     bool painting = false, arranging = false;
     struct WorkScope {
         bool& flag;
@@ -191,7 +193,7 @@ struct Desktop::Impl {
         }
         window->observePreferences(*preferences);
         refreshPreferences();
-        state.animationTime(nowMs);
+        state.animationTime(std::chrono::steady_clock::now);
         state.tooltipClock(nowMs);
         state.setClickClock(nowMs);
         state.onInvalidate([this] { invalidateFrame(); });
@@ -207,7 +209,7 @@ struct Desktop::Impl {
         const auto settings = readLinuxDesktopPreferences();
         auto& state = claim.state();
         state.setSystemKeyboardCues(settings.keyboardCues.value_or(false));
-        state.setSystemAnimations(settings.animations.value_or(true));
+        if (settings.motion) state.setSystemMotion(*settings.motion);
     }
     void release() {
         accessibility.reset();
@@ -355,11 +357,26 @@ struct Desktop::Impl {
     }
     void paint() {
         retryAt = 0;
-        dirty = false;
+        auto& state = access(ui);
+        UiState::HostFrame clock(state);
         WorkScope work(painting);
         try {
             arrangeIfNeeded();
-            if (closing) return;
+            state.dispatchFrames();
+            if (closing || hidden || failure) return;
+            const bool transitionFrame = animationScheduled || state.animationRunning();
+            animationScheduled = state.animationRunning();
+            nextAnimationAt = nowMs() + 16;
+            if (!dirty && !transitionFrame) {
+                if (state.framesReady() && config.backend == DesktopBackendKind::wayland) {
+                    window->requestFrame();
+                    window->deferFrame();
+                }
+                return;
+            }
+            dirty = false;
+            if (transitionFrame) layoutDirty = true;
+            arrangeIfNeeded();
             const auto listStart = measureFrame ? PerfClock::now() : PerfClock::time_point{};
             const auto [width, height, scale] = layoutGeometry;
             prepareAtlas(scale);
@@ -611,12 +628,18 @@ struct Desktop::Impl {
         }
     }
     bool frameReady() {
-        return dirty && !hidden && !failure && nowMs() >= retryAt && window->prepareFrame();
+        if (hidden || failure || nowMs() < retryAt) return false;
+        const bool wantsFrame = animationScheduled || access(ui).animationRunning() || access(ui).framesReady();
+        const bool due = config.backend == DesktopBackendKind::wayland || nowMs() >= nextAnimationAt;
+        return (dirty || (wantsFrame && due)) && window->prepareFrame();
     }
     int delay() {
         if (failure) return -1;
-        int timeout = animationScheduled || access(ui).animationRunning() ? 16 : -1;
+        int timeout = -1;
         const auto now = nowMs();
+        if (!hidden && config.backend == DesktopBackendKind::x11 &&
+            (animationScheduled || access(ui).animationRunning() || access(ui).framesReady()))
+            timeout = nextAnimationAt > now ? static_cast<int>(nextAnimationAt - now) : 0;
         if (dirty && !hidden && retryAt) {
             const auto wait = retryAt > now ? static_cast<int>(retryAt - now) : 0;
             timeout = timeout < 0 ? wait : std::min(timeout, wait);
@@ -674,6 +697,14 @@ GpuComparison LinuxDesktopTest::compareFrame(Desktop& desktop, int width, int he
     RecordingCanvas canvas(width, height, access(host.ui).effectivePalette(host.appearance).background);
     paintDesktop(canvas, frame, scale, true, host.ui, host.appearance, host.text, host.measure);
     return detail::compareDrawList(*host.renderer, canvas.list, width, height, fault);
+}
+void LinuxDesktopTest::observeWait(Desktop& desktop, std::function<void(int)> observer) {
+    desktop.impl_->window->observeWait = std::move(observer);
+}
+void LinuxDesktopTest::setVisible(Desktop& desktop, bool visible) {
+    NativeEvent event(NativeEvent::Kind::visibility);
+    event.visible = visible;
+    desktop.impl_->dispatch(event, desktop);
 }
 void LinuxDesktopTest::observeFrames(Desktop& desktop, std::function<void(const Frame&, const LinuxClientGeometry&)> observer) {
     desktop.impl_->observeFrame = std::move(observer);
@@ -741,10 +772,6 @@ RunResult Desktop::run() {
             if (deadline && *deadline <= nowMs()) state.refreshTooltips();
             if (host.textScrollDeadline && *host.textScrollDeadline <= nowMs())
                 host.dragText(host.textDragPoint.first, host.textDragPoint.second);
-            const bool animating = state.animationRunning();
-            // A timer that outlives the transition still paints the terminal frame.
-            if (host.animationScheduled || animating) host.invalidateFrame();
-            host.animationScheduled = animating;
         }
     }
     host.window->handoffClipboard();

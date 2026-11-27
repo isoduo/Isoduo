@@ -18,6 +18,14 @@
 namespace isoduo {
 using Id = std::string;
 namespace detail {
+struct DrawingTextLayout {
+    std::vector<std::u16string> lines;
+    int pixels = 0, lineHeight = 0;
+    double x = 0, y = 0;
+    FontStyle face{};
+    float width = 0;
+};
+std::vector<std::u16string> wrapStyled(TextMeasure&, std::u16string_view, int pixels, int width, FontStyle);
 struct TextHit { unsigned offset = 0; bool upstream = false; };
 // A component as the framework keeps it: the application's configuration plus its component type (#96). The public
 // ComponentConfig names no type; Ui::add_x sets it, and a component created as data (the UiState constructor,
@@ -69,6 +77,9 @@ public:
             answer.message = std::u16string(gone);
             return answer;
         }
+        if constexpr (std::is_same_v<R, Result>) {
+            if (auto access = handle.ui_->mutationAccess(); !access) return access;
+        }
         return body();
     }
     explicit UiState(std::vector<Component> controls);
@@ -80,6 +91,9 @@ public:
     CheckboxHandle addCheckbox(Component control);
     RadioGroupHandle addRadioGroup(Component control, std::vector<OptionItem> options);
     SliderHandle addSlider(Component control, SliderRange range);
+    DrawingAreaHandle addDrawingArea(Component control);
+    void invalidateDrawings();
+    void arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure);
     ProgressHandle addProgress(Component control);
     DropdownHandle addDropdown(Component control, std::vector<OptionItem> options);
     TabsHandle addTabs(Component control, std::vector<TabPage> pages);
@@ -132,16 +146,38 @@ public:
     Result sliderPointer(const Id& id, int x);
     void sliderTrackRefresh(const Frame& frame);  // end of every arrange: where the held thumb is drawn now
     std::optional<int> sliderDragX(std::string_view id) const;
-    // #75 shared animation clock. The host (or a test) supplies the time source in milliseconds; with
+    // #75 shared animation clock. The host (or a test) supplies the steady time source; with
     // none installed every change is instant. Motion plays only when the source exists, presentation
     // motion is automatic, the system animation preference is on and the window is visible.
-    void animationTime(std::function<std::uint64_t()> source) { animations_.timeSource(std::move(source)); }
-    void setSystemAnimations(bool enabled);  // Windows "Show animations in Windows"; false ends running ones
+    void animationTime(std::function<std::chrono::steady_clock::time_point()> source) { animations_.timeSource(std::move(source)); }
+    MotionPreference motionPreference() const;
+    Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    Result simulateFrame(std::chrono::steady_clock::duration advance);
+    Result simulateSystemMotion(MotionPreference preference);
+    Result setSystemMotion(MotionPreference preference);
     void setWindowHidden(bool hidden);       // minimized / fully covered; true ends running ones
     bool motionEnabled() const;
     void finishAnimations();                  // every running animation jumps to its end
     // The one query behind Ui::animating and SemanticTree::animating (same admission and statuses).
     Query<bool> animating() const;
+    using FrameClock = std::chrono::steady_clock;
+    class HostFrame {
+    public:
+        explicit HostFrame(UiState& state, std::optional<FrameClock::time_point> time = {}) : state_(state) {
+            state_.frameTime_ = std::max(state_.frameTime_, time ? *time : state_.animations_.now());
+            state_.animations_.sample(state_.frameTime_);
+        }
+        ~HostFrame() { state_.animations_.sample({}); }
+        FrameClock::time_point time() const { return state_.frameTime_; }
+        HostFrame(const HostFrame&) = delete;
+        HostFrame& operator=(const HostFrame&) = delete;
+    private:
+        UiState& state_;
+    };
+    Result dispatchFrames();
+    bool framesReady() const;
+    bool hasFrameRequests() const;
+    std::function<void()> scheduleFrames;
     bool animationRunning() const;            // host: schedule the next frame only while true
     // Thumb position as a 0..1 share of the track while a transition runs; nothing otherwise.
     std::optional<double> sliderAnimatedRatio(std::string_view id) const;
@@ -378,6 +414,8 @@ public:
     std::optional<Color> namedColor(std::string_view id, std::string_view name) const;
     bool modal() const { return modal_; }
     bool stopped() const { return stopped_; }
+    Result mutationAccess() const;
+    bool drawing() const { return drawing_; }
     Result creationAccess() const;
     void rendererFailed(bool failed);
     // ---- Context menu (src/context_menu.cpp). One menu is open per window; it never changes focus_.
@@ -419,6 +457,7 @@ private:
     friend class ::isoduo::NavigationListHandle;
     friend class ::isoduo::TextFieldHandle;
     friend class ::isoduo::ButtonHandle;
+    friend class ::isoduo::DrawingAreaHandle;
     friend class ::isoduo::LabelHandle;
     friend class ::isoduo::CheckboxHandle;
     friend class ::isoduo::RadioGroupHandle;
@@ -439,6 +478,7 @@ private:
     std::function<void()> presentationChanged_;
     std::vector<PaletteOverride> paletteOverrides_;
     const Appearance* boundAppearance_ = nullptr;
+    bool drawing_ = false;
     std::thread::id owner_ = std::this_thread::get_id();
     std::vector<Component> controls_;
     std::map<Id, std::uint64_t, std::less<>> semanticInstances_;
@@ -632,6 +672,26 @@ private:
     // The first read of a source replaceSource installed. The old connection is gone by then, so a throwing read stops the Ui.
     template <class Read> Result readInstalledSource(Read&& read);
     struct ProgressField { Source<int> source; std::function<void()> disconnect; };
+    struct DrawingPrimitive {
+        Rect rect, clip;
+        int radius;
+        Color color;
+        unsigned char opacity;
+        std::optional<DrawingTextLayout> text{};
+    };
+    struct DrawingAreaState {
+        std::function<Result(const DrawingEnvironment&)> draw;
+        std::shared_ptr<std::function<Result(const FrameInfo&)>> frame;
+        std::uint64_t request = 0, admitted = 0;
+        DrawingContent content;
+        std::vector<DrawingPrimitive> primitives;
+        float scale = 0;
+        bool diagnosedHeight = false;
+    };
+    std::uint64_t nextRequest_ = 0;
+    FrameClock::time_point frameTime_{};
+    bool dispatchingFrames_ = false;
+    std::map<Id, DrawingAreaState, std::less<>> drawings_;
     std::map<Id, ProgressField, std::less<>> progresses_;
     void numericSourceChanged(const Id& id);
     Result selectOption(const Id& id, OptionValue value);
@@ -671,7 +731,10 @@ private:
     struct SliderDrag { Id id; double origin = 0, width = 1; int x = 0, pressX = 0; bool held = false; double seenOrigin = 0, seenWidth = 1; int threshold = 4; };
     std::optional<SliderDrag> sliderDrag_;
     AnimationClock animations_;
-    bool systemAnimations_ = true, windowHidden_ = false;
+    Result effectiveMotionChanged(MotionPreference previous);
+    MotionPreference systemMotion_ = MotionPreference::noPreference;
+    std::shared_ptr<std::function<void(MotionPreference)>> motionChanged_;
+    bool windowHidden_ = false;
     std::map<Id, int, std::less<>> sliderTargets_;  // value each running thumb transition is heading to
     static std::string sliderAnimationKey(std::string_view id) { return "slider:" + std::string(id); }
     bool sliderTransitionLive(std::string_view id) const;

@@ -17,9 +17,9 @@ struct ThemeVariant {
     static ThemeVariant highContrast() { return {"high-contrast"}; }
     bool operator==(const ThemeVariant&) const = default;
 };
-// Whether on-screen transitions play. There is deliberately no "always on": automatic follows the
-// operating system's animation preference (Windows "Show animations in Windows") and off never plays.
+// Automatic follows the system motion preference. Off overrides the system preference.
 enum class Motion { automatic, off };
+enum class MotionPreference { noPreference, reduce, off };
 inline constexpr int minTextSize = 12, maxTextSize = 28;
 // The focus ring's thickness and corner radius, in DIP, when the application sets them.
 inline constexpr int minFocusRingWidth = 2, maxFocusRingWidth = 6;

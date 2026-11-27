@@ -4,6 +4,7 @@
 #include "rich_text.hpp"
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #ifdef _WIN32
 #define NOMINMAX
@@ -11,7 +12,6 @@
 #endif
 namespace isoduo {
 namespace {
-#ifndef NDEBUG
 void outputDiagnostic(const std::string& message) {
 #ifdef _WIN32
     auto utf16 = detail::utf16FromUtf8(message);
@@ -20,7 +20,6 @@ void outputDiagnostic(const std::string& message) {
     std::fputs(message.c_str(), stderr);
 #endif
 }
-#endif
 }
 namespace {
 bool validText(std::u16string_view text, std::size_t maxLength, bool allowLineFeed) {
@@ -240,7 +239,7 @@ void detail::UiState::setSystemKeyboardCues(bool enabled) {
     focusCuesChanged();
 }
 Result detail::UiState::setPresentation(const PresentationSettings& settings) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (settings.textSize < minTextSize || settings.textSize > maxTextSize ||
         (settings.density != Density::standard && settings.density != Density::compact) ||
@@ -258,10 +257,14 @@ Result detail::UiState::setPresentation(const PresentationSettings& settings) {
     reflows.focusIndicator = settings.focusIndicator;
     reflows.motion = settings.motion;
     const bool reflow = !(reflows == settings);
+    if (settings.variant != presentation_.variant || settings.density != presentation_.density ||
+        settings.textSize != presentation_.textSize || settings.fontFamily != presentation_.fontFamily)
+        invalidateDrawings();
+    const auto previousMotion = motionPreference();
     presentation_ = settings;
     if (reflow) ++layoutRevision_;
     refreshTooltips();
-    if (!motionEnabled()) finishAnimations();  // switching motion off lands every running transition at once
+    if (auto r = effectiveMotionChanged(previousMotion); !r) return r;
     if (reflow && presentationChanged_) presentationChanged_();
     if (invalidate_) invalidate_();
     return {};
@@ -285,7 +288,7 @@ Palette detail::UiState::effectivePalette(const Appearance& appearance, const Th
     return palette;
 }
 Result detail::UiState::setPaletteOverrides(std::vector<PaletteOverride> overrides) {
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     std::u16string problems;
     auto reject = [&](const std::string& text) { problems += (problems.empty() ? u"" : u"; ") + ascii16(text); };
@@ -315,6 +318,7 @@ Result detail::UiState::setPaletteOverrides(std::vector<PaletteOverride> overrid
         }
     }
     if (!problems.empty()) return {Status::invalidValue, u"Palette overrides rejected: " + problems};
+    if (paletteOverrides_ != overrides) invalidateDrawings();
     paletteOverrides_ = std::move(overrides);
     if (invalidate_) invalidate_();
     return {};
@@ -351,6 +355,254 @@ detail::UiState::~UiState() {
     for (auto& [id, field] : progresses_) if (field.disconnect) field.disconnect();
     for (auto& [id, bound] : providers_) if (bound.disconnect) bound.disconnect();
 }
+namespace {
+bool validDrawingRect(DipRect rect) {
+    return std::isfinite(rect.x) && std::isfinite(rect.y) && std::isfinite(rect.w) && std::isfinite(rect.h)
+        && rect.w >= 0 && rect.h >= 0;
+}
+detail::DrawingTextLayout layoutDrawingText(TextMeasure& measure, int bodySize, float scale,
+        std::u16string_view text, DrawingTextStyle style, std::optional<float> width) {
+    detail::DrawingTextLayout layout;
+    layout.pixels = style.size == DrawingTextSize::caption ? std::max(1, bodySize * 7 / 8) : bodySize;
+    layout.lineHeight = measure.lineHeight(layout.pixels);
+    const int limit = std::numeric_limits<int>::max();
+    const int wrapWidth = width ? static_cast<int>(std::min<double>(limit, std::round(double(*width) * scale))) : limit;
+    layout.face = {style.bold, style.italic};
+    layout.lines = detail::wrapStyled(measure, text, layout.pixels, wrapWidth, layout.face);
+    for (const auto& line : layout.lines)
+        layout.width = std::max(layout.width, measure.measure(line, layout.pixels, layout.face).width);
+    return layout;
+}
+}
+Result DrawingEnvironment::access() const {
+    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Drawing requires the UI thread"};
+    if (commands_.expired()) return {Status::notFound, u"Drawing has finished"};
+    return {};
+}
+Query<DipSize> DrawingEnvironment::measureText(std::u16string_view text, DrawingTextStyle style, std::optional<float> width) const {
+    if (auto result = access(); !result) return {result.status, result.message, {}};
+    if (!validMultiLine(text) || (width && (!std::isfinite(*width) || *width < 0)))
+        return {Status::invalidValue, u"Invalid drawing text or wrap width", {}};
+    auto layout = layoutDrawingText(*measure_, textSize_, scale_, text, style, width);
+    return {Status::ok, {}, DipSize{layout.width / scale_, float(layout.lines.size()) * layout.lineHeight / scale_}};
+}
+Result DrawingEnvironment::drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style, Color color, unsigned char opacity) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validMultiLine(text) || !validDrawingRect(rect)) return {Status::invalidValue, u"Invalid drawing text or rectangle"};
+    commands->push_back({DrawingCommandKind::drawText, rect, color, opacity, 0, {}, std::u16string(text), style});
+    return {};
+}
+Result DrawingEnvironment::clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validDrawingRect(rect) || !draw) return {Status::invalidValue, u"Invalid clip block"};
+
+    // All copies of the environment write to the active block, including a captured outer environment.
+    DrawingCommand block{DrawingCommandKind::clip, rect, {}};
+    commands->swap(block.children);
+    Result result;
+    try {
+        result = draw(*this);
+    } catch (...) {
+        commands->swap(block.children);
+        throw;
+    }
+    commands->swap(block.children);
+    commands->push_back(std::move(block));
+    return result;
+}
+
+Result DrawingEnvironment::roundedRect(DipRect rect, float radius, Color color, unsigned char opacity) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validDrawingRect(rect) || !std::isfinite(radius) || radius < 0)
+        return {Status::invalidValue, u"Invalid rounded rectangle"};
+    commands->push_back({DrawingCommandKind::roundedRect, rect, color, opacity, radius});
+    return {};
+}
+
+Result DrawingEnvironment::fillRect(DipRect rect, Color color, unsigned char opacity) const {
+    if (auto result = access(); !result) return result;
+    auto commands = commands_.lock();
+    if (!validDrawingRect(rect))
+        return {Status::invalidValue, u"Drawing rectangles require finite coordinates and nonnegative dimensions"};
+    commands->push_back({DrawingCommandKind::fillRect, rect, color, opacity});
+    return {};
+}
+
+void detail::UiState::invalidateDrawings() {
+    for (auto& [id, area] : drawings_)
+        if (area.draw) area.content.pending = true;
+}
+
+void detail::UiState::arrangeDrawing(const Placement& placement, const Appearance& appearance, float scale, TextMeasure& measure) {
+    auto entry = drawings_.find(placement.id);
+    if (entry == drawings_.end() || removalPending(placement.id)) return;
+    auto& area = entry->second;
+    const auto bounds = placement.bounds;
+#ifndef NDEBUG
+    if (bounds.h == 0 && !area.diagnosedHeight) {
+        area.diagnosedHeight = true;
+        auto message = placement.id + " needs layout::drawingArea with a positive height";
+        diagnosticMessages.push_back(message);
+        outputDiagnostic(message);
+    }
+#endif
+    if (!area.draw || stopped_ || rendererFailed_) return;
+    DipSize size{bounds.w / scale, bounds.h / scale};
+    if (area.scale != scale || area.content.size != size) area.content.pending = true;
+    auto visible = intersect(bounds, placement.clip);
+    if (windowHidden_ || !area.content.pending || visible.w <= 0 || visible.h <= 0) return;
+
+    DrawingEnvironment env;
+    env.motionPreference_ = motionPreference();
+    env.measure_ = &measure;
+    env.textSize_ = placement.textSize;
+    env.size_ = size;
+    env.scale_ = scale;
+    env.palette_ = effectivePalette(appearance);
+    env.variant_ = presentation_.variant;
+    env.enabled_ = find(placement.id)->enabled;
+    auto commands = std::make_shared<std::vector<DrawingCommand>>();
+    env.commands_ = commands;
+    Result result;
+    drawing_ = true;
+    try {
+        result = area.draw(env);
+    } catch (...) {
+        result.status = Status::failed;
+    }
+    drawing_ = false;
+    area.scale = scale;
+    area.content = {result ? DrawingStatus::drawn : DrawingStatus::failed, false, size, {}};
+    area.primitives.clear();
+    if (!result) {
+        auto message = placement.id + " drawing failed";
+        diagnosticMessages.push_back(message);
+        outputDiagnostic(message);
+        return;
+    }
+    area.content.commands = std::move(*commands);
+    commands.reset();
+    // Preserve the original corners when a rounded shape extends beyond the clip.
+    // Leave integer headroom for edge differences and translation into client coordinates.
+    auto edge = [scale](double dip) {
+        constexpr double limit = std::numeric_limits<int>::max() / 4;
+        return static_cast<int>(std::clamp(std::round(dip * scale), -limit, limit));
+    };
+    auto flatten = [&](auto& visit, const std::vector<DrawingCommand>& list, Rect clip) -> void {
+        for (const auto& command : list) {
+            auto r = command.rect;
+            int left = edge(r.x), top = edge(r.y);
+            Rect rect{left, top, edge(double(r.x) + r.w) - left, edge(double(r.y) + r.h) - top};
+            auto visibleRect = intersect(rect, clip);
+            if (visibleRect.w <= 0 || visibleRect.h <= 0) continue;
+            if (command.kind == DrawingCommandKind::clip) {
+                visit(visit, command.children, visibleRect);
+            } else if (command.kind == DrawingCommandKind::drawText) {
+                auto layout = layoutDrawingText(measure, placement.textSize, scale, command.text, command.style, r.w);
+                layout.x = std::round(double(r.x) * scale);
+                layout.y = std::round(double(r.y) * scale);
+                area.primitives.push_back({rect, visibleRect, 0, command.color, command.opacity, std::move(layout)});
+            } else {
+                int radius = std::min({edge(command.radius), rect.w / 2, rect.h / 2});
+                area.primitives.push_back({radius ? rect : visibleRect, clip, radius, command.color, command.opacity});
+            }
+        }
+    };
+    flatten(flatten, area.content.commands, {0, 0, bounds.w, bounds.h});
+}
+
+Result DrawingAreaHandle::onDraw(std::function<Result(const DrawingEnvironment&)> draw) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        auto& area = ui_->drawings_.at(id_);
+        area.draw = std::move(draw);
+        if (area.draw) area.content.pending = true;
+        else {
+            area.content = {};
+            area.primitives.clear();
+        }
+        ui_->invalidate();
+        return {};
+    });
+}
+Result DrawingAreaHandle::onFrame(std::function<Result(const FrameInfo&)> callback) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        auto& area = ui_->drawings_.at(id_);
+        area.frame = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
+        if (!area.frame) area.admitted = area.request = 0;
+        if (ui_->scheduleFrames) ui_->scheduleFrames();
+        return {};
+    });
+}
+Result DrawingAreaHandle::requestFrame() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& area = ui_->drawings_.at(id_);
+        if (!area.frame) return {Status::invalidValue, u"No frame callback registered"};
+        if (!area.request) {
+            area.request = ++ui_->nextRequest_;
+            if (ui_->scheduleFrames) ui_->scheduleFrames();
+        }
+        return {};
+    });
+}
+Result DrawingAreaHandle::cancelFrame() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& area = ui_->drawings_.at(id_);
+        area.admitted = area.request = 0;
+        if (ui_->scheduleFrames) ui_->scheduleFrames();
+        return {};
+    });
+}
+Result DrawingAreaHandle::requestRedraw() const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return r;
+        auto& area = ui_->drawings_.at(id_);
+        if (area.draw && !area.content.pending) {
+            area.content.pending = true;
+            ui_->invalidate();
+        }
+        return {};
+    });
+}
+Result DrawingAreaHandle::enable(bool enabled) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->configurationAccess(id_); !r) return r;
+        if (ui_->find(id_)->enabled != enabled) {
+            ui_->enable(id_, enabled);
+            auto& area = ui_->drawings_.at(id_);
+            area.content.pending = bool(area.draw);
+            ui_->invalidate();
+        }
+        return {};
+    });
+}
+Query<DrawingContent> DrawingAreaHandle::content() const {
+    return detail::UiState::operate(*this, [&]() -> Query<DrawingContent> {
+        if (auto r = ui_->configurationAccess(id_, true); !r) return {r.status, r.message, {}};
+        return {Status::ok, {}, ui_->drawings_.at(id_).content};
+    });
+}
+
+DrawingAreaHandle detail::UiState::addDrawingArea(Component control) {
+    OperationScope operation(this);
+    const ComponentConfig defaults{};
+    if (control.id.empty() || find(control.id) || !control.value.empty() || control.readOnly || control.checked ||
+        !control.target.empty() || control.labelKind != defaults.labelKind || control.maxLength != defaults.maxLength ||
+        control.multiline || control.visibleLines != defaults.visibleLines || control.writingMode != defaults.writingMode ||
+        control.verticalDigits != defaults.verticalDigits || control.rich)
+        throw std::invalid_argument("Invalid drawing area component");
+    Id id = control.id;
+    controls_.push_back(std::move(control));
+    drawings_.try_emplace(id);
+    return DrawingAreaHandle(this, componentLifetime(id), id);
+}
+
 ProgressHandle detail::UiState::addProgress(Component control) {
     OperationScope operation(this);
     if (control.id.empty() || find(control.id))
@@ -373,6 +625,10 @@ Result ProgressHandle::connectSource(Source<int> source) const {
         return {};
     });
 }
+Query<ComponentSnapshot> DrawingAreaHandle::describe() const {
+    return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
+}
+
 Query<ComponentSnapshot> ProgressHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
 }
@@ -1070,20 +1326,106 @@ void detail::UiState::sliderLand(std::string_view id) {
     animations_.cancel(sliderAnimationKey(id));
 }
 bool detail::UiState::motionEnabled() const {
-    return animations_.hasTimeSource() && presentation_.motion == Motion::automatic && systemAnimations_ && !windowHidden_;
+    return animations_.hasTimeSource() && motionPreference() == MotionPreference::noPreference && !windowHidden_;
 }
 void detail::UiState::finishAnimations() {
     const bool wasRunning = animationRunning();
     animations_.finishAll(); sliderTargets_.clear();
     if (wasRunning && invalidate_) invalidate_();  // draw the landed frame
 }
-void detail::UiState::setSystemAnimations(bool enabled) {
-    systemAnimations_ = enabled;
-    if (!motionEnabled()) finishAnimations();
+MotionPreference detail::UiState::motionPreference() const {
+    return presentation_.motion == Motion::off ? MotionPreference::off : systemMotion_;
+}
+Result detail::UiState::effectiveMotionChanged(MotionPreference previous) {
+    const auto current = motionPreference();
+    if (previous == current) return {};
+    invalidateDrawings();
+    if (current != MotionPreference::noPreference) finishAnimations();
+    if (auto callback = motionChanged_) {
+        OperationScope scope(this);
+        try { (*callback)(current); }
+        catch (...) { stopped_ = true; return {Status::failed, u"Motion preference notification failed"}; }
+    }
+    return {};
+}
+Result detail::UiState::setSystemMotion(MotionPreference preference) {
+    const auto previous = motionPreference();
+    systemMotion_ = preference;
+    if (previous == motionPreference()) return {};
+    if (auto r = effectiveMotionChanged(previous); !r) return r;
+    invalidate();
+    return {};
+}
+Result detail::UiState::onMotionPreferenceChange(std::function<void(MotionPreference)> callback) {
+    if (auto r = creationAccess(); !r) return r;
+    motionChanged_ = callback ? std::make_shared<decltype(callback)>(std::move(callback)) : nullptr;
+    return {};
+}
+Result detail::UiState::simulateSystemMotion(MotionPreference preference) {
+    if (auto r = creationAccess(); !r) return r;
+    if (hostClaimed_.test()) return {Status::notSupported, u"Desktop supplies the system motion preference"};
+    if (preference != MotionPreference::noPreference && preference != MotionPreference::reduce &&
+        preference != MotionPreference::off) return {Status::invalidValue, u"Invalid motion preference"};
+    return setSystemMotion(preference);
 }
 void detail::UiState::setWindowHidden(bool hidden) {
     windowHidden_ = hidden;
     if (!motionEnabled()) finishAnimations();
+}
+bool detail::UiState::hasFrameRequests() const {
+    return std::any_of(drawings_.begin(), drawings_.end(), [](const auto& entry) { return entry.second.request != 0; });
+}
+bool detail::UiState::framesReady() const {
+    if (stopped_ || windowHidden_ || rendererFailed_) return false;
+    return std::any_of(drawings_.begin(), drawings_.end(), [&](const auto& entry) {
+        return (entry.second.admitted || entry.second.request) && semanticBounds_.contains(entry.first);
+    });
+}
+Result detail::UiState::dispatchFrames() {
+    if (dispatchingFrames_) return {Status::busy, u"Frame in progress"};
+    if (!framesReady()) return {};
+    std::vector<std::pair<std::uint64_t, Id>> batch;
+    for (auto& [id, area] : drawings_) {
+        if (!area.request || !semanticBounds_.contains(id)) continue;
+        area.admitted = std::exchange(area.request, 0);
+        batch.emplace_back(area.admitted, id);
+    }
+    std::sort(batch.begin(), batch.end());
+    dispatchingFrames_ = true;
+    for (const auto& [ticket, id] : batch) {
+        auto it = drawings_.find(id);
+        if (it == drawings_.end() || it->second.admitted != ticket || removalPending(id)) continue;
+        if (windowHidden_ || rendererFailed_ || !semanticBounds_.contains(id)) {
+            it->second.request = std::exchange(it->second.admitted, 0);
+            continue;
+        }
+        std::weak_ptr<void> lifetime = componentLifetimes_.at(id);
+        auto callback = it->second.frame;
+        it->second.admitted = 0;
+        try {
+            if (!(*callback)({frameTime_, motionPreference()})) {
+                auto current = drawings_.find(id);
+                if (current != drawings_.end() && !lifetime.expired()) current->second.request = 0;
+                auto message = id + " frame callback failed";
+                diagnosticMessages.push_back(message);
+                outputDiagnostic(message);
+            }
+        } catch (...) { stopped_ = true; }
+        if (stopped_) break;
+    }
+    dispatchingFrames_ = false;
+    return stopped_ ? Result{Status::failed, u"Frame callback stopped UI"} : Result{};
+}
+Result detail::UiState::simulateFrame(FrameClock::duration advance) {
+    if (auto r = mutationAccess(); !r) return r;
+    if (dispatchingFrames_) return {Status::busy, u"Frame in progress"};
+    if (stopped_) return {Status::failed, u"UI is stopped"};
+    if (hostClaimed_.test()) return {Status::notSupported, u"Desktop supplies frames"};
+    if (advance < FrameClock::duration::zero() || advance > FrameClock::time_point::max() - frameTime_)
+        return {Status::invalidValue, u"Invalid frame advance"};
+    frameTime_ += advance;
+    animationTime([this] { return frameTime_; });
+    return dispatchFrames();
 }
 bool detail::UiState::animationRunning() const {
     for (const auto& [id, target] : sliderTargets_) if (sliderTransitionLive(id)) return true;
@@ -1092,7 +1434,7 @@ bool detail::UiState::animationRunning() const {
 Query<bool> detail::UiState::animating() const {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread", std::nullopt};
     if (stopped_) return {Status::failed, u"UI is stopped", std::nullopt};
-    return {Status::ok, {}, animationRunning()};
+    return {Status::ok, {}, animationRunning() || framesReady()};
 }
 Query<ComponentSnapshot> SliderHandle::describe() const {
     return detail::UiState::operate(*this, [&]() -> Query<ComponentSnapshot> { return ui_->handleDescribe(id_); });
@@ -1224,6 +1566,7 @@ void detail::UiState::resetHost() {
     setClipboard(nullptr);
     setAsyncClipboard(nullptr);
     bindAppearance(nullptr);
+    scheduleFrames = {};
     animationTime({});
     tooltipClock({});
     setClickClock({});
@@ -1243,7 +1586,7 @@ void detail::UiState::resetHost() {
     windowActive(false);
     setWindowHidden(false);
     setSystemKeyboardCues(false);
-    setSystemAnimations(true);
+    setSystemMotion(MotionPreference::noPreference);
 }
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
@@ -1398,6 +1741,7 @@ Query<std::optional<HoverTarget>> detail::UiState::hoverQuery() const {
     return {Status::ok, {}, hoverTarget()};
 }
 Result detail::UiState::simulateHover(std::string_view id, const std::optional<OptionValue>& item) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     if (auto result = available(id); !result) return result;
     if (menuOpen()) return {Status::blockedByModal, u"A context menu is open"};
@@ -1418,7 +1762,7 @@ Result detail::UiState::simulateHover(std::string_view id, const std::optional<O
 }
 Result detail::UiState::clearSimulatedHover() {
     OperationScope operation(this);
-    if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (!hoverSimulated_) return {};
     hoverSimulated_ = false;
@@ -1770,6 +2114,10 @@ Result RadioGroupHandle::remove() const {
 Result SliderHandle::remove() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
 }
+Result DrawingAreaHandle::remove() const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
+}
+
 Result ProgressHandle::remove() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->removeComponent(id_); });
 }
@@ -1879,6 +2227,7 @@ static void adoptWritten(FieldState& f, const ConfirmFieldChange& written) {
 }
 Result detail::UiState::connectConfirmation(ButtonHandle button, std::vector<ConfirmField> fields,
         std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     if (button.ui_ != this || button.lifetime_.expired() || !submit || fields.empty())
         return {Status::invalidValue, u"Invalid confirmation group"};
@@ -3072,6 +3421,7 @@ Result detail::UiState::focus(std::string_view id) {
     return moveFocus(control->id);
 }
 Result detail::UiState::addShortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope) {
+    if (auto access = mutationAccess(); !access) return access;
     OperationScope operation(this);
     auto targetId = layoutId(target);
     auto scopeId = layoutId(scope);
@@ -3422,8 +3772,13 @@ bool detail::UiState::registerable(std::string_view id) {
 #endif
     return false;
 }
-Result detail::UiState::creationAccess() const {
+Result detail::UiState::mutationAccess() const {
     if (std::this_thread::get_id() != owner_) return {Status::wrongThread, u"Operation requires the UI thread"};
+    if (drawing_) return {Status::busy, u"Drawing in progress"};
+    return {};
+}
+Result detail::UiState::creationAccess() const {
+    if (auto access = mutationAccess(); !access) return access;
     if (stopped_) return {Status::failed, u"UI is stopped"};
     if (rendererFailed_) return {Status::rendererFailed, u"Renderer failed"};
     return {};
@@ -3462,6 +3817,9 @@ Query<SliderHandle> Ui::addSlider(ComponentConfig config, SliderRange range) {
     Result validRange = range.minimum >= range.maximum || range.step <= 0 ? Result{Status::invalidValue, u"Invalid slider range"} : Result{};
     return addComponent<SliderHandle>(*state_, ComponentKind::slider, std::move(config),
         [&](auto c) { return state_->addSlider(std::move(c), range); }, std::move(validRange));
+}
+Query<DrawingAreaHandle> Ui::addDrawingArea(ComponentConfig config) {
+    return addComponent<DrawingAreaHandle>(*state_, ComponentKind::drawingArea, std::move(config), [&](auto c) { return state_->addDrawingArea(std::move(c)); });
 }
 Query<ProgressHandle> Ui::addProgress(ComponentConfig config) {
     return addComponent<ProgressHandle>(*state_, ComponentKind::progress, std::move(config), [&](auto c) { return state_->addProgress(std::move(c)); });
@@ -3509,7 +3867,17 @@ Result Ui::connectConfirmation(ButtonHandle button, std::vector<ConfirmField> fi
         std::function<ConfirmationResult(const std::vector<ConfirmFieldChange>&)> submit) {
     return state_->connectConfirmation(std::move(button), std::move(fields), std::move(submit));
 }
-void Ui::onChange(std::function<void()> callback) { state_->onChange(std::move(callback)); }
+Result Ui::onChange(std::function<void()> callback) {
+    if (auto access = state_->mutationAccess(); !access) return access;
+    state_->onChange(std::move(callback));
+    return {};
+}
+MotionPreference Ui::motionPreference() const { return state_->motionPreference(); }
+Result Ui::onMotionPreferenceChange(std::function<void(MotionPreference)> callback) {
+    return state_->onMotionPreferenceChange(std::move(callback));
+}
+Result Ui::simulateFrame(std::chrono::steady_clock::duration advance) { return state_->simulateFrame(advance); }
+Result Ui::simulateSystemMotion(MotionPreference preference) { return state_->simulateSystemMotion(preference); }
 Result Ui::setPresentation(const PresentationSettings& settings) { return state_->setPresentation(settings); }
 Query<bool> Ui::animating() const { return state_->animating(); }
 Query<std::optional<HoverTarget>> Ui::hover() const { return state_->hoverQuery(); }
@@ -3526,7 +3894,11 @@ Query<Palette> Ui::effectivePalette(const Appearance& appearance, const ThemeVar
     if (!appearance.supports(variant)) return {Status::invalidValue, u"Appearance does not support this theme variant", {}};
     return {Status::ok, {}, state_->effectivePalette(appearance, variant)};
 }
-void Ui::bindAppearance(const Appearance* appearance) { state_->bindAppearance(appearance); }
+Result Ui::bindAppearance(const Appearance* appearance) {
+    if (auto access = state_->mutationAccess(); !access) return access;
+    state_->bindAppearance(appearance);
+    return {};
+}
 
 bool Ui::focusIndicatorVisible() const { return state_->focusIndicatorVisible(); }
 detail::UiState& detail::access(Ui& ui) { return *ui.state_; }
@@ -3582,7 +3954,7 @@ void detail::UiState::semanticFrame(const Frame& frame) {
         auto c = find(id); auto s = describe(id);
         if (c && s && componentType(c->kind).needsName() && s->name.empty() && diagnosedNames_.insert(id).second)
         {
-            auto message = id + " is focusable but has no name";
+            auto message = id + " has no name";
             diagnosticMessages.push_back(message);
             outputDiagnostic(message);
         }
@@ -3833,7 +4205,7 @@ void detail::UiState::semanticDiff() {
     if (wasEmpty && !semanticPending_.empty() && semanticSchedule_) semanticSchedule_();
 }
 Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> callback) {
-    if (std::this_thread::get_id() != state_->owner_ || !callback) return Subscription{};
+    if (std::this_thread::get_id() != state_->owner_ || state_->drawing_ || !callback) return Subscription{};
     auto id = ++state_->nextSemanticSubscriber_;
     state_->semanticSubscribers_.emplace(id, std::make_shared<std::function<void(const SemanticEvent&)>>(std::move(callback)));
     std::weak_ptr<void> lifetime = state_->lifetime_; auto state = state_;
@@ -3841,7 +4213,7 @@ Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> c
 }
 void SemanticTree::dispatchEvents() {
     auto& u = *state_;
-    if (std::this_thread::get_id() != u.owner_ || u.semanticDispatching_) return;
+    if (std::this_thread::get_id() != u.owner_ || u.drawing_ || u.semanticDispatching_) return;
     u.semanticDispatching_ = true;
     for (unsigned round = 0; round < 64 && !u.semanticPending_.empty(); ++round) {
         auto batch = std::exchange(u.semanticPending_, {});
@@ -3858,6 +4230,7 @@ void SemanticTree::dispatchEvents() {
     if (!u.semanticPending_.empty() && u.semanticSchedule_) u.semanticSchedule_();
 }
 Result SemanticTree::perform(const NodeRef& ref, Verb verb, Argument argument) {
+    if (auto access = state_->mutationAccess(); !access) return access;
     auto node = get(ref);
     if (!node) return {node.status, node.message};
     if (state_->rendererFailed_) return {Status::rendererFailed, {}};

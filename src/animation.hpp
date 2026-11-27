@@ -5,6 +5,7 @@
 // is still running and requests the next frame only then, so an idle UI never repaints.
 // The time source is replaceable so tests can place time anywhere (a fake clock).
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -16,8 +17,8 @@
 namespace isoduo::detail {
 class AnimationClock {
 public:
-    using Time = std::uint64_t;  // milliseconds on the time source's own timeline
-    static constexpr Time standardDuration = 150;
+    using Time = std::chrono::steady_clock::time_point;
+    static constexpr auto standardDuration = std::chrono::milliseconds(150);
     // Cubic ease-out: fast start, gentle stop. 0 -> 0, 1 -> 1, and past half way at half the time.
     static double easeOut(double t) {
         const double rest = 1.0 - std::clamp(t, 0.0, 1.0);
@@ -29,10 +30,11 @@ public:
         if (!source_) tracks_.clear();  // without a timeline nothing can still be running
     }
     bool hasTimeSource() const { return static_cast<bool>(source_); }
-    Time now() const { return source_ ? source_() : 0; }
+    Time now() const { return sample_ ? *sample_ : source_ ? source_() : Time{}; }
+    void sample(std::optional<Time> time) { sample_ = time; }
     // Register or retarget. The caller passes where the property is displayed right now, so a
     // retarget turns from the visible position and restarts the timing.
-    void start(const std::string& key, double from, double to, Time duration = standardDuration) {
+    void start(const std::string& key, double from, double to, Time::duration duration = standardDuration) {
         if (!source_) return;
         tracks_.insert_or_assign(key, Track{from, to, now(), duration});
     }
@@ -42,17 +44,18 @@ public:
         if (it == tracks_.end()) return std::nullopt;
         const Track& track = it->second;
         const Time at = now();
-        const Time elapsed = at > track.begin ? at - track.begin : 0;
+        const auto elapsed = std::max(at - track.begin, Time::duration::zero());
         if (elapsed >= track.duration) return std::nullopt;
-        return track.from + (track.to - track.from) * easeOut(static_cast<double>(elapsed) / static_cast<double>(track.duration));
+        return track.from + (track.to - track.from) * easeOut(std::chrono::duration<double>(elapsed) / std::chrono::duration<double>(track.duration));
     }
     bool active(std::string_view key) const { return value(key).has_value(); }
     void cancel(std::string_view key) { if (auto it = tracks_.find(key); it != tracks_.end()) tracks_.erase(it); }
     // Every running animation ends at once (minimized window, animations switched off).
     void finishAll() { tracks_.clear(); }
 private:
-    struct Track { double from, to; Time begin, duration; };
+    struct Track { double from, to; Time begin; Time::duration duration; };
     std::function<Time()> source_;
+    std::optional<Time> sample_;
     std::map<std::string, Track, std::less<>> tracks_;
 };
 }

@@ -74,6 +74,8 @@ Result detail::UiState::validateMenuItems(const std::vector<MenuItem>& items) co
 Query<ContextMenuHandle> detail::UiState::attachMenu(const Id& target, std::vector<MenuItem> items, MenuMode mode) {
     OperationScope operation(this);
     if (auto r = configurationAccess(target); !r) return {r.status, r.message, std::nullopt};
+    if (!componentType(find(target)->kind).acceptsContextMenu())
+        return {Status::notSupported, u"Component does not support context menus", {}};
     if (menuAttachments_.contains(target)) return {Status::invalidValue, u"Component already has a context menu", std::nullopt};
     if (auto r = validateMenuItems(items); !r) return {r.status, r.message, std::nullopt};
     menuAttachments_.emplace(target, MenuAttachment{mode, std::move(items)});
@@ -437,12 +439,14 @@ Query<std::vector<MenuItemSnapshot>> ContextMenuHandle::items() const {
 }
 
 Query<ContextMenuHandle> Ui::addContextMenu(ComponentHandle target, std::vector<MenuItem> items, MenuMode mode) {
+    if (auto access = state_->mutationAccess(); !access) return {access.status, access.message, {}};
     detail::UiState::OperationScope operation(state_.get());
     auto id = state_->layoutId(target);
     if (!id) return {Status::notFound, u"Component no longer exists", std::nullopt};
     return state_->attachMenu(*id, std::move(items), mode);
 }
 Result Ui::openContextMenu(ComponentHandle target, std::optional<MenuPosition> at, std::optional<OptionValue> item) {
+    if (auto access = state_->mutationAccess(); !access) return access;
     detail::UiState::OperationScope operation(state_.get());
     auto id = state_->layoutId(target);
     if (!id) return {Status::notFound, u"Component no longer exists"};

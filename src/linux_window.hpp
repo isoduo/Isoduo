@@ -38,6 +38,7 @@ public:
     virtual void title(std::string_view value) = 0;
     virtual std::optional<std::pair<int, int>> screenOrigin() const { return {}; }
     virtual bool poll(int timeoutMs) = 0;
+    std::function<void(int)> observeWait;
     virtual AsyncClipboard& clipboard() = 0;
     virtual void clipboardSerial(std::uint32_t) {}
     virtual void handoffClipboard() {}

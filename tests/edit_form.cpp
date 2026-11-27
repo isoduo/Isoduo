@@ -506,7 +506,7 @@ void semanticBusyAndRemovedDrivers() {
 }
 
 void writeSemanticTsv(editForm::Form& form, const char* state) {
-    const char* roles[] = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip"};
+    constexpr std::array roles = {"text", "button", "label", "checkbox", "radio_group", "radio_option", "slider", "dropdown", "dropdown_option", "list", "list_item", "tabs", "tab_item", "progress", "dialog", "tooltip", "menu", "menu_item", "menu_separator", "drawing_area"};
     auto filename = std::string("semantic-") + (appearance == &webAppearance() ? "web-" : "material-") + state + ".tsv";
     std::ofstream out(filename, std::ios::binary);
     auto clean = [&](const std::u16string& text) { auto str = detail::utf8FromUtf16(text); for (auto& ch : str) if (ch == '\t' || ch == '\n' || ch == '\r') ch = ' '; return str; };
@@ -516,7 +516,7 @@ void writeSemanticTsv(editForm::Form& form, const char* state) {
         check(bool(children), "Tree traversal succeeds while writing TSV");
         for (const auto& ref : *children) {
             auto n = form.ui.semantics().get(ref); check(bool(n), "Enumerated node can be read");
-            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles[static_cast<int>(n->role)] << '\t'
+            out << ref.id << '\t' << (ref.item ? ref.item->id : "") << '\t' << roles.at(static_cast<std::size_t>(n->role)) << '\t'
                 << clean(n->name) << '\t' << clean(n->value) << '\t' << n->hidden << '\t' << n->visible << '\t' << n->blockedByModal << '\t';
             if (n->bounds) out << n->bounds->x << ',' << n->bounds->y << ',' << n->bounds->w << ',' << n->bounds->h;
             else out << '-';
@@ -676,7 +676,7 @@ void compactTargetsMeetMinimumHeight() {
         form.handles.tabs.activate({page});
         auto frame = arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll);
         for (const auto& item : frame.items) {
-            if (item.kind == ComponentKind::label || item.kind == ComponentKind::progress) continue;
+            if (!detail::componentType(item.kind).acceptsPointer()) continue;
             check(item.bounds.h >= 24, "Clickable component is at least 24 DIP high");
             for (auto option : item.options) check(option.h >= 24, "Clickable row is at least 24 DIP high");
         }
@@ -2174,6 +2174,48 @@ void x04TooltipAtEachSizeAndScale() {
     }
 }
 
+void showcaseDrawingMotion() {
+    using namespace std::chrono_literals;
+    editForm::Form form(ids, true);
+    test::FakeMeasure measure;
+    auto& h = form.handles;
+    check(bool(h.tabs.activate({"v03"})), "open drawing showcase");
+    auto place = [&] { arrange(form.page(), form.ui, *appearance, measure, 960, 720, 1.f, form.scroll); };
+    auto tick = [&](auto elapsed) { check(bool(form.ui.simulateFrame(elapsed)), "deliver showcase frame"); place(); };
+    auto completedWidth = [&] {
+        auto content = h.chart.content();
+        for (const auto& command : content->commands)
+            if (command.kind == DrawingCommandKind::fillRect) return command.rect.w;
+        return -1.f;
+    };
+    place();
+    const float trackWidth = h.chart.content()->size.w - 84.f;
+    check(trackWidth > 0 && std::abs(completedWidth() - trackWidth / 2) < 0.01f, "initial completed bar is half full");
+    check(bool(h.progressFull.invoke()), "change chart data");
+    tick(0ms);
+    tick(150ms);
+    check(std::abs(completedWidth() - trackWidth * 0.75f) < 0.01f, "chart reaches midpoint at 150 ms");
+    tick(150ms);
+    check(std::abs(completedWidth() - trackWidth) < 0.01f, "chart reaches endpoint at 300 ms");
+    auto dots = h.indicator.content()->commands;
+    tick(100ms);
+    check(dots != h.indicator.content()->commands, "indicator rotates");
+    check(bool(h.pauseIndicator.invoke()) && !*form.ui.animating(), "pause withdraws frame requests");
+    dots = h.indicator.content()->commands;
+    tick(500ms);
+    check(dots == h.indicator.content()->commands, "paused indicator stays still");
+    check(bool(h.pauseIndicator.invoke()) && *form.ui.animating(), "resume requests frames");
+    for (auto preference : {MotionPreference::reduce, MotionPreference::off}) {
+        check(bool(form.ui.simulateSystemMotion(preference)), "change motion preference");
+        check(bool(h.progressZero.invoke()), "empty chart");
+        place();
+        check(completedWidth() == 0 && !*form.ui.animating(), "empty endpoint without frames");
+        check(bool(h.progressFull.invoke()), "fill chart");
+        place();
+        check(std::abs(completedWidth() - trackWidth) < 0.01f && !*form.ui.animating(), "full endpoint without frames");
+    }
+}
+
 void x04NormalInventoryAtEachSizeAndScale() {
     for (auto size : {std::pair{960, 720}, std::pair{640, 480}}) for (float scale : {1.f, 1.5f}) {
         editForm::Form form(ids, true); test::FakeMeasure measure; auto& state = detail::access(form.ui);
@@ -2195,6 +2237,13 @@ void x04NormalInventoryAtEachSizeAndScale() {
                 auto ownerSemantic = state.describe(owner);
                 PaintTextProbe paint(state, *item, *ownerSemantic, *appearance, scale, true);
                 detail::componentType(item->kind).paint(paint);
+                if (semantic->kind == ComponentKind::drawingArea) {
+                    auto accent = appearance->palette(form.ui.presentation().variant).accent;
+                    check(std::find(paint.colors.begin(), paint.colors.end(), accent) != paint.colors.end(),
+                          "showcase drawing uses the current accent");
+                    if (semantic->id == form.handles.chart.describe()->id)
+                        check(paint.drawn.find(u"Complete") != std::u16string::npos, "chart labels the completed bar");
+                }
                 for (const auto& expected : x04::normalText(*semantic))
                     check(paint.drawn.find(expected) != std::u16string::npos, (message + " paint").c_str());
             }
@@ -2212,6 +2261,10 @@ void x04DisabledInventoryAtEachSizeAndScale(bool dark = false) {
             auto baseline = x04::snapshot(form);
             auto initial = x04::describe(entry.handle);
             if (!detail::componentType(initial->kind).supportsState(detail::ComponentState::disabled)) continue;
+            if (auto image = std::get_if<DrawingAreaHandle>(&entry.handle)) {
+                check(x04::disabledDrawingArea(*image), "disabled showcase image remains passive");
+                continue;
+            }
             if (initial->kind == ComponentKind::tabs) {
                 auto tabs = std::get<TabsHandle>(entry.handle);
                 check(bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus()), "X04 disable tab page");
@@ -2999,6 +3052,7 @@ void presentationCombinationMatrix() {
 
 int main() {
     const test::Case cases[] = {
+        {"Showcase drawing motion", showcaseDrawingMotion},
         {"MX01 presentation matrix", presentationCombinationMatrix},
         {"PS01 presentation settings", presentationSettingsAreAtomic},
         {"PS size scaling", presentationSizeScalesExplicitAndDefaultText},

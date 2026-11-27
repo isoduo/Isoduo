@@ -43,6 +43,7 @@ struct ComponentLayout {
     int width;
     float scale;
     bool settle = true; // measurement probes must not change persistent view state
+    int drawingHeight = 0;
     int verticalHeight = 0; // physical pixels given by layout::verticalText; 0 = columns never wrap
     // The appearance's sizes and texts for the density in force now.
     ComponentPresentation presentation() const;
@@ -101,9 +102,16 @@ public:
     unsigned char overlayAlpha() const { return overlayAlpha_; }
     virtual void fill(Rect rect, Color color) = 0;
     virtual void rounded(Rect rect, int radius, Color color) = 0;
+    // Set the active clip within the original placement clip.
     virtual void clip(Rect rect) = 0;
     // The y coordinate is the top of the line box, not its baseline.
     virtual void text(std::u16string_view value, int pixels, int x, int y, Color color) = 0;
+    virtual void drawingTextLine(std::u16string_view value, int pixels, FontStyle style, int x, int y,
+                                 Color color, unsigned char opacity, Rect bounds) {
+        (void)opacity;
+        (void)bounds;
+        styledText(value, pixels, style, x, y, color);
+    }
     // One piece of vertical text in its cell (see VerticalForm). The default draws it as horizontal text at the
     // cell's corner; backends that can rotate and center glyphs override it.
     virtual void verticalText(std::u16string_view value, VerticalForm, int pixels, Rect cell, Color color) { text(value, pixels, cell.x, cell.y, color); }
@@ -209,6 +217,7 @@ public:
     // A pointer press starts a value drag (a slider); true when it did.
     virtual bool beginValueDrag(UiState&, const Placement&, int /*x*/, float /*scale*/) const { return false; }
     // Context menu: a built-in menu (the editing commands of a text field) and the rows a menu can be opened for.
+    virtual bool acceptsContextMenu() const { return true; }
     virtual bool hasBuiltinMenu() const { return false; }
     virtual void builtinMenuEntries(const UiState&, const Component&, bool /*clipboardText*/, std::vector<UiState::MenuEntry>&) const {}
     virtual Result runBuiltinMenu(UiState&, const std::string&, std::string_view) const { return {Status::notFound, u"Menu item not found"}; }

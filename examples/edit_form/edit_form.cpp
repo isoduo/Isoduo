@@ -1,5 +1,7 @@
 #include "edit_form.hpp"
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <string>
 #include <utility>
 
@@ -168,6 +170,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         handles.v03Title.connectSource([this, v03TitleId, v03TitleText] {
             return clipPaddingId_ == v03TitleId ? clipPaddingText_ : v03TitleText;
         });
+        setupDrawings(prefix);
         handles.progress = ui.addProgress({.id = prefix + "v03.progress", .label = u"Demo Progress"}).value.value();
         handles.progressSource = ui.addLabel({.id = prefix + "v03.source"}).value.value();
         handles.progressZero = ui.addButton({.id = prefix + "v03.zero", .label = u"0%"}).value.value();
@@ -335,7 +338,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             {{"v02"}, u"List", true, {list->handles.title, list->handles.zero, list->handles.one, list->handles.twenty,
                 list->handles.hundred, list->handles.sort, list->handles.disableEight, list->handles.reset,
                 list->handles.search, list->handles.list, list->handles.erase, list->handles.detail}},
-            {{"v03"}, u"Confirm", true, {handles.v03Title, handles.progress, handles.progressSource, handles.dialogResult,
+            {{"v03"}, u"Confirm", true, {handles.v03Title, handles.chart, handles.indicator, handles.pauseIndicator, handles.progress, handles.progressSource, handles.dialogResult,
                 handles.progressZero, handles.progressHalf, handles.progressFull, handles.progressBelow, handles.progressAbove, handles.resetV03, handles.dialogOpen, handles.dialogTemporary}},
             {{"v04"}, u"Presentation Settings", true, {handles.v04Title, handles.font, handles.textSize, handles.dark, handles.compact, handles.preview, handles.fontStatus, handles.resetV04,
                 handles.justifySample, handles.justifyAlign, handles.justifyMethod, handles.distributeName, handles.distributePlain}}
@@ -441,8 +444,88 @@ void Form::updateModeSource(OptionValue value) {
 void Form::updateRegionSource(OptionValue value) {
     regionApplied_ = std::move(value); if (regionChanged_) regionChanged_(); refreshConflict();
 }
+void Form::setupDrawings(const std::string& prefix) {
+    handles.chart = *ui.addDrawingArea({.id = prefix + "v03.chart", .label = u"Progress chart"});
+    handles.chart.onDraw([this](const DrawingEnvironment& env) {
+        auto panel = env.roundedRect({0, 0, env.size().w, env.size().h}, 4, env.palette().panel);
+        if (!panel) return panel;
+        const auto labelWidth = std::min(84.f, env.size().w);
+        const auto track = env.size().w - labelWidth;
+        const auto rowHeight = env.size().h / 2;
+        for (int row = 0; row < 2; ++row) {
+            const auto top = row * rowHeight;
+            auto label = env.drawText(row ? u"Remaining" : u"Complete", {0, top, labelWidth, rowHeight},
+                                      {DrawingTextSize::caption}, env.palette().text);
+            if (!label) return label;
+            const auto percent = row ? 100 - chartValue_ : chartValue_;
+            auto bar = env.fillRect({labelWidth, top + rowHeight / 4, track * percent / 100, rowHeight / 2},
+                                    env.palette().accent, row ? 128 : 255);
+            if (!bar) return bar;
+        }
+        return Result{};
+    });
+    handles.chart.onFrame([this](const FrameInfo& frame) {
+        if (!chartStart_) chartStart_ = frame.time;
+        const float elapsed = std::chrono::duration<float, std::milli>(frame.time - *chartStart_).count();
+        const float target = static_cast<float>(std::clamp(progress_, 0, 100));
+        chartValue_ = std::lerp(chartFrom_, target, std::min(1.f, elapsed / 300));
+        auto redraw = handles.chart.requestRedraw();
+        return redraw && chartValue_ != target ? handles.chart.requestFrame() : redraw;
+    });
+    handles.indicator = *ui.addDrawingArea({.id = prefix + "v03.indicator", .label = u"Activity indicator"});
+    handles.indicator.onDraw([this](const DrawingEnvironment& env) {
+        auto panel = env.roundedRect({0, 0, env.size().w, env.size().h}, 4, env.palette().panel);
+        if (!panel) return panel;
+        for (int dot = 0; dot < 8; ++dot) {
+            const float angle = indicatorAngle_ + dot * std::numbers::pi_v<float> / 4;
+            const float x = env.size().w / 2 + 12 * std::cos(angle);
+            const float y = env.size().h / 2 + 12 * std::sin(angle);
+            auto result = env.roundedRect({x - 3, y - 3, 6, 6}, 3, env.palette().accent, 45 + dot * 30);
+            if (!result) return result;
+        }
+        return Result{};
+    });
+    handles.indicator.onFrame([this](const FrameInfo& frame) {
+        const float seconds = std::chrono::duration<float>(frame.time - indicatorTime_.value_or(frame.time)).count();
+        indicatorTime_ = frame.time;
+        constexpr float turn = 2 * std::numbers::pi_v<float>;
+        indicatorAngle_ = std::fmod(indicatorAngle_ + seconds * turn, turn);
+        auto redraw = handles.indicator.requestRedraw();
+        return redraw ? handles.indicator.requestFrame() : redraw;
+    });
+    auto scheduleIndicator = [this] {
+        indicatorTime_.reset();
+        return !indicatorPaused_ && ui.motionPreference() == MotionPreference::noPreference
+            ? handles.indicator.requestFrame() : handles.indicator.cancelFrame();
+    };
+    handles.pauseIndicator = *ui.addButton({.id = prefix + "v03.pause", .label = u"Pause / resume"});
+    bindAction(handles.pauseIndicator, [this, scheduleIndicator] {
+        indicatorPaused_ = !indicatorPaused_;
+        return scheduleIndicator();
+    });
+    ui.onMotionPreferenceChange([this, scheduleIndicator](MotionPreference) {
+        updateChart();
+        scheduleIndicator();
+    });
+    scheduleIndicator();
+}
+
+void Form::updateChart() {
+    chartStart_.reset();
+    chartFrom_ = chartValue_;
+    const float target = static_cast<float>(std::clamp(progress_, 0, 100));
+    if (ui.motionPreference() == MotionPreference::noPreference && chartValue_ != target) {
+        handles.chart.requestFrame();
+    } else {
+        chartValue_ = target;
+        handles.chart.cancelFrame();
+        handles.chart.requestRedraw();
+    }
+}
+
 void Form::updateProgress(int value) {
     progress_ = value;
+    if (pages_) updateChart();
     if (progressChanged_) progressChanged_();
 }
 void Form::refreshConflict() {
@@ -525,7 +608,7 @@ layout::Node Form::page() const {
         content = layout::scroll(column(std::move(items), 16, 24));
     }
 
-    else content = layout::scroll(column({component(handles.v03Title, 24), component(handles.progress), component(handles.progressSource), component(handles.dialogResult), component(handles.dialogOpen), component(handles.dialogTemporary),
+    else content = layout::scroll(column({component(handles.v03Title, 24), row({layout::drawingArea(handles.chart, 48), layout::drawingArea(handles.indicator, 48), component(handles.pauseIndicator)}), component(handles.progress), component(handles.progressSource), component(handles.dialogResult), component(handles.dialogOpen), component(handles.dialogTemporary),
         grid({component(handles.progressZero), component(handles.progressHalf), component(handles.progressFull),
               component(handles.progressBelow), component(handles.progressAbove), component(handles.resetV03)}, 120, 8)}, 16, 24));
     return modal(pinned(component(handles.tabs), std::move(content)),

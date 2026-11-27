@@ -28,6 +28,12 @@ private:
     int applies_ = 0;
     int volumeApplied_ = 40;
     int progress_ = 50;
+    float chartValue_ = 50, chartFrom_ = 50;
+    std::optional<std::chrono::steady_clock::time_point> chartStart_, indicatorTime_;
+    float indicatorAngle_ = 0;
+    bool indicatorPaused_ = false;
+    void setupDrawings(const std::string& prefix);
+    void updateChart();
     int dialogConfirmations_ = 0;
     std::u16string dialogResult_ = u"No result";
     bool noticesApplied_ = true;
@@ -71,6 +77,8 @@ public:
         isoduo::DialogHandle dialog;
         isoduo::ButtonHandle progressZero, progressHalf, progressFull, progressBelow, progressAbove;
         isoduo::LabelHandle v03Title, progressSource, dialogTitle, dialogBody, dialogResult;
+        isoduo::DrawingAreaHandle chart, indicator;
+        isoduo::ButtonHandle pauseIndicator;
         isoduo::ProgressHandle progress;
         isoduo::TooltipHandle progressTip;
         isoduo::CheckboxHandle notices, compact;

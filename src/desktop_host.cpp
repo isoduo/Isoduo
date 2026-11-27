@@ -29,9 +29,6 @@ constexpr UINT_PTR tooltipTimer = 1;
 constexpr UINT_PTR dragScrollTimer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
 constexpr UINT_PTR animationTimer = 3;    // distinct from the other timer ids: they run side by side
 constexpr UINT animationFrameMs = 16;
-std::uint64_t animationNowMs() {
-    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-}
 // Windows "Show animations in Windows" (SPI_GETCLIENTAREAANIMATION). When it cannot be read, the
 // Windows default (on) applies.
 bool systemClientAnimations() {
@@ -158,11 +155,12 @@ DesktopHost::DesktopHost(HostClaim claim, Ui& ui, const Appearance& appearance, 
         claim_.state().bindAppearance(&appearance_);
         claim_.state().tooltipClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });
         claim_.state().setSystemKeyboardCues(systemKeyboardCues());
-        claim_.state().animationTime(animationNowMs);
+        claim_.state().animationTime(std::chrono::steady_clock::now);
+        claim_.state().scheduleFrames = [this] { scheduleAnimation(); };
         refreshSystemAnimations();
         claim_.state().setClickClock([] { return static_cast<std::uint64_t>(GetTickCount64()); });  // multi-click counting
         refreshVisibility();
-        claim_.state().onInvalidate([this] { if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
+        claim_.state().onInvalidate([this] { ++layoutRevision_; if (window_) { scheduleTooltip(); InvalidateRect(window_, nullptr, FALSE); } });
         // Cursor keys need the current wrapping; a key can arrive before the paint that would settle it.
         claim_.state().onRelayout([this] { relayout(); });
         claim_.state().onSemanticPending([this] { if (window_) PostMessageW(window_, WM_APP + 45, 0, 0); });
@@ -223,6 +221,8 @@ Result DesktopHost::rebuildRenderer() {
 }
 void DesktopHost::failRenderer(RendererFailure failure) {
     rendererFailure_=std::move(failure);
+    frameInterval_ = 0;
+    transitionScheduled_ = false;
     if (window_) { KillTimer(window_, tooltipTimer); KillTimer(window_, animationTimer); }
     detail::access(ui_).finishAnimations();
     claim_.state().rendererFailed(true);
@@ -313,6 +313,9 @@ void DesktopHost::dispatch(MSG& message) {
     DispatchMessageW(&message);
     followFocus();
 }
+void DesktopHost::deliverFrameTimerForTest() {
+    if (frameInterval_) SendMessageW(window_, WM_TIMER, animationTimer, 0);
+}
 void DesktopHost::scheduleTooltip() {
     if (!window_) return;
     KillTimer(window_, tooltipTimer);
@@ -324,18 +327,30 @@ void DesktopHost::scheduleTooltip() {
     }
 }
 void DesktopHost::refreshSystemAnimations() {
-    claim_.state().setSystemAnimations(animationReader_ ? animationReader_() : systemClientAnimations());
+    const bool enabled = animationReader_ ? animationReader_() : systemClientAnimations();
+    claim_.state().setSystemMotion(enabled ? MotionPreference::noPreference : MotionPreference::off);
 }
 void DesktopHost::refreshVisibility() {
-    const bool hidden = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_) || coveredByAnotherWindow(window_);
-    if (hidden == hidden_) return;
+    const bool unavailable = hiddenReader_ ? hiddenReader_() : !window_ || IsIconic(window_) || !IsWindowVisible(window_) || cloaked(window_);
+    covered_ = !unavailable && (coveredReader_ ? coveredReader_() : !hiddenReader_ && coveredByAnotherWindow(window_));
+    const bool hidden = unavailable || covered_;
+    if (hidden == hidden_) { scheduleAnimation(); return; }
     hidden_ = hidden;
     if (hidden && window_) KillTimer(window_, presentRetryTimer);
-    claim_.state().setWindowHidden(hidden);  // hiding lands every running transition at once
+    claim_.state().setWindowHidden(hidden);
+    scheduleAnimation();  // hiding lands every running transition at once
 }
 void DesktopHost::scheduleAnimation() {
-    if (!window_) return;
-    if (!rendererFailure_ && !hidden_ && detail::access(ui_).animationRunning()) SetTimer(window_, animationTimer, animationFrameMs, nullptr);
+    if (!window_ || claim_.status() != Status::ok) return;
+    auto& state = claim_.state();
+    UINT interval = 0;
+    if (!rendererFailure_) {
+        if (covered_ && state.hasFrameRequests()) interval = 250;
+        else if (!hidden_ && (state.framesReady() || transitionScheduled_)) interval = animationFrameMs;
+    }
+    if (interval == frameInterval_) return;
+    frameInterval_ = interval;
+    if (interval) SetTimer(window_, animationTimer, interval, nullptr);
     else KillTimer(window_, animationTimer);
 }
 // Windows tags mouse messages that touch or pen input synthesizes in the message extra info.
@@ -374,7 +389,17 @@ void DesktopHost::paint() {
     if (!renderer_ || r.right <= 0 || r.bottom <= 0) return;
     float s = scale();
     if(perfEnabled_ && perfOffscreen_) { r.right=3840; r.bottom=2160; s=2.f; }
+    auto& state = claim_.state();
+    const auto dispatched = std::exchange(pendingPaintTime_, {});
+    detail::UiState::HostFrame clock(state, dispatched);
+    refreshVisibility();
     frame_ = arrange(r.right, r.bottom, s);
+    if (!dispatched && state.framesReady()) {
+        const auto revision = layoutRevision_;
+        state.dispatchFrames();
+        if (!window_ || rendererFailure_) return;
+        if (revision != layoutRevision_) frame_ = arrange(r.right, r.bottom, s);
+    }
     auto afterLayout=std::chrono::steady_clock::now();
     reveal_.clear();
     RecordingCanvas recording(r.right, r.bottom, detail::access(ui_).effectivePalette(appearance_).background);
@@ -428,6 +453,7 @@ void DesktopHost::paint() {
     ++frames_;
     if (onPresented) onPresented();
     syncIme();
+    transitionScheduled_ = state.animationRunning();
     scheduleAnimation();
     PostMessageW(window_,WM_APP+43,0,0);
 }
@@ -666,9 +692,21 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             return 0;
         }
         if (w == animationTimer) {
+            if (!frameInterval_) return 0;
             KillTimer(window_, animationTimer);
-            refreshVisibility();  // covered windows are only noticed by looking
-            if (!hidden_ && detail::access(ui_).animationRunning()) InvalidateRect(window_, nullptr, FALSE);
+            frameInterval_ = 0;
+            refreshVisibility();
+            if (!hidden_ && !rendererFailure_) {
+                auto& state = claim_.state();
+                if (transitionScheduled_ || GetUpdateRect(window_, nullptr, FALSE)) {
+                    InvalidateRect(window_, nullptr, FALSE);
+                } else {
+                    detail::UiState::HostFrame clock(state);
+                    state.dispatchFrames();
+                    if (window_ && GetUpdateRect(window_, nullptr, FALSE)) pendingPaintTime_ = clock.time();
+                }
+            }
+            scheduleAnimation();
             return 0;
         }
         if (w == tooltipTimer) {

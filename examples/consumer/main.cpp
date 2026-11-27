@@ -6,10 +6,12 @@
 #include "handle_kinds.hpp"
 #include "camelcase_names.hpp"
 static_assert(isoduo::frameworkVersion == ISODUO_PACKAGE_VERSION);
-static_assert(ISODUO_VERSION_MAJOR == 0 && ISODUO_VERSION_MINOR == 4 && ISODUO_VERSION_PATCH == 1);
-static_assert(isoduo::frameworkVersionMajor == 0 && isoduo::frameworkVersionMinor == 4 && isoduo::frameworkVersionPatch == 1);
+static_assert(ISODUO_VERSION_MAJOR == 0 && ISODUO_VERSION_MINOR == 5 && ISODUO_VERSION_PATCH == 0);
+static_assert(isoduo::frameworkVersionMajor == 0 && isoduo::frameworkVersionMinor == 5 && isoduo::frameworkVersionPatch == 0);
 static_assert(!std::is_constructible_v<isoduo::SemanticTree, isoduo::detail::UiState&>);
 #include <concepts>
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <optional>
 #include <string>
@@ -17,11 +19,11 @@ static_assert(!std::is_constructible_v<isoduo::SemanticTree, isoduo::detail::UiS
 #include <variant>
 #include <vector>
 
-// Removal belongs to application configuration, and is available on these nine component handles only (#104).
+// Removal belongs to application configuration, and is available on these ten component handles only (#104).
 template <class H> concept OwnerRemovable = requires(const H& h) { { h.remove() } -> std::same_as<isoduo::Result>; };
 static_assert(OwnerRemovable<isoduo::ButtonHandle> && OwnerRemovable<isoduo::LabelHandle> && OwnerRemovable<isoduo::TextFieldHandle> &&
               OwnerRemovable<isoduo::CheckboxHandle> && OwnerRemovable<isoduo::RadioGroupHandle> && OwnerRemovable<isoduo::SliderHandle> &&
-              OwnerRemovable<isoduo::ProgressHandle> && OwnerRemovable<isoduo::DropdownHandle> && OwnerRemovable<isoduo::ListHandle>);
+              OwnerRemovable<isoduo::DrawingAreaHandle> && OwnerRemovable<isoduo::ProgressHandle> && OwnerRemovable<isoduo::DropdownHandle> && OwnerRemovable<isoduo::ListHandle>);
 static_assert(!OwnerRemovable<isoduo::TabsHandle> && !OwnerRemovable<isoduo::NavigationListHandle> && !OwnerRemovable<isoduo::DialogHandle> &&
               !OwnerRemovable<isoduo::TooltipHandle> && !OwnerRemovable<isoduo::ContextMenuHandle> && !OwnerRemovable<isoduo::SemanticTree>);
 
@@ -263,7 +265,7 @@ static_assert(std::same_as<decltype(&Desktop::post), Result (Desktop::*)(std::fu
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
 static_assert(handleKinds::equalityHolds);
 static_assert(handleKinds::constructionHolds);
-static_assert(std::tuple_size_v<handleKinds::All> == 14);
+static_assert(std::tuple_size_v<handleKinds::All> == 15);
 static_assert(std::equality_comparable<isoduo::ComponentHandle> && std::equality_comparable<isoduo::ConfirmField>);
 static_assert(!std::equality_comparable_with<isoduo::TextFieldHandle, isoduo::CheckboxHandle>);  // one case of the list's rule, spelled out
 // Applications use typed handles; string operations belong to the semantic layer, not Ui.
@@ -346,7 +348,70 @@ void expect(bool ok, const char* what) {
 }
 }
 
+void drawingBars() {
+    using namespace isoduo;
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto upper = *ui.addDrawingArea({.id = "upper", .label = u"Upper bar"});
+    auto lower = *ui.addDrawingArea({.id = "lower", .label = u"Lower bar"});
+    float upperWidth = 0, lowerWidth = 0;
+    auto drawBar = [](DrawingAreaHandle area, float& width) {
+        return area.onDraw([&width](const DrawingEnvironment& env) {
+            return env.roundedRect({0, 0, width, env.size().h}, 2, env.palette().accent, 192);
+        });
+    };
+    expect(drawBar(upper, upperWidth) && drawBar(lower, lowerWidth), "register both drawings");
+
+    std::optional<std::chrono::steady_clock::time_point> start;
+    auto animate = [&](DrawingAreaHandle area, float& width) {
+        return area.onFrame([&, area](const FrameInfo& frame) {
+            if (!start) start = frame.time;
+            // Show the final value immediately for reduced or disabled motion.
+            width = 100;
+            if (frame.motionPreference == MotionPreference::noPreference) {
+                float elapsed = std::chrono::duration<float, std::milli>(frame.time - *start).count();
+                width = std::min(100.f, elapsed);
+            }
+            auto redraw = area.requestRedraw();
+            if (!redraw || width == 100) return redraw;
+            return area.requestFrame();
+        });
+    };
+    expect(animate(upper, upperWidth) && animate(lower, lowerWidth), "register both animations");
+    Monospace measure;
+    ScrollState scroll;
+    auto page = layout::column({layout::drawingArea(upper, 12), layout::drawingArea(lower, 12)}, 0, 0);
+    auto place = [&] { arrange(page, ui, materialAppearance(), measure, 100, 40, 1.f, scroll); };
+    auto expectBars = [&](float width) {
+        auto accent = materialAppearance().palette(ThemeVariant::light()).accent;
+        DrawingCommand bar{DrawingCommandKind::roundedRect, {0, 0, width, 12}, accent, 192, 2};
+        DrawingContent expected{DrawingStatus::drawn, false, {100, 12}, {bar}};
+        for (auto area : {upper, lower}) {
+            auto content = area.content();
+            expect(content && *content == expected, "retained bar matches size, status and drawing command");
+        }
+    };
+    place();
+    expectBars(0);
+    expect(upper.requestFrame() && lower.requestFrame(), "start both bars");
+    expect(bool(ui.simulateFrame(0ms)), "establish the common start");
+    place();
+    expectBars(0);
+    expect(bool(ui.simulateFrame(25ms)), "advance both bars by 25 ms");
+    place();
+    expectBars(25);
+    for (auto preference : {MotionPreference::reduce, MotionPreference::off}) {
+        expect(bool(ui.simulateSystemMotion(preference)), "change the system motion preference");
+        expect(upper.requestFrame() && lower.requestFrame(), "request the final values");
+        expect(bool(ui.simulateFrame(0ms)), "deliver the new preference");
+        place();
+        expectBars(100);
+        expect(ui.animating().value == false, "both bars stopped requesting frames");
+    }
+}
+
 int main() {
+    drawingBars();
     using namespace isoduo;
     Profile profile;
     std::function<void()> changed;
@@ -411,6 +476,7 @@ int main() {
     expect(kindOf(typed.addCheckbox({.id = "typed.checkbox", .label = u"On"})) == ComponentKind::checkbox, "add_checkbox makes a checkbox");
     expect(kindOf(typed.addRadioGroup({.id = "typed.radio", .label = u"Pick"}, items)) == ComponentKind::radioGroup, "add_radio_group makes a radio group");
     expect(kindOf(typed.addSlider({.id = "typed.slider", .label = u"Level"}, {0, 10, 1})) == ComponentKind::slider, "add_slider makes a slider");
+    expect(kindOf(typed.addDrawingArea({.id = "typed.image"})) == ComponentKind::drawingArea, "addDrawingArea makes a drawing area");
     expect(kindOf(typed.addProgress({.id = "typed.progress", .label = u"Done"})) == ComponentKind::progress, "add_progress makes a progress display");
     expect(kindOf(typed.addDropdown({.id = "typed.dropdown", .label = u"Region"}, items)) == ComponentKind::dropdown, "add_dropdown makes a dropdown");
     expect(kindOf(typed.addList({.id = "typed.list", .label = u"Rows"}, items)) == ComponentKind::list, "add_list makes a list");

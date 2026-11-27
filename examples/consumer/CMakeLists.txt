@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(IsoduoConsumer LANGUAGES CXX)
-find_package(Isoduo 0.4 REQUIRED COMPONENTS Core AppearanceMaterial OPTIONAL_COMPONENTS Desktop)
+find_package(Isoduo 0.5 REQUIRED COMPONENTS Core AppearanceMaterial OPTIONAL_COMPONENTS Desktop)
 add_executable(profile_alias main.cpp)
 target_compile_definitions(profile_alias PRIVATE ISODUO_PACKAGE_VERSION=u"${Isoduo_VERSION}")
 target_link_libraries(profile_alias PRIVATE Isoduo::Core Isoduo::AppearanceMaterial)
