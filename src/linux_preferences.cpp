@@ -1,4 +1,5 @@
 #include "linux_preferences.hpp"
+#include "core_internal.hpp"
 #include <gio/gio.h>
 #include <poll.h>
 #include <algorithm>
@@ -21,6 +22,17 @@ std::optional<MotionPreference> xfceMotion(GVariant* enabled) {
         return g_variant_get_boolean(enabled) ? MotionPreference::noPreference : MotionPreference::off;
     if (enabled && g_variant_is_of_type(enabled, G_VARIANT_TYPE_INT32))
         return g_variant_get_int32(enabled) ? MotionPreference::noPreference : MotionPreference::off;
+    return std::nullopt;
+}
+// xfconf's common/xfconf-errors.c registers XFCONF_ERROR_PROPERTY_NOT_FOUND as
+// XFCONF_SERVICE_NAME_PREFIX ".Xfconf.Error.PropertyNotFound" with the default prefix "org.xfce" (meson.build).
+// xfconfd's GetProperty returns it when the channel holds no value for the property
+// (xfconfd/xfconf-backend-perchannel-xml.c). Same in xfconf 4.18.0, 4.20.0 and master 16f66347.
+std::optional<MotionPreference> xfceMotionError(const GError* error) {
+    if (!error) return std::nullopt;
+    std::unique_ptr<gchar, decltype(&g_free)> name(g_dbus_error_get_remote_error(error), g_free);
+    if (name && std::string_view(name.get()) == "org.xfce.Xfconf.Error.PropertyNotFound")
+        return MotionPreference::noPreference;
     return std::nullopt;
 }
 
@@ -64,10 +76,14 @@ Bus xfceBus() {
 std::optional<MotionPreference> readXfceMotion() {
     auto bus = xfceBus();
     if (!bus) return std::nullopt;
+    GError* failure = nullptr;
     Variant reply(g_dbus_connection_call_sync(bus.get(), xfconfService, xfconfPath,
         xfconfService, "GetProperty", g_variant_new("(ss)", xfceChannel, xfceAnimationsKey),
-        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 250, nullptr, nullptr), g_variant_unref);
-    if (!reply) return std::nullopt;
+        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 250, nullptr, &failure), g_variant_unref);
+    if (!reply) {
+        std::unique_ptr<GError, decltype(&g_error_free)> error(failure, g_error_free);
+        return xfceMotionError(error.get());
+    }
     GVariant* property = nullptr;
     g_variant_get(reply.get(), "(v)", &property);
     Variant value(property, g_variant_unref);
@@ -93,6 +109,10 @@ LinuxDesktopPreferences readLinuxDesktopPreferences() {
     if (desktopIs(desktop, "GNOME")) return {readGnomeMotion(), {}};
     if (desktopIs(desktop, "XFCE")) return {readXfceMotion(), {}};
     return {};
+}
+void applyLinuxDesktopPreferences(UiState& state, const LinuxDesktopPreferences& preferences) {
+    state.setSystemKeyboardCues(preferences.keyboardCues.value_or(false));
+    if (preferences.motion) state.setSystemMotion(*preferences.motion);
 }
 
 struct LinuxPreferenceMonitor::Impl {
