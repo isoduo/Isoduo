@@ -3,7 +3,6 @@
 A C++20 desktop UI framework. The public API is still evolving.
 
 Code: [isoduo/Isoduo](https://github.com/isoduo/Isoduo).
-Private tracker: [isoduo/Isoduo-issues](https://github.com/isoduo/Isoduo-issues).
 Historical numbered issue links retain their original destinations.
 
 Consumers use `<isoduo/...>`,
@@ -354,6 +353,75 @@ if (result.failure && (result.failure->kind == isoduo::StartupFailureKind::rende
 
 MCP and full grapheme and RTL support remain outside v1; see the form documentation for text and IME boundaries. Third-party sources are listed in [third_party/SOURCES.md](third_party/SOURCES.md); licenses are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
+## Drawing areas
+
+A drawing area is a passive image. Give it an accessible label and a positive height in
+`layout::drawingArea`. Coordinates and radii are in device-independent pixels. The drawing
+callback records commands that the framework retains and replays. Call `requestRedraw()`
+when your data changes. Read colors from `env.palette()` to follow the active theme. A
+hard-coded color stays the same when the theme changes.
+
+These excerpts come from `drawingBars()` in the [public core contract](examples/consumer/main.cpp).
+Its `expect` helper checks each registration. The captured widths and start time must stay alive
+while the callbacks are in use.
+
+```cpp
+Ui ui;
+auto upper = *ui.addDrawingArea({.id = "upper", .label = u"Upper bar"});
+auto lower = *ui.addDrawingArea({.id = "lower", .label = u"Lower bar"});
+float upperWidth = 0, lowerWidth = 0;
+auto drawBar = [](DrawingAreaHandle area, float& width) {
+    return area.onDraw([&width](const DrawingEnvironment& env) {
+        return env.roundedRect({0, 0, width, env.size().h}, 2, env.palette().accent, 192);
+    });
+};
+expect(drawBar(upper, upperWidth) && drawBar(lower, lowerWidth), "register both drawings");
+```
+
+Both bars use the first delivered frame as their shared start. Each computes its own width
+from elapsed time, so a delayed frame still draws the correct progress. This example grows
+the bars over 100 ms under `noPreference` and shows the final value immediately under
+`reduce` or `off`. Honor platform preferences in application animations (EN 301 549 §11.7).
+For moving content that starts automatically, lasts more than five seconds and appears
+alongside other content, provide a way to pause, stop or hide it unless the movement is
+essential (WCAG 2.2 SC 2.2.2). Put that control outside the drawing area, for example in a
+Pause button that calls `cancelFrame()` on each animated area.
+
+```cpp
+std::optional<std::chrono::steady_clock::time_point> start;
+auto animate = [&](DrawingAreaHandle area, float& width) {
+    return area.onFrame([&, area](const FrameInfo& frame) {
+        if (!start) start = frame.time;
+        // Show the final value immediately for reduced or disabled motion.
+        width = 100;
+        if (frame.motionPreference == MotionPreference::noPreference) {
+            float elapsed = std::chrono::duration<float, std::milli>(frame.time - *start).count();
+            width = std::min(100.f, elapsed);
+        }
+        auto redraw = area.requestRedraw();
+        if (!redraw || width == 100) return redraw;
+        return area.requestFrame();
+    });
+};
+expect(animate(upper, upperWidth) && animate(lower, lowerWidth), "register both animations");
+```
+
+In the core-only test, `place()` arranges both areas and `expectBars(width)` checks the
+retained size, status and command fields on each. Advancing the simulated clock makes
+the intermediate values reproducible.
+
+```cpp
+place();
+expectBars(0);
+expect(upper.requestFrame() && lower.requestFrame(), "start both bars");
+expect(bool(ui.simulateFrame(0ms)), "establish the common start");
+place();
+expectBars(0);
+expect(bool(ui.simulateFrame(25ms)), "advance both bars by 25 ms");
+place();
+expectBars(25);
+```
+
 ## Motion (animations)
 
 The framework has one internal animation clock (`src/animation.hpp`). A component registers a display property
@@ -363,16 +431,30 @@ of a drag slide the thumb over 150 ms (cubic ease-out), turning from the positio
 changes mid-way. Values, semantics and UI Automation update at once; only the picture moves. Application code,
 `setValue` (semantic or UIA), Ctrl+Z / Ctrl+Y, data-source changes and dragging itself land at once.
 
-- `PresentationSettings::motion`: `Motion::automatic` (default) follows Windows "Show animations in Windows"
-  (`SPI_GETCLIENTAREAANIMATION`, re-read on `WM_SETTINGCHANGE`); `Motion::off` never plays. There is no
-  "always on". Switching it with `Ui::setPresentation` takes effect at once and lands running transitions.
-- `Ui::animating()` / `SemanticTree::animating()` answer whether any transition is still running (one query,
-  one admission rule). Wait for `false` before comparing screenshots.
+- `Ui::motionPreference()` reports `MotionPreference::noPreference`, `reduce`, or `off`. The default
+  `Motion::automatic` follows the system. Disabling animations in Windows, GNOME, or Xfce yields `off`.
+  GNOME's reduced-motion setting yields `reduce` when animations are enabled. Setting
+  `PresentationSettings::motion` to `Motion::off` overrides either system preference.
+- With `reduce` or `off`, built-in transitions go straight to their endpoints, including transitions already
+  running. Applications can read the effective preference in `DrawingEnvironment::motionPreference()`.
+  Each drawing area redraws when the preference changes. Register a callback with
+  `Ui::onMotionPreferenceChange` to receive the new effective value. Register again to replace it.
+- Register a drawing area's callback with `onFrame` and call `requestFrame()` to schedule it once.
+  Every callback in a frame receives the same `FrameInfo::time` and can read the effective motion preference.
+  Call `requestRedraw()` when the drawing changes, and `requestFrame()` again to continue the animation.
+  The host retains requests while the area is outside the viewport, the window is hidden, or the renderer is unavailable.
+- `Ui::animating()` and `SemanticTree::animating()` include both running transitions and runnable frame requests.
+  Before comparing screenshots, cancel continuous requests with `cancelFrame()` or advance a core-only UI with `simulateFrame`.
 - A minimized, cloaked or fully covered window jumps running transitions to their end and draws nothing for them.
   "Fully covered" is best effort: one visible opaque window above ours that spans the whole client area.
-- A core-only host that installs no time source (`detail::UiState::animationTime`) never animates. Tests use
-  that seam as a fake clock, and `setSystemAnimations` / `DesktopHost::systemAnimationSource` to simulate the
-  Windows setting. Tests: `animation` (core) and `isoduo_host_verify --animation-only` (native host).
+- In a core-only test, arrange the UI, call `ui.simulateFrame(std::chrono::milliseconds(16))`, then arrange
+  again to see the changes requested by callbacks. The first simulated frame starts the shared timeline for
+  built-in transitions. Use `simulateSystemMotion` to vary the preference. An attached Desktop supplies both.
+- Run the `drawing_area` and `animation` CTests for the core behavior. Run `drawing_frames_opengl` and
+  `drawing_frames_vulkan` on Windows, GNOME Wayland and Xfce X11 for native pacing, visibility and idle checks.
+  On Windows, run `drawing_area_pixels_opengl` and `drawing_area_pixels_vulkan` for pixel comparisons, and
+  `uia_drawing_image_web` and `uia_drawing_image_material` for the accessible image.
+  The Windows `drawing_area_recovery_opengl` and `drawing_area_recovery_vulkan` tests inject presentation failures.
 
 ## Palette overrides
 
@@ -391,7 +473,7 @@ auto result = ui.setPaletteOverrides({
 - `focus` is the focus ring's color. `Palette::focus` is an `std::optional<Color>`: empty (the default, and the built-in palettes) means "the accent", so the ring follows a replaced `accent` for every appearance, built-in or custom, even one that assigns `accent` after building its palette; setting `focus` (in a custom palette, or by overriding the `focus` role) pins the ring to its own color. Read the ring color with `Palette::focusColor()`; `Ui::effectivePalette` always returns `focus` set.
 - The list is replaced as a whole and takes effect on the next frame; `setPaletteOverrides({})` restores the built-in colors. Overrides apply only to the built-in appearances whose module is linked; a custom `Appearance` is never affected.
 - Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, `outline` on `background` and `panel`, and `focus` (the focus ring) on `surface`, `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalidValue` with a message naming the pair and its ratio, and the previous list stays active. `isoduo::checkPaletteContrast(palette)` runs the same rules so an application can pre-check a palette.
-- `Ui::paletteOverrides()` reads the list; `Ui::effectivePalette(appearance, variant)` and `SemanticTree::effectivePalette()` (read-only; the Desktop host binds its appearance, a core-only host calls `Ui::bindAppearance`) report the colors that actually paint.
+- `Ui::paletteOverrides()` reads the list; `Ui::effectivePalette(appearance, variant)` and `SemanticTree::effectivePalette()` (read-only; the Desktop host binds its appearance, a core-only host checks the `Result` from `Ui::bindAppearance`) report the colors that actually paint.
 
 ## Pointer hover
 
@@ -490,7 +572,7 @@ Then in your project:
 ```cmake
 cmake_minimum_required(VERSION 3.25)
 project(StationApp LANGUAGES CXX)
-find_package(Isoduo 0.4 REQUIRED COMPONENTS Desktop AppearanceWeb)
+find_package(Isoduo 0.5 REQUIRED COMPONENTS Desktop AppearanceWeb)
 add_executable(station_app main.cpp)
 target_link_libraries(station_app PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 install(FILES "${Isoduo_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)

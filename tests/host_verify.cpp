@@ -1,3 +1,4 @@
+#include "drawing_frame_checks.hpp"
 #include "real_input_profiles.hpp"
 #include "presentation_matrix.hpp"
 #include "render_role_checks.hpp"
@@ -12,6 +13,7 @@
 #include "edit_form.hpp"
 #include "x04_drivers.hpp"
 #include "geometry.hpp"
+#include "focus_marks.hpp"
 #include "list_page.hpp"
 #include <imm.h>
 #include <psapi.h>
@@ -113,6 +115,9 @@ struct Fixture {
         ShowWindow(host.window(), SW_SHOWNOACTIVATE);
         host.forceScale(1.f);
         host.clientSize(900, 700);
+        // Snapshot and input fixtures drain the message queue between actions.
+        // Keep the showcase at a fixed angle while these tests drive the host.
+        if (pages) form.handles.indicator.cancelFrame();
         settle();
     }
     ~Fixture() {
@@ -254,6 +259,322 @@ void emitFailureIfNeeded(const std::filesystem::path& folder, const std::string&
 }
 
 // The same recorded frame must be executed by the graphics backend offscreen.
+int drawingTextPixels() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "text", .label = u"Text"});
+    ScrollState scroll;
+    DesktopHost host(ui, webAppearance(), [&] { return layout::drawingArea(area, 64); },
+                     scroll, Fixture::options(), false, true);
+    host.hiddenSource([] { return false; });
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        for (auto size : {DrawingTextSize::body, DrawingTextSize::caption}) {
+            for (FontStyle face : {FontStyle{}, FontStyle{true, false}, FontStyle{false, true}}) {
+                std::vector<unsigned char> opaque;
+                for (unsigned char opacity : {255, 128}) {
+                    area.onDraw([=](const DrawingEnvironment& env) {
+                        auto draw = [&](const DrawingEnvironment& block) {
+                            return block.drawText(u"ABC\u4e2d\u6587 ABC\u4e2d\u6587 ABC\u4e2d\u6587", {4, 4, 42, 38},
+                                {size, face.bold, face.italic}, {0,0,0}, opacity);
+                        };
+                        if (opacity == 255) return draw(env);
+                        return env.clip({10, 0, 50, 64}, [&](const DrawingEnvironment& outer) {
+                            return outer.clip({0, 6, 64, 32}, draw);
+                        });
+                    });
+                    auto result = host.compareGpu(96, 96, scale);
+                    if (!result) return 1;
+                    const auto& image = result.reference;
+                    const int background = webAppearance().palette().background.r;
+                    bool secondLine = false;
+                    for (int y = 0; y < image.height; ++y) {
+                        for (int x = 0; x < image.width; ++x) {
+                            auto index = (y * image.width + x) * 4;
+                            const int red = image.pixels[index];
+                            if (red != background) {
+                                if (x < std::lround(4 * scale) || y < std::lround(4 * scale) ||
+                                    x >= std::lround(46 * scale) || y >= std::lround(42 * scale)) return 1;
+                                if (y > 28 * scale) secondLine = true;
+                            }
+                            if (opacity == 128) {
+                                bool clipped = x < std::lround(10 * scale) || y < std::lround(6 * scale) ||
+                                               y >= std::lround(38 * scale);
+                                int expected = clipped ? background : (background + opaque[index]) / 2;
+                                if (std::abs(red - expected) > 2) return 1;
+                            }
+                        }
+                    }
+                    if (!secondLine) return 1;
+                    if (opacity == 255) opaque = image.pixels;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int drawingAreaPixels() {
+    Ui ui;
+    auto area = ui.addDrawingArea({.id = "swatch", .label = u"Swatch"}).value.value();
+    area.onDraw([](const DrawingEnvironment& env) {
+        auto result = env.fillRect({0.5f, 0.5f, 16.f, 10.f}, {200, 0, 0});
+        if (!result) return result;
+        return env.fillRect({8.5f, 2.5f, 4.f, 4.f}, {0, 0, 200}, 128);
+    });
+    ScrollState scroll;
+    DesktopHost host(ui, webAppearance(), [&] { return layout::drawingArea(area, 12); },
+                     scroll, Fixture::options(), false, true);
+    host.hiddenSource([] { return false; });
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        auto result = host.compareGpu(64, 48, scale);
+        if (!result) return 1;
+        const auto& image = result.reference;
+        // Compare the complete CPU image to the DIP scene as well as both backends to the CPU image.
+        const auto edge = [scale](float dip) { return std::lround(dip * scale); };
+        auto background = webAppearance().palette().background;
+        for (int y = 0; y < image.height; ++y) {
+            for (int x = 0; x < image.width; ++x) {
+                Color expected = background;
+                if (x >= edge(.5f) && x < edge(16.5f) && y >= edge(.5f) && y < edge(10.5f))
+                    expected = {200, 0, 0};
+                if (x >= edge(8.5f) && x < edge(12.5f) && y >= edge(2.5f) && y < edge(6.5f))
+                    expected = {99, 0, 100};
+                auto i = (y * image.width + x) * 4;
+                if (Color{image.pixels[i], image.pixels[i+1], image.pixels[i+2]} != expected) return 1;
+            }
+        }
+    }
+    const Color red{200, 0, 0}, blue{0, 0, 200};
+    area.onDraw([&](const DrawingEnvironment& env) {
+        auto base = env.roundedRect({0, 0, 40, 20}, 0, red);
+        if (!base) return base;
+        auto clipped = env.clip({2.5f, -1, 16, 12}, [&](const DrawingEnvironment& outer) {
+            auto nested = outer.clip({8.5f, -1, 30, 20}, [&](const DrawingEnvironment& inner) {
+                return inner.fillRect({0, 0, 40, 20}, blue, 128);
+            });
+            if (!nested) return nested;
+            auto empty = outer.clip({20, 0, 10, 10}, [&](const DrawingEnvironment& inner) {
+                return inner.fillRect({0, 0, 40, 20}, blue);
+            });
+            if (!empty) return empty;
+            return outer.roundedRect({0, 0, 8, 8}, 2, blue);
+        });
+        if (!clipped) return clipped;
+        auto capsule = env.roundedRect({22, 1, 14, 10}, 200, blue, 128);
+        if (!capsule) return capsule;
+        auto square = env.roundedRect({40, 1, 10, 10}, 0, blue, 128);
+        if (!square) return square;
+        auto rounded = env.roundedRect({52, 1, 10, 10}, 2.5f, blue, 128);
+        if (!rounded) return rounded;
+        return env.roundedRect({64, 1, 14, 10}, 200, blue);
+    });
+    for (float scale : {1.f, 1.25f, 1.5f}) {
+        auto result = host.compareGpu(128, 48, scale);
+        if (!result) return 1;
+        const auto pixel = [&](int x, int y) {
+            const auto i = (y * result.reference.width + x) * 4;
+            const auto& bytes = result.reference.pixels;
+            return Color{bytes[i], bytes[i+1], bytes[i+2]};
+        };
+        const auto edge = [scale](float dip) { return static_cast<int>(std::lround(dip * scale)); };
+        const Color blended{99, 0, 100};
+        int middle = edge(4);
+        if (pixel(edge(2.5f)-1, middle) != red || pixel(edge(2.5f), middle) != blue ||
+            pixel(edge(8.5f)-1, middle) != red || pixel(edge(8.5f), middle) != blended ||
+            pixel(edge(18.5f)-1, middle) != blended || pixel(edge(18.5f), middle) != red ||
+            pixel(edge(12), edge(11)) != red || pixel(edge(22), edge(1)) != red ||
+            pixel(edge(29), middle) != blended ||
+            pixel(edge(40), edge(1)) != pixel(edge(57), middle) ||
+            pixel(edge(52), edge(1)) == pixel(edge(57), middle) ||
+            pixel(edge(64), edge(1)) != webAppearance().palette().background ||
+            pixel(edge(71), middle) != blue ||
+            pixel(edge(1), edge(12)) != webAppearance().palette().background) return 1;
+    }
+    return 0;
+}
+
+void terminalSliderFrame() {
+    using namespace std::chrono_literals;
+    Fixture f(webAppearance());
+    auto& ui = f.form.ui;
+    auto& state = detail::access(ui);
+    auto now = std::chrono::steady_clock::now();
+    state.animationTime([&] { return now; });
+    f.host.hiddenSource([] { return false; });
+    f.host.systemAnimationSource([] { return true; });
+    f.form.handles.volume.focus();
+    f.settle();
+    f.host.observePaint(true);
+    f.key(VK_RIGHT);
+    f.keyUp(VK_RIGHT);
+    f.host.paint();
+    if (!*ui.animating()) throw std::runtime_error("Expected an active slider transition");
+    const auto before = f.host.frames();
+    now += 200ms;
+    f.host.deliverFrameTimerForTest();
+    UpdateWindow(f.host.window());
+    const auto track = f.host.frame().find(f.form.handles.volume)->sliderTrack;
+    const int endpoint = track.x + static_cast<int>(std::lround(track.w * 0.45));
+    const auto& marks = f.host.paintObservations();
+    if (!std::any_of(marks.begin(), marks.end(), [&](const auto& mark) {
+        return mark.owner == f.ids.volume && focusMarks::isThumb(mark.bounds) &&
+               mark.bounds.x + mark.bounds.w / 2 == endpoint;
+    })) throw std::runtime_error("Terminal paint must place the thumb at the 45 tick");
+    if (f.host.frames() != before + 1 || *ui.animating() || f.host.scheduledFrameInterval())
+        throw std::runtime_error("Delayed timer must present the terminal slider frame once");
+}
+int drawingFrames() {
+    terminalSliderFrame();
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "indicator", .label = u"Indicator"});
+    auto spacer = *ui.addDrawingArea({.id = "space", .label = u"Spacer"});
+    ScrollState scroll;
+    auto page = [&] { return layout::scroll(layout::column({
+        layout::drawingArea(area, 20), layout::drawingArea(spacer, 1600)}, 0, 0)); };
+    DesktopHost host(ui, webAppearance(), page, scroll, Fixture::options(), false, true);
+    ShowWindow(host.window(), SW_SHOWNOACTIVATE);
+    bool hidden = false, covered = false;
+    host.hiddenSource([&] { return hidden || IsIconic(host.window()); });
+    host.coveredSource([&] { return covered; });
+    auto now = std::chrono::steady_clock::now();
+    detail::access(ui).animationTime([&] { return now; });
+    host.pump();
+    host.paint();
+    std::vector<std::chrono::steady_clock::time_point> calls;
+    area.onFrame([&](const FrameInfo& info) {
+        calls.push_back(info.time);
+        return area.requestFrame();
+    });
+    area.requestFrame();
+    int baseline = host.frames();
+    for (int i = 0; i < 3; ++i) {
+        now += 16ms;
+        host.deliverFrameTimerForTest();
+    }
+    if (calls.size() != 3 || baseline != host.frames()) throw std::runtime_error("Callback-only frames submitted");
+    covered = true;
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 3 || host.scheduledFrameInterval() != 250) throw std::runtime_error("Occluded pacing");
+    area.cancelFrame();
+    if (host.scheduledFrameInterval()) throw std::runtime_error("Idle occlusion timer");
+    area.requestFrame();
+    covered = false;
+    now += 250ms;
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 4 || calls.back() - calls[2] != 250ms) throw std::runtime_error("Occlusion resume");
+    hidden = true;
+    host.deliverFrameTimerForTest();
+    now += 2s;
+    if (*ui.animating() || host.scheduledFrameInterval()) throw std::runtime_error("Hidden pacing");
+    hidden = false;
+    host.hiddenSource([&] { return hidden || IsIconic(host.window()); });
+    host.deliverFrameTimerForTest();
+    if (calls.size() != 5 || calls.back() - calls[3] != 2s) throw std::runtime_error("Hidden resume");
+    scroll.offset = 100;
+    host.paint();
+    if (!test::drawingFramesPaused(ui) || calls.size() != 5) throw std::runtime_error("Clipped frame request");
+    scroll.offset = 0;
+    host.paint();
+    if (calls.size() != 6) throw std::runtime_error("Scroll resume");
+    ShowWindow(host.window(), SW_MINIMIZE);
+    host.pump();
+    if (*ui.animating()) throw std::runtime_error("Minimized frame request");
+    now += 1s;
+    ShowWindow(host.window(), SW_RESTORE);
+    host.pump();
+    if (calls.back() != now) throw std::runtime_error("Restore frame time");
+    area.cancelFrame();
+    host.pump();
+    const int paints = host.paintMessages(), presents = host.frames();
+    auto cpu = [] {
+        FILETIME created{}, exited{}, kernel{}, user{};
+        GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+        auto ticks = [](FILETIME t) { return (std::uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
+        return ticks(kernel) + ticks(user);
+    };
+    const auto before = cpu();
+    const auto end = std::chrono::steady_clock::now() + 10s;
+    while (auto remaining = std::chrono::ceil<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count()) {
+        if (remaining < 0) break;
+        MsgWaitForMultipleObjectsEx(0, nullptr, static_cast<DWORD>(remaining), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        host.pump();
+    }
+    if (!detail::idlePass(host.frames() - presents, host.paintMessages() - paints, double(cpu() - before) / 10000.))
+        throw std::runtime_error("Idle after final frame request");
+    return 0;
+}
+
+int drawingRecovery() {
+    Ui ui;
+    auto pending = *ui.addDrawingArea({.id = "pending", .label = u"Pending"});
+    auto retained = *ui.addDrawingArea({.id = "retained", .label = u"Retained"});
+    auto broken = *ui.addDrawingArea({.id = "broken", .label = u"Broken"});
+    Color ink{200, 10, 30}, replay{5, 90, 140};
+    int pendingCalls = 0, retainedCalls = 0;
+    pending.onDraw([&](const DrawingEnvironment& env) {
+        ++pendingCalls;
+        return env.fillRect({0,0,10,10}, ink);
+    });
+    retained.onDraw([&](const DrawingEnvironment& env) {
+        ++retainedCalls;
+        return env.fillRect({0,0,10,10}, replay);
+    });
+    broken.onDraw([](const DrawingEnvironment& env) {
+        env.fillRect({0,0,10,10}, {255,0,0});
+        return Result{Status::failed, {}};
+    });
+    auto page = [&] { return layout::column({layout::drawingArea(pending, 10),
+        layout::drawingArea(retained, 10), layout::drawingArea(broken, 10)}, 0, 0); };
+    ScrollState scroll;
+    detail::RendererTestHooks hooks;
+    auto config = Fixture::options();
+    DesktopHost host(ui, webAppearance(), page, scroll, config, false, true, &hooks);
+    host.forceScale(1);
+    RECT client{};
+    GetClientRect(host.window(), &client);
+    auto place = [&] { host.layout(client.right, client.bottom, 1, scroll, {}); };
+    host.hiddenSource([] { return true; });
+    pending.requestRedraw();
+    pending.requestRedraw();
+    place();
+    if (pendingCalls || retainedCalls) throw std::runtime_error("hidden window drew");
+    host.hiddenSource([] { return false; });
+    place();
+    host.hiddenSource([] { return true; });
+    place();
+    host.hiddenSource([] { return false; });
+    place();
+    if (pendingCalls != 1 || retainedCalls != 1) throw std::runtime_error("visibility redraw count");
+
+    if (config.renderBackend == RenderBackendKind::vulkan) hooks.submitResultAtFrame = {1, -2};
+    else hooks.errorAtFrame = 1;
+    int frameCalls = 0;
+    pending.onFrame([&](const FrameInfo&) { ++frameCalls; return pending.requestFrame(); });
+    pending.requestFrame();
+    host.paint();
+    if (frameCalls != 1 || !host.rendererFailed()) throw std::runtime_error("frame before failed presentation");
+    if (!pending.cancelFrame() || !pending.requestFrame()) throw std::runtime_error("requests during failure");
+    ink = {20,180,40};
+    if (!pending.requestRedraw() || retained.onDraw({}).status != Status::rendererFailed)
+        throw std::runtime_error("failed renderer admission");
+    place();
+    if (pendingCalls != 1 || retainedCalls != 1 || !host.rebuildRenderer())
+        throw std::runtime_error("drawing ran before recovery or rebuild failed");
+    host.paint();
+    if (frameCalls != 2) throw std::runtime_error("pending frame after renderer rebuild");
+    pending.cancelFrame();
+    auto result = host.compareGpu(client.right, client.bottom, 1);
+    if (!result || pendingCalls != 2 || retainedCalls != 1) throw std::runtime_error("rebuild redraw count or comparison");
+    const auto& image = result.actual;
+    auto sample = [&](int y) {
+        auto i = (y * image.width + 2) * 4;
+        return Color{image.pixels[i], image.pixels[i+1], image.pixels[i+2]};
+    };
+    if (sample(2) != ink || sample(12) != replay || sample(22) != webAppearance().palette().background)
+        throw std::runtime_error("recovered, retained or failed drawing pixels");
+    return 0;
+}
+
 void gpuDrawListSmoke(const Appearance& appearance, Report& report, const std::filesystem::path& evidence) {
     Fixture f(appearance, true);
     f.host.forceScale(1.f);
@@ -378,6 +699,15 @@ void drawListInitial(const Appearance& appearance, Report& report, std::ofstream
 }
 
 
+bool containsColor(const Image& canvas, Rect bounds, Color color) {
+    auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
+    for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
+        auto i = (static_cast<std::size_t>(y) * canvas.width + x) * 4;
+        if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
+    }
+    return false;
+}
+
 int demoCompare(const std::filesystem::path& evidence) {
     std::filesystem::create_directories(evidence);
     std::ofstream out(evidence / "demo-render-compare.tsv");
@@ -444,6 +774,33 @@ int demoCompare(const std::filesystem::path& evidence) {
         for(const auto& region:result.regions) out << region.owner << ':' << region.role << ':' << (region.passed?"PASS":"FAIL") << ',';
         out << '\t' << (pass?"PASS":"FAIL") << '\n';
         std::cout << key << (pass?" PASS":" FAIL") << " setup=" << setup << '\n';
+    }
+    for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
+        Fixture f(*appearance, true);
+        auto& h = f.form.handles;
+        f.host.hiddenSource([] { return false; });
+        if (!h.tabs.activate({"v03"}) || !h.pauseIndicator.invoke()) return 1;
+        for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()}) {
+            auto settings = f.form.ui.presentation();
+            settings.variant = variant;
+            if (!f.form.ui.setPresentation(settings)) return 1;
+            for (float scale : {1.f, 1.25f, 1.5f}) {
+                auto frame = f.host.layout(960, 720, scale, f.form.scroll, {});
+                auto result = f.host.compareGpu(960, 720, scale);
+                bool pass = bool(result);
+                for (auto area : {h.chart, h.indicator}) {
+                    auto placement = frame.find(area);
+                    pass = pass && placement && intersect(placement->bounds, placement->clip) == placement->bounds &&
+                        area.content()->status == DrawingStatus::drawn &&
+                        containsColor(result.reference, placement->bounds, appearance->palette(variant).accent) &&
+                        compareImages(result.reference, result.actual, {placement->bounds}).regionsOk;
+                }
+                auto key = std::string("showcase-") + std::string(appearance->name()) + "-" + variant.name + "-" + std::to_string(scale);
+                emitFailureIfNeeded(evidence, key, result, pass);
+                std::cout << key << (pass ? " PASS" : " FAIL") << '\n';
+                if (!pass) ++failures;
+            }
+        }
     }
     return out && rows==72 && !failures ? 0 : 1;
 }
@@ -1804,12 +2161,17 @@ void sliderAnimationNative(const Appearance& appearance, Report& report) {
         "started=" + std::to_string(started) + ", frames during=" + std::to_string(framesDuring) + ", ended=" + std::to_string(ended) + ", no frames after=" + std::to_string(idle));
     // The system preference, changed while running, lands the transition at once and holds for later changes.
     tapNow(VK_RIGHT); const bool running = animating();
+    std::vector<MotionPreference> preferences;
+    ui.onMotionPreferenceChange([&](MotionPreference preference) { preferences.push_back(preference); });
     systemOn = false; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
-    const bool landed = !animating();
+    const bool landed = !animating() && ui.motionPreference() == MotionPreference::off;
     tapNow(VK_RIGHT); const bool instant = !animating() && *f.form.handles.volume.draft() == 55;
     systemOn = true; SendMessageW(f.host.window(), WM_SETTINGCHANGE, SPI_SETCLIENTAREAANIMATION, 0); f.host.pump();
     tapNow(VK_LEFT); const bool again = animating();
-    report.check("A75-system-setting", running && landed && instant && again,
+    ui.onMotionPreferenceChange({});
+    report.check("A75-system-setting", running && landed && instant && again &&
+        preferences == std::vector<MotionPreference>{MotionPreference::off, MotionPreference::noPreference} &&
+        ui.simulateSystemMotion(MotionPreference::reduce).status == Status::notSupported,
         "running=" + std::to_string(running) + ", landed on change=" + std::to_string(landed) + ", instant while off=" + std::to_string(instant) + ", plays after on=" + std::to_string(again));
     pumpFor(400);
     // #72 x #75: both tickets follow WM_SETTINGCHANGE through ONE case. The "everything changed" broadcast (wParam 0)
@@ -2376,7 +2738,8 @@ void popupDismissalMatrix(const Appearance& appearance, Report& report) {
             // Search the actual V03 geometry for every edge/input pair. Preparation
             // sets an offset, while the scroll under test enters through Win32 messages.
             for (int input = 0; input < 3; ++input) for (bool partial : {true, false}) {
-                h.progressHalf.focus(); f.settle();
+                // A preceding scrollbar press can leave the focused button in pointer mode.
+                h.progressHalf.focus(); f.tap(VK_RIGHT); f.settle();
                 auto geometry = f.host.frame();
                 auto* anchor = geometry.find(h.progressHalf);
                 auto bar = geometry.regions.front();
@@ -2941,6 +3304,8 @@ void x04NormalMatrix(const Appearance& appearance, Report& report) {
         for (float scale : {1.f, 1.5f}) {
             Fixture f(appearance, true, alternate); auto& state = detail::access(f.form.ui);
             f.x04Size(size.first, size.second, scale); f.host.observePaint(true);
+            // Normal paint assumes an uncovered client, regardless of desktop stacking order.
+            f.host.coveredSource([] { return false; });
             for (const auto& entry : x04::inventory(f.form)) {
                 bool baseline = x04::baselineContext(f.form);
                 bool modal = entry.page == "modal";
@@ -2978,6 +3343,7 @@ void x04NormalMatrix(const Appearance& appearance, Report& report) {
                     if (semantic->kind == ComponentKind::checkbox && semantic->checked == true) compared = compared && accent;
                     if (semantic->kind == ComponentKind::radioGroup && !semantic->value.empty()) compared = compared && accent;
                     if ((semantic->kind == ComponentKind::list || semantic->kind == ComponentKind::tabs) && !semantic->value.empty()) compared = compared && selected;
+                    if (semantic->kind == ComponentKind::drawingArea) compared = compared && accent;
                     if (semantic->kind == ComponentKind::progress && item && semantic->numericValue)
                         compared = compared && item->progressFill.w == item->progressTrack.w * *semantic->numericValue / 100 &&
                             (*semantic->numericValue == 0 || accent);
@@ -3010,6 +3376,10 @@ void x04DisabledMatrix(const Appearance& appearance, Report& report) {
                 std::string sample = std::string(alternate ? "alternate" : "shipped") + " " +
                     std::to_string(size.first) + "x" + std::to_string(size.second) + " " +
                     std::to_string(int(scale * 100)) + "% " + initial->id;
+                if (auto image = std::get_if<DrawingAreaHandle>(&entry.handle)) {
+                    report.check("X04-disabled-member", x04::disabledDrawingArea(*image), sample);
+                    continue;
+                }
                 if (initial->kind == ComponentKind::tabs) {
                     auto tabs = std::get<TabsHandle>(entry.handle);
                     bool driven = baseline && bool(tabs.activate({"v01"})) && bool(tabs.enablePage({"v02"}, false)) && bool(tabs.focus());
@@ -3220,14 +3590,7 @@ void x04NameConflictMatrix(const Appearance& appearance, Report& report) {
 // Raster evidence uses the same real fonts, component adapters, clipping and Canvas as the host.
 // Colored pixels demonstrate a cue was drawn; they are not OCR of the semantic string.
 void semanticRasterSamples(const Appearance& appearance, Report& report, const std::filesystem::path& folder) {
-    auto containsColor = [](const Image& canvas, Rect bounds, Color color) {
-        auto r = intersect(bounds, {0, 0, canvas.width, canvas.height});
-        for (int y = r.y; y < r.y + r.h; ++y) for (int x = r.x; x < r.x + r.w; ++x) {
-            auto i = (static_cast<std::size_t>(y) * canvas.width + x) * 4;
-            if (canvas.pixels[i] == color.r && canvas.pixels[i + 1] == color.g && canvas.pixels[i + 2] == color.b) return true;
-        }
-        return false;
-    };
+
     {
         Fixture dark(appearance, true); auto& d = dark.form.handles;
         auto settings = dark.form.ui.presentation(); settings.variant = ThemeVariant::dark();
@@ -4619,7 +4982,8 @@ int wmain(int argc, wchar_t** argv) {
     SetUnhandledExceptionFilter(reportCrash);
     try {
         std::filesystem::path evidence = "host-evidence";
-        bool dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
+        bool drawingFramesOnly = false;
+        bool drawingRecoveryOnly = false, drawingPixels = false, dl01Only = false, trial = false, matrix = false, presentation = false, backendCheck = false, r06Only = false, ddOnly = false, contextMenuOnly = false, animationOnly = false;
         bool multilineOnly = false, verticalOnly = false, richtextOnly = false, wordSelectOnly = false, justifyOnly = false;
                 bool uiaIme = false, demoComparison = false, demoPerf = false, demoPerfFont = false;
         bool ime = false, clipboardOnly = false, dpi = false, x02Only = false, x04Only = false, x04ClippedOnly = false, x04ExecutingOnly = false, x04DisabledOnly = false, x04SelectionOnly = false, hoverOnly = false, focusOnly = false;
@@ -4639,6 +5003,9 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--paint-delay-ms" && i+1<argc) perfDelay=std::stoi(argv[++i]);
             else if (arg == L"--perf-duration-ms" && i+1<argc) perfDuration=std::stoi(argv[++i]);
             else if (arg == L"--evidence" && i + 1 < argc) evidence = argv[++i];
+            else if (arg == L"--drawing-frames") drawingFramesOnly = true;
+            else if (arg == L"--drawing-recovery") drawingRecoveryOnly = true;
+            else if (arg == L"--drawing-area") drawingPixels = true;
             else if (arg == L"--dl01-only" || arg == L"--render-compare") dl01Only = true;
             else if (arg == L"--demo-compare") demoComparison = true;
             else if (arg == L"--trial-screenshots") trial = true;
@@ -4771,6 +5138,9 @@ int wmain(int argc, wchar_t** argv) {
         // #75: idle after one animation, same pass rule as idle (spec 1: 10 s CPU <= 20 ms, no repaint).
         if (perf==L"idle-after-animation") return runDemoPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration,false,"perf.tsv");
         if (!perf.empty()) return runPerf(evidence,perf,perfAppearance,perfLarge,perfDelay,perfDuration);
+        if (drawingFramesOnly) return drawingFrames();
+        if (drawingRecoveryOnly) return drawingRecovery();
+        if (drawingPixels) return drawingAreaPixels() || drawingTextPixels();
         if (dl01Only) { std::filesystem::create_directories(evidence); Report report(evidence / "dl01.tsv"); std::ofstream gpuTsv(evidence/"render-compare.tsv"); gpuTsv << "scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus\n"; for (const auto* appearance : {&webAppearance(), &materialAppearance()}) { report.appearance = appearance == &webAppearance() ? "web" : "material"; drawListInitial(*appearance, report, &gpuTsv, evidence); gpuDrawListSmoke(*appearance, report, evidence); if (Fixture::renderBackend==RenderBackendKind::vulkan) atlasNative(*appearance,report); } gpuTsv.flush(); bool written=bool(gpuTsv); gpuTsv.close(); std::ifstream verify(evidence/"render-compare.tsv"); std::string line; int lines=0; bool header=false; while(std::getline(verify,line)){ if(lines==0)header=line.find("scenario\tappearance\tsize\tscale\trenderer\twindows_build\tconfiguration\tdifferent_fraction\tmaximum_difference\trole_mask\tfailed_role_mask\tregion_results\tregions_ok\tstatus")!=std::string::npos; ++lines; } report.check("GC05-tsv", written && header && lines==41, "complete comparison table has 40 rows and required columns"); return report.failures ? 1 : 0; }
         if (repeat < 1 || (repeat != 1 && !clipboardOnly) || int(ime) + int(clipboardOnly) + int(dpi) + int(x02Only) + int(x04Only) + int(x04ClippedOnly) + int(x04ExecutingOnly) + int(x04DisabledOnly) + int(x04SelectionOnly) + int(hoverOnly) + int(focusOnly) > 1)
             throw std::runtime_error("Invalid verification options");

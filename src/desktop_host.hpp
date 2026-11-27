@@ -90,6 +90,9 @@ public:
     // Tests replace the minimized / not shown / cloaked / covered check so another window on a shared
     // desktop cannot decide the outcome; with no reader the real window state is used.
     void hiddenSource(std::function<bool()> reader) { hiddenReader_ = std::move(reader); refreshVisibility(); }
+    void coveredSource(std::function<bool()> reader) { coveredReader_ = std::move(reader); refreshVisibility(); }
+    UINT scheduledFrameInterval() const { return frameInterval_; }
+    void deliverFrameTimerForTest();
     bool windowHidden() const { return hidden_; }
     void close() { release(); }
     void requestQuit() { quit_ = true; }
@@ -180,7 +183,11 @@ private:
     void followFocus();               // notice focus moved by application or semantic calls
     std::string syncedFocus_;
     std::function<bool()> animationReader_, hiddenReader_;
-    bool hidden_ = false;
+    std::function<bool()> coveredReader_;
+    bool hidden_ = false, covered_ = false, transitionScheduled_ = false;
+    std::uint64_t layoutRevision_ = 0;
+    std::optional<std::chrono::steady_clock::time_point> pendingPaintTime_;
+    UINT frameInterval_ = 0;
     void refreshSystemAnimations();
     void refreshVisibility();         // minimized / not shown / cloaked / fully covered: motion ends at once
     void scheduleAnimation();         // next frame while a transition runs, nothing otherwise

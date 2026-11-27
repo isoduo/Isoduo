@@ -1391,7 +1391,7 @@ void sliderDragIsOneWritePerValueAndOneUndo() {
 // while the user's own arrow key on the same slider slides.
 void sliderUndoRedoLandAtOnce() {
     settingsDemo::Demo demo; auto& state = detail::access(demo.ui); Rect track{};
-    std::uint64_t now = 0; state.animationTime([&] { return now; });
+    std::int64_t now = 0; state.animationTime([&] { return std::chrono::steady_clock::time_point{std::chrono::milliseconds(now)}; });
     paintSlider(demo, webAppearance(), demo.volume, track);
     auto tick = [&](int value) { return track.x + static_cast<int>(std::lround(track.w * value / 100.0)); };
     auto thumb = [&] { return paintSlider(demo, webAppearance(), demo.volume, track).thumbCenter(); };

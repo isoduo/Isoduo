@@ -39,7 +39,7 @@ template <class H> struct Derived : H {
 template <class H> concept ExposesState = requires(const H& h) { h.ui_; } || requires(const H& h) { h.lifetime_; } || requires(const H& h) { h.id_; };
 template <class... H> constexpr bool statePrivate(std::tuple<H...>*) { return ((!ExposesState<H> && !Derived<H>::seesState()) && ...); }
 
-static_assert(std::tuple_size_v<HandleTypes> == 14);
+static_assert(std::tuple_size_v<HandleTypes> == 15);
 static_assert(everyAlternativeListed(static_cast<ComponentHandle*>(nullptr)));
 static_assert(handleKinds::equalityHolds, "decisions 2 and 4: every handle kind has operator==, and different kinds never compare");
 // The shared predicate does fail a list with a kind that compares across kinds, or one without ==, so it is not vacuous.
@@ -79,6 +79,7 @@ struct World {
     CheckboxHandle checkbox;
     RadioGroupHandle radio;
     SliderHandle slider;
+    DrawingAreaHandle drawingArea;
     ProgressHandle progress;
     DropdownHandle dropdown;
     TabsHandle tabs;
@@ -104,6 +105,7 @@ struct World {
         slider = made(ui->addSlider({.id = "slider", .label = u"Slider"}, {0, 100, 10}), "add_slider");
         wired(slider.connectSource({[] { return 20; }, noUpdates()}), "slider.connect_source");
         wired(slider.connectImmediate(accept), "slider.connect_immediate");
+        drawingArea = made(ui->addDrawingArea({.id = "drawing"}), "add drawing area");
         progress = made(ui->addProgress({.id = "progress", .label = u"Progress"}), "add_progress");
         wired(progress.connectSource({[] { return 20; }, noUpdates()}), "progress.connect_source");
         dropdown = made(ui->addDropdown({.id = "dropdown", .label = u"Drop"}, twoOptions()), "add_dropdown");
@@ -206,6 +208,12 @@ std::vector<Op> sliderOps(const World& w) {
             ISODUO_OP(h, connectConfirmed([](const Change<SliderHandle>&) { return Result{}; }), "connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })"),
             ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, draft(), "draft()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
+std::vector<Op> drawingAreaOps(const World& w) {
+    auto h = w.drawingArea;
+    return std::vector<Op>{ISODUO_OP(h, remove(), "remove"), ISODUO_OP(h, enable(true), "enable"),
+        ISODUO_OP(h, content(), "content"), ISODUO_OP(h, describe(), "describe"),
+        ISODUO_OP(h, requestRedraw(), "requestRedraw"), ISODUO_OP(h, onDraw({}), "onDraw")};
+}
 std::vector<Op> progressOps(const World& w) {
     auto h = w.progress;
     return {ISODUO_OP(h, connectSource({[] { return 50; }, noUpdates()}), "connect_source({[] { return 50; }, no_updates()})"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
@@ -289,6 +297,7 @@ const std::vector<HandleKind>& kinds() {
         kind<&World::checkbox>("CheckboxHandle", u"Component no longer exists", checkboxOps),
         kind<&World::radio>("RadioGroupHandle", u"Component no longer exists", radioOps),
         kind<&World::slider>("SliderHandle", u"Component no longer exists", sliderOps),
+        kind<&World::drawingArea>("DrawingAreaHandle", u"Component no longer exists", drawingAreaOps),
         kind<&World::progress>("ProgressHandle", u"Component no longer exists", progressOps),
         kind<&World::dropdown>("DropdownHandle", u"Component no longer exists", dropdownOps),
         kind<&World::tabs>("TabsHandle", u"Component no longer exists", tabsOps),
@@ -327,7 +336,7 @@ void expectLive(const HandleKind& kind) {
 }
 
 void listCoversEveryKind() {
-    check(kinds().size() == std::tuple_size_v<HandleTypes>, "the list names all 14 handle kinds");
+    check(kinds().size() == std::tuple_size_v<HandleTypes>, "the list names all handle kinds");
     // Every component handle alternative is in the list (the remaining three are DialogHandle, TooltipHandle, ContextMenuHandle).
     check(std::variant_size_v<ComponentHandle> - 1 + 3 == kinds().size(), "component handles plus dialog, tooltip and menu");
     for (const auto& kind : kinds()) {

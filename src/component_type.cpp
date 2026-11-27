@@ -33,6 +33,7 @@ struct UiState::Internals {
     template <class U> static auto& tabs(U& ui) { return ui.tabs_; }
     template <class U> static auto& lists(U& ui) { return ui.lists_; }
     template <class U> static auto& numerics(U& ui) { return ui.numerics_; }
+    static auto& drawings(UiState& ui) { return ui.drawings_; }
     template <class U> static auto& progresses(U& ui) { return ui.progresses_; }
     template <class U> static auto& errors(U& ui) { return ui.errors_; }
     template <class U> static auto& providers(U& ui) { return ui.providers_; }
@@ -1483,6 +1484,54 @@ public:
     void pointerDown(UiState& ui, const Component& c, std::optional<std::size_t> option) const override { ui.armPointer(c.id, option); }
     Result pointerUp(UiState&, const PointerRelease&) const override { return {}; }
 };
+class DrawingArea final : public ComponentType {
+public:
+    std::string_view name() const override { return "drawingArea"; }
+    Role role() const override { return Role::drawingArea; }
+    bool acceptsContextMenu() const override { return false; }
+    bool handlesKey(const UiState&, const Component&, KeyPress) const override { return false; }
+    void describe(const UiState&, const Component&, ComponentSnapshot& snapshot) const override {
+        snapshot.value.clear();
+        snapshot.readOnly = false;
+    }
+    bool requiresTypedCreation() const override { return true; }
+    bool canFocus() const override { return false; }
+    bool acceptsPointer() const override { return false; }
+    bool acceptsError() const override { return false; }
+    bool supportsState(ComponentState state) const override { return supports(state, {S::normal, S::disabled}); }
+    ComponentHandle handle(UiState& ui, const Component& c) const override { return ui.typedHandle<DrawingAreaHandle>(c); }
+    void retire(UiState& ui, const Id& id) const override { UiState::Internals::drawings(ui).erase(id); }
+    void arrange(ComponentLayout& c) const override {
+        c.placement.bounds = {0, 0, c.width, c.drawingHeight};
+    }
+    void paint(ComponentPaint& c) const override {
+        const auto& area = UiState::Internals::drawings(c.ui).at(c.placement.id);
+        auto translate = [&](Rect rect) {
+            rect.x += c.placement.bounds.x;
+            rect.y += c.placement.bounds.y;
+            return rect;
+        };
+        for (const auto& primitive : area.primitives) {
+            const auto rect = translate(primitive.clip);
+            c.clip(rect);
+            if (primitive.text) {
+                const auto& layout = *primitive.text;
+                const double x = c.placement.bounds.x + layout.x;
+                double y = c.placement.bounds.y + layout.y;
+                if (x + layout.width + layout.pixels < rect.x) continue;
+                for (const auto& line : layout.lines) {
+                    if (y >= double(rect.y) + rect.h) break;
+                    if (y + layout.lineHeight > rect.y)
+                        c.drawingTextLine(line, layout.pixels, layout.face,
+                            static_cast<int>(x), static_cast<int>(y), primitive.color, primitive.opacity, rect);
+                    y += layout.lineHeight;
+                }
+            } else {
+                c.overlay(translate(primitive.rect), primitive.radius, primitive.color, primitive.opacity);
+            }
+        }
+    }
+};
 class Progress final : public ComponentType {
 public:
     void retire(UiState& ui, const Id& id) const override { UiState::Internals::retire(ui, UiState::Internals::progresses(ui), id); }
@@ -1706,6 +1755,7 @@ public:
 };
 NavigationList navigationList;
 Tabs tabs;
+DrawingArea drawingArea;
 Progress progress;
 Slider slider;
 List list;
@@ -1718,7 +1768,7 @@ Button button;
 Command command;
 const std::map<ComponentKind, const ComponentType*>& types() {
     static const std::map<ComponentKind, const ComponentType*> registry{
-        {ComponentKind::label, &label}, {ComponentKind::textField, &text}, {ComponentKind::button, &button},
+        {ComponentKind::drawingArea, &drawingArea}, {ComponentKind::label, &label}, {ComponentKind::textField, &text}, {ComponentKind::button, &button},
         {ComponentKind::checkbox, &checkbox}, {ComponentKind::radioGroup, &radioGroup}, {ComponentKind::slider, &slider}, {ComponentKind::dropdown, &dropdown}, {ComponentKind::list, &list}, {ComponentKind::tabs, &tabs}, {ComponentKind::progress, &progress}, {ComponentKind::navigationList, &navigationList}};
     return registry;
 }

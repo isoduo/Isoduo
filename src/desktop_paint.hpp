@@ -23,11 +23,12 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
     const Rect whole{0, 0, canvas.width, canvas.height};
     struct PaintAdapter final : ComponentPaint {
         Target& canvas;
+        const Rect placementClip;
         Text& renderer;
         std::vector<PaintObservation>* observations;
         PaintAdapter(UiState& ui, const Placement& item, const ComponentSnapshot& semantics, const Appearance& appearance,
                      float scale, bool windowFocused, Target& target, Text& text, std::vector<PaintObservation>* events)
-            : ComponentPaint(ui, item, semantics, appearance, scale, windowFocused), canvas(target), renderer(text), observations(events) {}
+            : ComponentPaint(ui, item, semantics, appearance, scale, windowFocused), canvas(target), placementClip(target.clip), renderer(text), observations(events) {}
         void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.currentRole=value; }
         void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin, bool bold = false, bool italic = false) {
             if constexpr (std::is_same_v<Target, RecordingCanvas>) {
@@ -54,7 +55,7 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
             else canvas.fill(rect, color, alpha);
             observe(radius > 0 ? DrawObservation::Type::rounded : DrawObservation::Type::fill, {}, rect, color, begin);
         }
-        void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
+        void clip(Rect rect) override { canvas.clip = intersect(placementClip, rect); }
         void verticalText(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
             auto begin=cursor();
             renderer.drawVertical(canvas, value, form, pixels, cell, color);
@@ -62,11 +63,18 @@ template<class Target> void paintDesktop(Target& canvas, const Frame& frame, flo
         }
         void text(std::u16string_view value, int pixels, int x, int y, Color color) override { styledText(value, pixels, {}, x, y, color); }
         void styledText(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) override {
+            drawingTextLine(value, pixels, style, x, y, color, 255, canvas.clip);
+        }
+        void drawingTextLine(std::u16string_view value, int pixels, FontStyle style, int x, int y,
+                             Color color, unsigned char opacity, Rect bounds) override {
+            auto previous = canvas.clip;
+            clip(bounds);
             auto layout = renderer.shape(value, pixels, style);
             auto begin=cursor();
-            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
+            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color, opacity);
             observe(DrawObservation::Type::text, std::u16string(value),
                 {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin, style.bold, style.italic);
+            canvas.clip = previous;
         }
     };
     for (const auto& item : frame.items) {

@@ -11,7 +11,7 @@ inline constexpr auto registry = "org.a11y.atspi.Registry";
 // AT-SPI wire values. These are shared with clients independently of libatspi.
 enum Role : unsigned {
     checkBox = 7, comboBox = 11, dialog = 16, frame = 23, label = 29, list = 31, listItem = 32,
-    menuItem = 35, pageTab = 37, pageTabList = 38, panel = 39, popupMenu = 41, progressBar = 42,
+    image = 27, menuItem = 35, pageTab = 37, pageTabList = 38, panel = 39, popupMenu = 41, progressBar = 42,
     button = 43, radioButton = 44, separator = 50, slider = 51, toolTip = 64, application = 75, entry = 79
 };
 enum State : unsigned {
@@ -75,6 +75,12 @@ inline constexpr auto interfaces =
         ISO_METHOD(GetMDIZOrder, ISO_OUT("n"))
         ISO_METHOD(GetAlpha, ISO_OUT("d"))
         ISO_METHOD(GrabFocus, ISO_OUT("b"))
+    "</interface>"
+    ISO_IFACE(Image) ISO_VERSION
+        ISO_READ(ImageDescription, "s") ISO_READ(ImageLocale, "s")
+        ISO_METHOD(GetImageExtents, ISO_IN("u") ISO_OUT("(iiii)"))
+        ISO_METHOD(GetImagePosition, ISO_IN("u") ISO_OUT("i") ISO_OUT("i"))
+        ISO_METHOD(GetImageSize, ISO_OUT("i") ISO_OUT("i"))
     "</interface>"
     ISO_IFACE(Selection) ISO_VERSION ISO_READ(NSelectedChildren, "i")
         ISO_METHOD(GetSelectedChild, ISO_IN("i") ISO_OUT("(so)"))

@@ -99,8 +99,11 @@ TextRun styledRun(TextMeasure& measure, std::u16string_view text, int pixels, co
 }
 }
 std::vector<std::u16string> wrap(TextMeasure& measure, std::u16string_view text, int pixels, int width) {
+    return detail::wrapStyled(measure, text, pixels, width, {});
+}
+std::vector<std::u16string> detail::wrapStyled(TextMeasure& measure, std::u16string_view text, int pixels, int width, FontStyle style) {
     std::vector<std::u16string> lines;
-    for (auto [begin, end] : wrapRanges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels); }))
+    for (auto [begin, end] : wrapRanges(text, width, [&](unsigned a, unsigned b) { return measure.measure(text.substr(a, b - a), pixels, style); }))
         lines.emplace_back(text.substr(begin, end - begin));
     return lines;
 }
@@ -189,6 +192,11 @@ Node scroll(Node child, ScrollState& state, int height) {
 Node scrollText(LabelHandle label, ScrollState& state, int height) {
     Node n = scroll(component(label), state, height); n.scrollableText = true; return n;
 }
+Node drawingArea(DrawingAreaHandle area, int height) {
+    Node node = component(area);
+    node.drawingHeight = std::max(0, height);
+    return node;
+}
 Node verticalText(LabelHandle label, int height) {
     if (height < 0) throw std::invalid_argument("Vertical text height must not be negative");
     Node n = component(label); n.verticalHeight = height; return n;
@@ -235,6 +243,9 @@ const Placement* Frame::find(const RadioGroupHandle& handle) const {
     return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const SliderHandle& handle) const {
+    return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
+}
+const Placement* Frame::find(const DrawingAreaHandle& handle) const {
     return handle.ui_ == ownerState && !handle.lifetime_.expired() ? findInstance(*this, handle, handle.id_) : nullptr;
 }
 const Placement* Frame::find(const ProgressHandle& handle) const {
@@ -338,7 +349,7 @@ bool Frame::scrollTo(Ui& ui, ScrollState& state, int requestedOffset) const {
 }
 bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner || !region.state || owner.retiredComponent(region.component)) return false;
+    if (ownerState != &owner || !owner.creationAccess() || !region.state || owner.retiredComponent(region.component)) return false;
     if (std::none_of(regions.begin(), regions.end(), [&](const ScrollRegion& r) { return &r == &region; })) return false;
     const bool popupScroll = std::any_of(overlays.begin(), overlays.end(), [&](const Placement& p) {
         return p.dropdownPanel && p.component == region.component;
@@ -366,7 +377,7 @@ bool Frame::scrollTo(Ui& ui, const ScrollRegion& region, int requestedOffset) co
 }
 bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
+    if (ownerState != &owner || !owner.creationAccess()) return false;
     // An open context menu owns the wheel: it scrolls itself and never the page behind it.
     if (const auto* menu = menuPanel()) {
         if (owner.retiredComponent(menu->component)) return false;
@@ -402,7 +413,7 @@ bool Frame::wheel(Ui& ui, int x, int y, int delta, bool sidewaysOnly) const {
 
 bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner) return false;
+    if (ownerState != &owner || !owner.creationAccess()) return false;
     const bool blocked = modal || owner.modal();
     for (auto it = regions.rbegin(); it != regions.rend(); ++it) {
         if (!it->horizontal || !it->clip.contains(x, y) || (blocked && !it->modalContent)) continue;
@@ -413,7 +424,7 @@ bool Frame::hwheel(Ui& ui, int x, int y, int delta) const {
 }
 bool Frame::selectTo(Ui& ui, const TextFieldHandle& handle, int x, int y) const {
     auto& owner = detail::access(ui);
-    if (ownerState != &owner || owner.retiredComponent(handle)) return false;
+    if (ownerState != &owner || !owner.creationAccess() || owner.retiredComponent(handle)) return false;
     const auto* p = find(handle);
     auto* session = p ? owner.edit(p->id) : nullptr;
     if (!p || !session) return false;
@@ -496,6 +507,7 @@ struct Arranger {
         p.component = node.component;
         p.textSize = pixels(node.textSize);
         detail::ComponentLayout context{ui, *control, appearance, measure, p, width, scale, !measuring};
+        context.drawingHeight = d(node.drawingHeight);
         context.verticalHeight = d(node.verticalHeight);
         detail::componentType(control->kind).arrange(context);
         return p;
@@ -843,6 +855,7 @@ void placeMenu(Frame& frame, detail::UiState& state, const Appearance& appearanc
 Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, TextMeasure& measure,
               int width, int height, float scale, ScrollState& scroll, std::string_view reveal) {
     detail::UiState::OperationScope operation(&detail::access(ui));
+    if (detail::access(ui).drawing()) return {};
     Arranger a{detail::access(ui), appearance, measure, scale, scroll, reveal, {}};
     Rect window{0, 0, width, height};
     a.frame.viewport = window;
@@ -959,6 +972,8 @@ Frame arrange(const layout::Node& root, Ui& ui, const Appearance& appearance, Te
     for (const auto& item : a.frame.overlays) if (!item.tooltip && !item.menu) record(item);
     a.ui.frameVisibility(std::move(visibility));
     a.ui.semanticFrame(a.frame);
+    for (const auto& item : a.frame.items) a.ui.arrangeDrawing(item, appearance, scale, measure);
+    for (const auto& item : a.frame.overlays) if (item.dialog) a.ui.arrangeDrawing(item, appearance, scale, measure);
     a.ui.hoverRefresh(a.frame);  // scrolling and reflow move components under a resting pointer
     a.ui.sliderTrackRefresh(a.frame);  // a held slider thumb is drawn on this frame's track
     return std::move(a.frame);

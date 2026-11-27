@@ -73,8 +73,8 @@ public:
     TextLayout shapeApart(std::u16string_view text,int pixels,FontStyle style);
     // The files that are looked up for bold / italic faces; without one every bold or italic look is synthesized.
     void setStyledLookup(std::function<FontFile(std::u16string_view,bool bold,bool italic)> lookup);
-    void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
-    void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color);
+    void draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color color,unsigned char opacity=255);
+    void draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int baseline,Color color,unsigned char opacity=255);
     // One piece of vertical text in its cell (see VerticalForm): the glyphs are positioned in canvas coordinates,
     // rotated, squeezed or centered as the form asks. Both draw targets produce the same pixels.
     TextLayout shapeVertical(std::u16string_view value,VerticalForm form,int pixels,Rect cell);

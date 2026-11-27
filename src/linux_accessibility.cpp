@@ -86,6 +86,7 @@ RoleInfo roleInfo(Role role) {
     case Role::list: return {atspi::list, "list"};
     case Role::tabs: return {atspi::pageTabList, "page tab list"};
     case Role::tabItem: return {atspi::pageTab, "page tab"};
+    case Role::drawingArea: return {atspi::image, "image"};
     case Role::progress: return {atspi::progressBar, "progress bar"};
     case Role::dialog: return {atspi::dialog, "dialog"};
     case Role::tooltip: return {atspi::toolTip, "tool tip"};
@@ -268,6 +269,7 @@ struct LinuxAccessibility::Impl {
         if (node) {
             // Keep the role's interface stable when its actions become unavailable.
             if (!primaryActions(*node).empty() || hasVerb(*node, Verb::contextMenu)) result.push_back("Action");
+            if (node->role == Role::drawingArea) result.push_back("Image");
             if (selectionContainer(node->role)) result.push_back("Selection");
             if (node->range || node->role == Role::progress) result.push_back("Value");
             if (node->role == Role::textField) {
@@ -412,7 +414,7 @@ GVariant* LinuxAccessibility::Impl::property(unsigned id, std::string_view key) 
     auto node = snapshot(id);
     if (key == "Name") return g_variant_new_string(id == app ? "Isoduo" : id == window ? title.c_str()
         : node ? wireText(node->name).c_str() : "");
-    if (key == "Description") return g_variant_new_string(node ? wireText(node->description).c_str() : "");
+    if (key == "Description" || key == "ImageDescription") return g_variant_new_string(node ? wireText(node->description).c_str() : "");
     if (key == "AccessibleId") {
         const auto identifier = node ? wireString(node->ref.item ? node->ref.item->id : node->ref.id) : "";
         return g_variant_new_string(identifier.c_str());
@@ -420,7 +422,7 @@ GVariant* LinuxAccessibility::Impl::property(unsigned id, std::string_view key) 
     if (key == "Parent") return id == app ? g_variant_new("(so)", registryName.c_str(), atspi::applicationPath)
         : reference(parent(id));
     if (key == "ChildCount") return g_variant_new_int32(children(id).size());
-    if (key == "Locale") return g_variant_new_string(std::setlocale(LC_CTYPE, nullptr));
+    if (key == "Locale" || key == "ImageLocale") return g_variant_new_string(std::setlocale(LC_CTYPE, nullptr));
     if (key == "Id") return g_variant_new_int32(applicationId);
     if (key == "InterfaceVersion") return g_variant_new_uint32(1);
     if (key == "ToolkitName") return g_variant_new_string("Isoduo");
@@ -451,6 +453,11 @@ GVariant* LinuxAccessibility::Impl::method(unsigned id, std::string_view iface, 
     if (iface == "Application") {
         if (name == "GetLocale") return g_variant_new("(s)", std::setlocale(LC_CTYPE, nullptr));
         if (name == "GetApplicationBusAddress") return g_variant_new("(s)", "");
+    }
+    if (iface == "Image") {
+        if (name == "GetImagePosition") return component(id, node, "GetPosition", args);
+        if (name == "GetImageSize") return component(id, node, "GetSize", args);
+        if (name == "GetImageExtents") return component(id, node, "GetExtents", args);
     }
     if (iface == "Component") return component(id, node, name, args);
     if (!node) return nullptr;

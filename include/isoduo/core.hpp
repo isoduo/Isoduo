@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "isoduo/appearance.hpp"
 #include "isoduo/presentation.hpp"
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -15,7 +17,7 @@
 
 namespace isoduo {
 // Labels may span lines and describe another component; an overflowing scrollText label is focusable.
-enum class ComponentKind { textField, button, label, checkbox, radioGroup, slider, dropdown, list, tabs, progress, navigationList };
+enum class ComponentKind { textField, button, label, checkbox, radioGroup, slider, dropdown, list, tabs, progress, navigationList, drawingArea };
 // What a label says about its target. Association is by logical ID, never by position or appearance.
 enum class LabelKind { plain, name, description, error };
 enum class Status { ok, notFound, disabled, readOnly, blockedByModal, busy, invalidValue, wrongThread, failed, notSupported, emptyHistory, hidden, rendererFailed };
@@ -562,6 +564,94 @@ private:
     friend struct Frame;
     using HandleBase::HandleBase;
 };
+struct DipRect {
+    float x = 0, y = 0, w = 0, h = 0;
+    bool operator==(const DipRect&) const = default;
+};
+struct DipSize {
+    float w = 0, h = 0;
+    bool operator==(const DipSize&) const = default;
+};
+class TextMeasure;
+enum class DrawingTextSize { body, caption };
+struct DrawingTextStyle {
+    DrawingTextSize size = DrawingTextSize::body;
+    bool bold = false, italic = false;
+    bool operator==(const DrawingTextStyle&) const = default;
+};
+enum class DrawingCommandKind { fillRect, roundedRect, clip, drawText };
+struct DrawingCommand {
+    DrawingCommandKind kind;
+    DipRect rect;
+    Color color;
+    unsigned char opacity = 255;
+    float radius = 0;
+    std::vector<DrawingCommand> children{};
+    std::u16string text{};
+    DrawingTextStyle style{};
+    bool operator==(const DrawingCommand&) const = default;
+};
+enum class DrawingStatus { none, drawn, failed };
+struct DrawingContent {
+    DrawingStatus status = DrawingStatus::none;
+    bool pending = false;
+    DipSize size;
+    std::vector<DrawingCommand> commands;
+    bool operator==(const DrawingContent&) const = default;
+};
+class DrawingEnvironment {
+public:
+    MotionPreference motionPreference() const { return motionPreference_; }
+    DipSize size() const { return size_; }
+    float scale() const { return scale_; }
+    const Palette& palette() const { return palette_; }
+    const ThemeVariant& variant() const { return variant_; }
+    bool enabled() const { return enabled_; }
+    Result clip(DipRect rect, const std::function<Result(const DrawingEnvironment&)>& draw) const;
+    Result roundedRect(DipRect rect, float radius, Color color, unsigned char opacity = 255) const;
+    Query<DipSize> measureText(std::u16string_view text, DrawingTextStyle style = {},
+                               std::optional<float> wrapWidth = {}) const;
+    Result drawText(std::u16string_view text, DipRect rect, DrawingTextStyle style,
+                    Color color, unsigned char opacity = 255) const;
+    Result fillRect(DipRect rect, Color color, unsigned char opacity = 255) const;
+private:
+    friend class detail::UiState;
+    DrawingEnvironment() = default;
+    Result access() const;
+    std::thread::id owner_ = std::this_thread::get_id();
+    MotionPreference motionPreference_ = MotionPreference::noPreference;
+    TextMeasure* measure_ = nullptr;
+    int textSize_ = 0;
+    DipSize size_;
+    float scale_ = 1;
+    Palette palette_;
+    ThemeVariant variant_;
+    bool enabled_ = true;
+    std::weak_ptr<std::vector<DrawingCommand>> commands_;
+};
+struct FrameInfo {
+    std::chrono::steady_clock::time_point time;
+    MotionPreference motionPreference;
+};
+class DrawingAreaHandle : private detail::HandleBase<DrawingAreaHandle> {
+public:
+    DrawingAreaHandle() = default;
+    Result remove() const;
+    Result enable(bool enabled) const;
+    // Each request schedules one callback. Requests made during a frame run on a later frame.
+    Result onFrame(std::function<Result(const FrameInfo&)> callback) const;
+    Result requestFrame() const;
+    Result cancelFrame() const;
+    Result requestRedraw() const;
+    Result onDraw(std::function<Result(const DrawingEnvironment&)> draw) const;
+    Query<DrawingContent> content() const;
+    Query<ComponentSnapshot> describe() const;
+    bool operator==(const DrawingAreaHandle&) const = default;
+private:
+    friend class detail::UiState;
+    friend struct Frame;
+    using HandleBase::HandleBase;
+};
 // A display-only percentage. Source values are never written; display is clamped to 0-100.
 class ProgressHandle : private detail::HandleBase<ProgressHandle> {
 public:
@@ -605,7 +695,7 @@ private:
 class ListHandle;
 class TabsHandle;
 class NavigationListHandle;
-using ComponentHandle = std::variant<std::monostate, TextFieldHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle>;
+using ComponentHandle = std::variant<std::monostate, TextFieldHandle, ButtonHandle, LabelHandle, CheckboxHandle, RadioGroupHandle, SliderHandle, DropdownHandle, ListHandle, TabsHandle, ProgressHandle, NavigationListHandle, DrawingAreaHandle>;
 class TabsHandle : private detail::HandleBase<TabsHandle> {
 public:
     TabsHandle() = default;
@@ -773,6 +863,7 @@ public:
     Query<RadioGroupHandle> addRadioGroup(ComponentConfig config, std::vector<OptionItem> items);
     // Invalid ranges and steps return invalidValue without creating a component.
     Query<SliderHandle> addSlider(ComponentConfig config, SliderRange range);
+    Query<DrawingAreaHandle> addDrawingArea(ComponentConfig config);
     Query<ProgressHandle> addProgress(ComponentConfig config);
     Query<DropdownHandle> addDropdown(ComponentConfig config, std::vector<OptionItem> items);
     Query<TabsHandle> addTabs(ComponentConfig config, std::vector<TabPage> pages);
@@ -797,12 +888,16 @@ public:
     Query<bool> contextMenuOpen() const;
     Query<MenuSnapshot> contextMenu() const;  // hidden while no menu is open
     Result invokeMenuItem(std::string id);
-    void onChange(std::function<void()> callback);
+    Result onChange(std::function<void()> callback);
+    MotionPreference motionPreference() const;
+    Result onMotionPreferenceChange(std::function<void(MotionPreference)> callback);
+    // Advance the core-only timeline and run visible requests from the latest layout.
+    Result simulateFrame(std::chrono::steady_clock::duration advance);
+    Result simulateSystemMotion(MotionPreference preference);
     Result setPresentation(const PresentationSettings& settings);
     const PresentationSettings& presentation() const;
-    // True while any on-screen transition (for example a slider thumb sliding to its new value) is
-    // still running. Values and semantics never wait for it, so this only says the picture has not
-    // settled; wait until it is false before comparing screenshots.
+    // True while a transition runs or a visible drawing area has a runnable frame request.
+    // Cancel continuous requests or use simulateFrame before comparing screenshots.
     Query<bool> animating() const;
     // Overrides individual palette colors of the built-in appearances for the whole Ui. The list
     // replaces the previous one and applies on the next frame; an empty list restores built-in
@@ -818,7 +913,7 @@ public:
     // Tells the Ui which appearance it is shown with so SemanticTree::effectivePalette can report
     // it. Desktop hosts bind and unbind their appearance themselves; core-only hosts call this.
     // The Appearance is borrowed and must outlive the binding (nullptr unbinds).
-    void bindAppearance(const Appearance* appearance);
+    Result bindAppearance(const Appearance* appearance);
     // The component (and item, for lists, tabs, radio groups, navigation lists and dropdowns) the
     // pointer hovers, from the real mouse or from simulateHover. The value is empty when nothing is
     // hovered, or the target was disabled or is blocked by a modal dialog. It answers the same with
