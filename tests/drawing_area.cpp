@@ -323,6 +323,52 @@ void invisibleDrawings() {
     test::check(calls == 4 && !area.content()->pending, "restored window consumes pending redraw once");
 }
 
+// A host paints only after the core asks it to (isoduo/Isoduo-issues#203): a frame's redraw request that the window
+// hid before painting must be asked for again when the window is visible.
+void restoredWindowRequestsHiddenRedraw() {
+    using namespace std::chrono_literals;
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "spinner", .label = u"Busy"});
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    bool asked = false;
+    detail::access(ui).onInvalidate([&] { asked = true; });
+    auto paint = [&] {
+        if (!std::exchange(asked, false)) return;
+        arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1, scroll);
+    };
+    int draws = 0;
+    area.onDraw([&](const DrawingEnvironment&) { ++draws; return Result{}; });
+    area.onFrame([&](const FrameInfo&) { return area.requestRedraw(); });
+    asked = true;
+    paint();
+    test::check(draws == 1 && !area.content()->pending, "first paint draws the area");
+    area.requestFrame();
+    ui.simulateFrame(16ms);
+    test::check(area.content()->pending && asked, "frame callback asks for a redraw");
+    detail::access(ui).setWindowHidden(true);
+    paint();
+    test::check(draws == 1 && area.content()->pending, "hidden window leaves the frame's redraw pending");
+    detail::access(ui).setWindowHidden(false);
+    test::check(asked, "restored window asks the host to paint the pending redraw");
+    paint();
+    test::check(draws == 2 && !area.content()->pending, "next paint draws the pending frame");
+}
+
+void restoredWindowWithoutPendingRedraw() {
+    Ui ui;
+    auto area = *ui.addDrawingArea({.id = "chart", .label = u"Trend"});
+    area.onDraw([](const DrawingEnvironment&) { return Result{}; });
+    test::FakeMeasure measure;
+    ScrollState scroll;
+    arrange(layout::drawingArea(area, 20), ui, webAppearance(), measure, 100, 40, 1, scroll);
+    int asked = 0;
+    detail::access(ui).onInvalidate([&] { ++asked; });
+    detail::access(ui).setWindowHidden(true);
+    detail::access(ui).setWindowHidden(false);
+    test::check(!area.content()->pending && asked == 0, "restored window without a pending redraw asks for no paint");
+}
+
 void localizedFailure() {
     for (bool throws : {false, true}) {
         Ui ui;
@@ -574,6 +620,7 @@ void applicationFrames() {
 int main() {
     const test::Case cases[] = {{"retained frame during draw", retainedFrameDuringDraw}, {"drawing config", drawingConfig}, {"frame mutations", frameMutations}, {"application frames", applicationFrames}, {"motion changes", motionChanges}, {"drawing text", drawingText}, {"nested clips", nestedClips}, {"invisible drawings", invisibleDrawings}, {"localized failure", localizedFailure},
         {"callback access", callbackAccess}, {"presentation redraw", presentationRedraw}, {"retained rectangle", retainedRectangle}, {"redraw lifecycle", redrawLifecycle},
+        {"restored window requests hidden redraw", restoredWindowRequestsHiddenRedraw}, {"restored window without pending redraw", restoredWindowWithoutPendingRedraw},
         {"invalid rectangles and height", invalidRectanglesAndHeight}, {"image semantics", imageSemantics}, {"page and dialog", pageAndDialog}};
     return test::run("drawing area", cases);
 }

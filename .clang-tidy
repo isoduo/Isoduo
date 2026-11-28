@@ -11,7 +11,7 @@ CheckOptions:
   # SDK headers are outside the CTest header filter, and clang-tidy skips
   # interface overrides such as UIA methods. Local SDK forward declarations
   # and Vulkan C API signatures also need to retain their original spelling.
-  readability-identifier-naming.StructIgnoredRegexp: '(Vk.*|pollfd|zwp_text_input_v3_listener)'
+  readability-identifier-naming.StructIgnoredRegexp: '(Vk.*|pollfd|zwp_text_input_v3_listener|_GError)'
   readability-identifier-naming.TypedefIgnoredRegexp: '(Vk.*|PFN_.*)'
   readability-identifier-naming.TypeAliasIgnoredRegexp: '(Vk.*|PFN_.*)'
   # Preserve OpenGL's spelling in lower-camel names. Keep the private suffix.

@@ -1369,8 +1369,13 @@ Result detail::UiState::simulateSystemMotion(MotionPreference preference) {
     return setSystemMotion(preference);
 }
 void detail::UiState::setWindowHidden(bool hidden) {
+    const bool restored = windowHidden_ && !hidden;
     windowHidden_ = hidden;
     if (!motionEnabled()) finishAnimations();
+    // A redraw requested before the window hid was never painted, and requestRedraw only asks once: ask again here.
+    if (restored && std::any_of(drawings_.begin(), drawings_.end(),
+                                [](const auto& entry) { return entry.second.draw && entry.second.content.pending; }))
+        invalidate();
 }
 bool detail::UiState::hasFrameRequests() const {
     return std::any_of(drawings_.begin(), drawings_.end(), [](const auto& entry) { return entry.second.request != 0; });
