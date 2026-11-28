@@ -37,6 +37,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check tracked line endings
+        run: cmake -P cmake/ci/CheckLineEndings.cmake
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
